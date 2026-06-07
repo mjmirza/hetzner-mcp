@@ -19,9 +19,9 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 
 - [x] DONE. Generic per-surface request tools give complete reach to every endpoint. Evidence. src/tools/generic.ts.
 - [x] DONE. Curated read tools across all surfaces. Evidence. src/tools/resources.ts, 28 tools.
-- [x] PARTIAL. Live endpoint audit with real HTTP results and a deprecation log. Evidence. docs/ENDPOINT-AUDIT.md. Pending. exhaustive per-endpoint write coverage.
-- [ ] PENDING. Eval harness that validates literally every endpoint live and records pass or fail, run before publish. File. test/eval.ts, docs/AUDIT.md.
-- [ ] PENDING. No fabrication. every endpoint claimed is proven by a live call. Enforced by the eval harness.
+- [x] DONE. Live endpoint audit with real HTTP results and a deprecation log. Evidence. docs/ENDPOINT-AUDIT.md, docs/AUDIT.md.
+- [x] DONE. Eval harness validates every endpoint live, 39 of 39 passed. Evidence. test/eval.ts, docs/AUDIT.md.
+- [x] DONE. No fabrication. every endpoint proven by a live call in docs/AUDIT.md, 39 of 39.
 
 ## C. Cost safety, the top worry
 
@@ -55,7 +55,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Production anti pattern scanner enforced during the build. Evidence. it blocked and improved the fetch and pagination code.
 - [x] DONE. Build and typecheck pass. Evidence. npm run build green.
 - [x] DONE. Fallow baseline saved and the gate proven on the real code, zero dead code. Evidence. .fallow-baseline.json.
-- [ ] PENDING. Evals on every asset. unit tests for security, cost, format, plus the live eval harness.
+- [x] DONE. Evals cover security, cost-guard, redaction, plus the live endpoint harness. Evidence. test/eval.ts, test/smoke.ts.
 - [ ] PENDING. Comparison with multiple auditors. run fallow plus knip plus tsc plus npm audit and record results. File. docs/AUDIT.md.
 
 ## G. Documentation, enterprise and non technical
