@@ -47,6 +47,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx test/smoke.ts",
+    "hygiene": "npx -y fallow@2.88.2 audit --gate new-only",
+    "hygiene:baseline": "npx -y fallow@2.88.2 dead-code --save-baseline",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
