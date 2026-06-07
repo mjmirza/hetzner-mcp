@@ -1,7 +1,7 @@
 {
   "name": "hetzner-mcp",
-  "version": "0.1.0",
-  "description": "Model Context Protocol server for the full Hetzner platform \u2014 Cloud (servers, networks, volumes, firewalls, load balancers, IPs, DNS), Storage Box, and Robot dedicated servers. Spin up and manage every part of Hetzner from any MCP client.",
+  "version": "0.1.1",
+  "description": "Model Context Protocol server for the full Hetzner platform. Cloud (servers, networks, volumes, firewalls, load balancers, IPs, DNS), Storage Box, and Robot dedicated servers. Spin up and manage every part of Hetzner from any MCP client.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "author": "Mirza Iqbal",

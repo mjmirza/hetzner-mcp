@@ -83,7 +83,7 @@ A wrong API call should never cost you money you did not intend. This tool is bu
 
 ### Use it with Claude Code or any MCP client
 
-Once published, point your MCP client at the package and give it your token.
+It is published on npm. Point your MCP client at the package and give it your token. This uses npx, so nothing is installed permanently.
 
 ```
 claude mcp add hetzner -e HETZNER_CLOUD_TOKEN=your-token -- npx -y hetzner-mcp
@@ -97,6 +97,20 @@ claude mcp add hetzner \
   -e HETZNER_ROBOT_USER=your-ws-user \
   -e HETZNER_ROBOT_PASSWORD=your-ws-password \
   -- npx -y hetzner-mcp
+```
+
+### Install globally with npm
+
+Install once and the hetzner-mcp command is on your PATH.
+
+```
+npm install -g hetzner-mcp
+```
+
+Then point your MCP client at the installed command instead of npx.
+
+```
+claude mcp add hetzner -e HETZNER_CLOUD_TOKEN=your-token -- hetzner-mcp
 ```
 
 ### Run it from source
