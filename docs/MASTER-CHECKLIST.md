@@ -29,7 +29,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Hard cost guard in the MCP. billed creates blocked unless confirm true, with live price preview. Evidence. src/cost.ts, src/tools/generic.ts.
 - [x] DONE. Optional env kill switch and global read only mode. Evidence. src/config.ts.
 - [x] DONE. Running cost ledger, target under five cents. Evidence. docs/ROADMAP.md. Current. zero.
-- [ ] PARTIAL. Live test of one billed create plus immediate delete, on explicit go only. Pending your go.
+- [ ] DEFERRED (awaiting your go). Live test of one billed create plus immediate delete. Costs a fraction of a cent. Not done without your explicit yes.
 
 ## D. Security, priority number one
 
@@ -82,10 +82,10 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 
 - [x] DONE. Local git only, not pushed. Bulletproof test first, then push when mature. Evidence. no remote configured.
 - [x] DONE. Branch, PR, merge workflow is the standing rule once a remote exists. Evidence. agent-os rule.
-- [ ] PENDING. Make public on GitHub. only after the eval harness is green and no fabrication remains. You have allowed this when mature.
-- [ ] PENDING. Publish to npm and register in MCP directories. after public and tested.
-- [ ] PENDING. Draft a detailed mutual benefit sponsorship email to Hetzner. draft only, four eyes, you send it. File. docs/outreach/hetzner-sponsorship.md.
-- [ ] PENDING. agent-os setup integration so this is part of the wider system. File. agent-os skill or rule entry.
+- [ ] DEFERRED (awaiting your go). Make public on GitHub. Eval is green and no fabrication remains, so it is ready. Awaiting your yes to create the public repo.
+- [ ] DEFERRED (awaiting your go). Publish to npm and register in MCP directories, after public.
+- [x] DONE. Hetzner sponsorship email drafted, mutual benefit, draft only for you to send. Evidence. docs/outreach/hetzner-sponsorship.md.
+- [x] DONE. agent-os integration guide plus tech-stack registry entry. Evidence. docs/AGENT-OS.md, tech-stack/services.md.
 
 ## J. The final comparison gate
 
