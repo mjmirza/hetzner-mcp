@@ -1,0 +1,69 @@
+/**
+ * Cost guard. The single most important safety layer.
+ * Reads are always free. Creating certain resources costs money. This module decides
+ * whether an operation could incur a charge so the tool layer can require confirmation
+ * and show a price first.
+ */
+import type { SurfaceName, HetznerConfig } from "./config.js";
+import { hetznerRequest } from "./http.js";
+
+/** POST to these collection paths creates a resource that is billed by Hetzner. */
+const BILLED_CREATE: Record<SurfaceName, RegExp[]> = {
+  cloud: [
+    /^\/servers\/?$/i,
+    /^\/volumes\/?$/i,
+    /^\/load_balancers\/?$/i,
+    /^\/floating_ips\/?$/i,
+    /^\/primary_ips\/?$/i,
+  ],
+  storagebox: [/^\/storage_boxes\/?$/i],
+  robot: [/^\/order\//i],
+};
+
+/**
+ * Server actions that increase cost (resize up, enable backups, etc.) live under
+ * /servers/{id}/actions/. We flag these so the guard can warn, since they can raise a bill.
+ */
+const BILLED_ACTIONS = /\/(actions)\/(change_type|enable_backups|attach_iso|request_console)\/?$/i;
+
+export interface CostDecision {
+  billed: boolean;
+  reason?: string;
+}
+
+export function classifyCost(surface: SurfaceName, method: string, path: string): CostDecision {
+  const m = method.toUpperCase();
+  if (m !== "POST" && m !== "PUT") return { billed: false };
+  for (const re of BILLED_CREATE[surface] ?? []) {
+    if (re.test(path)) return { billed: true, reason: `${m} ${path} creates a billed ${surface} resource` };
+  }
+  if (surface === "cloud" && BILLED_ACTIONS.test(path)) {
+    return { billed: true, reason: `${m} ${path} is a server action that can increase your bill` };
+  }
+  return { billed: false };
+}
+
+/**
+ * Best-effort live price note for a cloud server create, read from the free pricing endpoint.
+ * Never throws. Returns a human-readable string or undefined if it cannot be determined.
+ */
+export async function cloudServerPriceNote(
+  cfg: HetznerConfig,
+  serverType: string | undefined,
+): Promise<string | undefined> {
+  if (!serverType) return undefined;
+  try {
+    const pricing = (await hetznerRequest(cfg, { surface: "cloud", path: "/pricing" })) as {
+      pricing?: { server_types?: Array<{ name?: string; prices?: Array<{ location?: string; price_hourly?: { gross?: string }; price_monthly?: { gross?: string } }> }> };
+    };
+    const types = pricing.pricing?.server_types ?? [];
+    const match = types.find((t) => t.name?.toLowerCase() === serverType.toLowerCase());
+    const p = match?.prices?.[0];
+    if (!p) return undefined;
+    const hourly = p.price_hourly?.gross;
+    const monthly = p.price_monthly?.gross;
+    return `Estimated price for ${serverType}: about ${hourly ?? "?"} EUR per hour, ${monthly ?? "?"} EUR per month (gross, ${p.location ?? "first location"}).`;
+  } catch {
+    return undefined;
+  }
+}
