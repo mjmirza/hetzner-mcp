@@ -30,6 +30,30 @@ Manage your entire Hetzner platform from any AI assistant. Cloud servers, networ
 
 This is built and maintained in the open, for free, under a license that only asks for attribution. If your team relies on it, [becoming a sponsor](https://github.com/sponsors/mjmirza) directly buys the time to cover more endpoints, keep the endpoint audit current as Hetzner changes, and respond to issues and pull requests faster. Even a small monthly amount makes a real difference. Thank you.
 
+## Set it up by pasting one prompt
+
+No setup effort. Copy the block below, paste it into Claude Code, Codex, Cursor, or any AI coding tool, and it installs the server, wires it into your flow, and walks you through the one manual step, getting a token.
+
+```
+Set up the hetzner-mcp server from https://github.com/mjmirza/hetzner-mcp so that from now on I can manage my whole Hetzner platform, Cloud servers, networks, volumes, firewalls, load balancers, IPs, DNS, Storage Boxes, and Robot dedicated servers, from this AI assistant, safely.
+
+Steps:
+1. Register the MCP server. Run this, replacing MY_TOKEN with my Hetzner Cloud API token:
+   claude mcp add -s user hetzner -e HETZNER_CLOUD_TOKEN=MY_TOKEN -- npx -y hetzner-mcp
+   For dedicated servers also add: -e HETZNER_ROBOT_USER=my-ws-user -e HETZNER_ROBOT_PASSWORD=my-ws-password
+2. If I do not have a token yet, walk me through it. Hetzner Cloud Console at https://console.hetzner.com, my project, Security, API Tokens, Generate. Choose Read and Write to manage resources. The same token also works for Storage Boxes.
+3. Install the provision skill so you can spin up a full stack end to end. Copy skills/hetzner-provision from the repo into my agent skills directory, for Claude Code that is ~/.claude/skills/hetzner-provision/.
+4. Add a standing rule for yourself. never create a billed resource without showing me the live price and getting my explicit yes, and always offer to tear down test resources to stop cost.
+5. Confirm it works with a free read. list my servers, my storage boxes, and if Robot is set, my dedicated servers.
+6. Tell me exactly what you installed and how I provision or tear down anything from now on.
+```
+
+Want only a one time look, no install? Paste this instead.
+
+```
+Connect to my Hetzner account through the hetzner-mcp server, run npx -y hetzner-mcp with my Cloud API token, then show me everything I am running across Cloud, Storage Box, and Robot, with the monthly cost. Do not create or delete anything. Reads are free.
+```
+
 ## What this is, in plain words
 
 Hetzner is a hosting company. It runs cloud servers, storage, and physical dedicated servers, and it exposes APIs to control all of it. This project is a small program, an MCP server, that lets an AI assistant like Claude do that controlling for you, safely. You ask in normal language, the assistant calls the right Hetzner endpoint, and the result comes back. You do not need to learn the API. You do need to give it an access token once, which this guide walks you through.
