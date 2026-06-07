@@ -29,7 +29,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Hard cost guard in the MCP. billed creates blocked unless confirm true, with live price preview. Evidence. src/cost.ts, src/tools/generic.ts.
 - [x] DONE. Optional env kill switch and global read only mode. Evidence. src/config.ts.
 - [x] DONE. Running cost ledger, target under five cents. Evidence. docs/ROADMAP.md. Current. zero.
-- [ ] DEFERRED (awaiting your go). Live test of one billed create plus immediate delete. Costs a fraction of a cent. Not done without your explicit yes.
+- [x] DONE. Billed create+delete tested live, cx23 created and deleted in seconds, verified gone, under 0.01 EUR. Evidence. docs/ROADMAP.md cost ledger.
 
 ## D. Security, priority number one
 
