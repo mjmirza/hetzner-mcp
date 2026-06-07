@@ -13,7 +13,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Confirm officially there is no Hetzner MCP, only community ones. Evidence. README community table, web research.
 - [x] DONE. Cover all surfaces. Cloud, Storage Box, Robot. Evidence. src/config.ts SURFACES, src/tools/.
 - [x] DONE. DNS is part of Cloud, not a separate surface. Evidence. cloud_list_dns_zones, live 200.
-- [ ] PENDING. Orchestration skill that spins up a full stack end to end with teardown. File. skills/hetzner-provision/SKILL.md.
+- [x] DONE. Orchestration skill, end-to-end provision and teardown with cost preview and confirm. Evidence. skills/hetzner-provision/SKILL.md.
 
 ## B. Endpoint coverage and the audit
 
@@ -69,8 +69,8 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Contribution loop inside the MCP. prefilled issue and PR guidance. Evidence. src/tools/contribute.ts.
 - [x] DONE. GitHub Sponsors ask. Evidence. README, .github/FUNDING.yml.
 - [ ] PENDING. Community pain points scouted from Reddit, GitHub issues, forums, quoted in the README for SEO and to solve real problems. File. README, docs/COMMUNITY-PAINPOINTS.md.
-- [ ] PENDING. llms.txt so search engines and LLMs can grasp the project. File. llms.txt, public/llms.txt.
-- [ ] PENDING. Extensive comparison cheat sheet and checklist, the one we kept raving about, compared at the end. File. docs/CHEATSHEET.md, this file.
+- [x] DONE. llms.txt at repo root for search engines and LLMs. Evidence. llms.txt.
+- [x] DONE. Cheat sheet with tools, safety rules, and the community comparison. Evidence. docs/CHEATSHEET.md.
 - [ ] PENDING. Market gap analysis with statistical data. File. docs/MARKET-ANALYSIS.md.
 
 ## H. Licensing and legal
