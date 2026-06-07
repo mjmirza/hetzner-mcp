@@ -1,0 +1,33 @@
+# hetzner-mcp
+
+> An enterprise-grade Model Context Protocol server for the full Hetzner platform. It lets an
+> AI assistant manage Hetzner Cloud (servers, networks, volumes, firewalls, load balancers,
+> IPs, DNS), Storage Boxes, and Robot dedicated servers, with a hard cost guard, a destructive
+> guard, secret redaction, SSRF-safe requests, and token-efficient responses. There is no
+> official Hetzner MCP. This is a tested, community-built one.
+
+## What it does
+- Three surfaces from one server. Cloud (api.hetzner.cloud), Storage Box (api.hetzner.com),
+  Robot dedicated servers (robot-ws.your-server.de). DNS is part of the Cloud API.
+- 32 tools. 3 generic per-surface request tools for complete coverage, 28 curated read tools,
+  1 contribution tool.
+- Safety first. billed resources are never created without an explicit confirm and a live
+  price preview. DELETE requires confirm. A read-only mode refuses all writes.
+
+## Key docs
+- Setup and credentials, beginner friendly with screenshots: docs/SETUP.md
+- Security model and threat list: docs/SECURITY.md
+- Validating audit, every endpoint tested live: docs/AUDIT.md
+- Multi-auditor quality comparison: docs/AUDITORS.md
+- Token budget and efficiency: docs/TOKEN-BUDGET.md
+- Endpoint inventory and changelog: docs/ENDPOINT-AUDIT.md
+- Contributing: CONTRIBUTING.md
+
+## Install
+- claude mcp add hetzner -e HETZNER_CLOUD_TOKEN=your-token -- npx -y hetzner-mcp
+
+## License
+- Dual, MIT for code and CC BY 4.0 for content. Attribution required. Not affiliated with Hetzner.
+
+## Sponsor
+- https://github.com/sponsors/mjmirza
