@@ -93,6 +93,22 @@ Full, beginner friendly, step by step instructions, including the German console
 1. Cloud token. https://console.hetzner.com, your project, Security, API Tokens, Generate. This one token also works for Storage Boxes.
 2. Robot user, only for dedicated servers. https://robot.hetzner.com, Settings, Web service and app settings, set a password, the username is assigned to you.
 
+### Visual walkthrough, getting the Cloud token
+
+Open the Cloud Console, then your project.
+
+![Open the Hetzner Cloud Console](assets/setup/01-cloud-open-console.png)
+![Select your project](assets/setup/02-cloud-select-project.png)
+
+Open Security, then the API Tokens tab, and generate the token.
+
+![Open Security](assets/setup/03-cloud-open-security.png)
+![API Tokens tab and generate](assets/setup/04-cloud-api-tokens.png)
+
+For dedicated servers, create a Robot webservice user.
+
+![Robot web service and app settings](assets/setup/05-robot-webservice-settings.png)
+
 ## What is tested, and how this compares
 
 This project tests every endpoint live and records the result. The running inventory, including a deprecation log, is in [docs/ENDPOINT-AUDIT.md](docs/ENDPOINT-AUDIT.md).
