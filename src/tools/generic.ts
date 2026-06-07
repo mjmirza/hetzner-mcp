@@ -11,13 +11,13 @@ import { classifyCost, cloudServerPriceNote } from "../cost.js";
 import { isWrite, normalizeMethod } from "../security.js";
 import { formatResult } from "../format.js";
 
-export interface ToolText {
+interface ToolText {
   [key: string]: unknown;
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
 }
 
-export function textResult(value: unknown, isError = false): ToolText {
+function textResult(value: unknown, isError = false): ToolText {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return { content: [{ type: "text", text }], isError };
 }
@@ -66,6 +66,12 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
         if (isWrite(method) && cfg.readOnly) {
           return textResult(
             `Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1), so ${method} ${args.path} is not allowed.`,
+            true,
+          );
+        }
+        if (method === "DELETE" && args.confirm !== true) {
+          return textResult(
+            `DESTRUCTIVE GUARD. ${method} ${args.path} permanently deletes a resource and can cause data loss. Re-run with confirm set to true to proceed.`,
             true,
           );
         }

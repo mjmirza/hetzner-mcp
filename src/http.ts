@@ -126,24 +126,3 @@ export async function hetznerRequest(cfg: HetznerConfig, opts: RequestOpts): Pro
 
   return json ?? {};
 }
-
-/** Follow Hetzner page pagination up to cfg.maxPages, merging the named array. */
-export async function hetznerPaginate(
-  cfg: HetznerConfig,
-  opts: RequestOpts,
-  collectionKey: string,
-): Promise<unknown[]> {
-  const items: unknown[] = [];
-  let nextPage: number | null = 1;
-  let guard = 0;
-  while (nextPage !== null && guard < cfg.maxPages) {
-    guard++;
-    const query = { ...(opts.query ?? {}), page: nextPage, per_page: 50 };
-    const res = (await hetznerRequest(cfg, { ...opts, query })) as Record<string, unknown>; // BESTPRACTICE_OK: sequential pagination, page N+1 unknown until page N returns next_page
-    const batch = res[collectionKey];
-    if (Array.isArray(batch)) items.push(...batch);
-    const meta = res.meta as { pagination?: { next_page?: number | null } } | undefined;
-    nextPage = meta?.pagination?.next_page ?? null;
-  }
-  return items;
-}

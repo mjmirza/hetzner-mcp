@@ -39,6 +39,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Per request timeout via AbortSignal. Evidence. src/http.ts.
 - [x] DONE. Input validation with zod on every tool. Evidence. src/tools/.
 - [x] DONE. Robot Basic auth built from env, never echoed. Evidence. src/http.ts.
+- [x] DONE. Destructive guard. DELETE requires confirm true to prevent data loss, plus read-only blocks it. Evidence. src/tools/generic.ts.
 - [ ] PENDING. A written security audit document covering the threat model and each control. File. docs/SECURITY.md.
 
 ## E. Token efficiency, highly valuable
@@ -53,7 +54,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Fallow wired in. config, npm script pinned 2.88.2, CI gate. Evidence. .fallowrc.json, package.json, .github/workflows/ci.yml.
 - [x] DONE. Production anti pattern scanner enforced during the build. Evidence. it blocked and improved the fetch and pagination code.
 - [x] DONE. Build and typecheck pass. Evidence. npm run build green.
-- [ ] PENDING. Fallow baseline saved and the gate proven on the real code. Command. npm run hygiene:baseline then npm run hygiene.
+- [x] DONE. Fallow baseline saved and the gate proven on the real code, zero dead code. Evidence. .fallow-baseline.json.
 - [ ] PENDING. Evals on every asset. unit tests for security, cost, format, plus the live eval harness.
 - [ ] PENDING. Comparison with multiple auditors. run fallow plus knip plus tsc plus npm audit and record results. File. docs/AUDIT.md.
 

@@ -26,11 +26,3 @@ export class HetznerApiError extends Error {
     this.name = "HetznerApiError";
   }
 }
-
-/** A guard refusal (cost, read-only, missing creds). Not an API failure. */
-export class GuardError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "GuardError";
-  }
-}

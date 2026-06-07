@@ -4,8 +4,8 @@
  * so a caller can never point this server at an arbitrary host.
  */
 
-export const READ_METHODS = new Set(["GET", "HEAD"]);
-export const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const READ_METHODS = new Set(["GET", "HEAD"]);
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * Normalize and validate a relative API path.

@@ -1,7 +1,7 @@
 {
   "name": "hetzner-mcp",
   "version": "0.1.0",
-  "description": "Model Context Protocol server for the full Hetzner platform — Cloud (servers, networks, volumes, firewalls, load balancers, IPs, DNS), Storage Box, and Robot dedicated servers. Spin up and manage every part of Hetzner from any MCP client.",
+  "description": "Model Context Protocol server for the full Hetzner platform \u2014 Cloud (servers, networks, volumes, firewalls, load balancers, IPs, DNS), Storage Box, and Robot dedicated servers. Spin up and manage every part of Hetzner from any MCP client.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "author": "Mirza Iqbal",
@@ -47,8 +47,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx test/smoke.ts",
-    "hygiene": "npx -y fallow@2.88.2 audit --gate new-only",
-    "hygiene:baseline": "npx -y fallow@2.88.2 dead-code --save-baseline",
+    "hygiene": "npx -y fallow@2.88.2 dead-code --baseline .fallow-baseline.json",
+    "hygiene:baseline": "npx -y fallow@2.88.2 dead-code --save-baseline .fallow-baseline.json",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

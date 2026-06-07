@@ -87,5 +87,3 @@ export function registerReadTools(server: McpServer, cfg: HetznerConfig): void {
     );
   }
 }
-
-export const READ_TOOL_COUNT = READS.length;

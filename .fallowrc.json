@@ -1,4 +1,4 @@
 {
   "entry": ["src/index.ts"],
-  "ignore": ["dist/**", "node_modules/**", "test/**", "assets/**"]
+  "ignorePatterns": ["dist/**", "node_modules/**", "test/**", "assets/**"]
 }

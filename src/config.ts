@@ -3,9 +3,9 @@
  * Secrets come only from environment variables and are never logged.
  */
 
-export type AuthKind = "bearer" | "basic";
+type AuthKind = "bearer" | "basic";
 
-export interface SurfaceDef {
+interface SurfaceDef {
   base: string;
   auth: AuthKind;
 }
