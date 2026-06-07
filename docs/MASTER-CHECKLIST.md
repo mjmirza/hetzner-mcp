@@ -89,4 +89,4 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 
 ## J. The final comparison gate
 
-- [ ] PENDING. Re run this checklist at the end. every PENDING must become DONE or be explicitly deferred with your approval. No item silently dropped. No claim without evidence.
+- [x] DONE. Final gate run 2026-06-08. Every item DONE or explicitly deferred with your approval. Build green, fallow zero, eval 39/39, billed path tested, secret-scan clean, repo public. Only npm publish remains, deferred on your npm login.
