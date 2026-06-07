@@ -123,6 +123,16 @@ This MCP is designed to grow from real use. If you ask it for something it does 
 
 This is engineered, not vibe coded. The repository runs the fallow hygiene gate to block new dead code, builds and type checks in CI, and every endpoint carries a live test result. See [docs/ROADMAP.md](docs/ROADMAP.md) for the full quality and phase plan.
 
+## Real problems this solves
+
+Hetzner is loved for its price, roughly one fifth to one tenth of comparable AWS, but its automation has real friction that users write about.
+
+- "API tokens must be created by hand in the console, you cannot bootstrap them as code." After that one manual step, this MCP automates the rest, and the [setup guide](docs/SETUP.md) makes it foolproof.
+- "SSH keys attached at creation cannot be changed later without recreating the server." The MCP exposes the full server and key surface so an agent can script rotation and replacement.
+- "Network setup needs extra config files and commands run on the server." The [orchestration skill](skills/hetzner-provision/SKILL.md) builds network, firewall, and server together with cloud-init in one verified flow.
+
+Sourced from real community writeups. See [docs/COMMUNITY-PAINPOINTS.md](docs/COMMUNITY-PAINPOINTS.md) and the market gap in [docs/MARKET-ANALYSIS.md](docs/MARKET-ANALYSIS.md).
+
 ## License
 
 Dual licensed and free to use, including commercially. Attribution is required. Code under MIT, content under CC BY 4.0. Keep the notice and link back to this repository. See [LICENSE](LICENSE).

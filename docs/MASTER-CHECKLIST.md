@@ -68,10 +68,10 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. CONTRIBUTING guide and issue and PR templates. Evidence. CONTRIBUTING.md, .github/.
 - [x] DONE. Contribution loop inside the MCP. prefilled issue and PR guidance. Evidence. src/tools/contribute.ts.
 - [x] DONE. GitHub Sponsors ask. Evidence. README, .github/FUNDING.yml.
-- [ ] PENDING. Community pain points scouted from Reddit, GitHub issues, forums, quoted in the README for SEO and to solve real problems. File. README, docs/COMMUNITY-PAINPOINTS.md.
+- [x] DONE. Community pain points scouted with sources, quoted in the README and a dedicated doc. Evidence. docs/COMMUNITY-PAINPOINTS.md, README.
 - [x] DONE. llms.txt at repo root for search engines and LLMs. Evidence. llms.txt.
 - [x] DONE. Cheat sheet with tools, safety rules, and the community comparison. Evidence. docs/CHEATSHEET.md.
-- [ ] PENDING. Market gap analysis with statistical data. File. docs/MARKET-ANALYSIS.md.
+- [x] DONE. Market gap analysis with sourced statistics. Evidence. docs/MARKET-ANALYSIS.md.
 
 ## H. Licensing and legal
 
