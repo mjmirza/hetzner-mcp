@@ -82,7 +82,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 
 - [x] DONE. Local git only, not pushed. Bulletproof test first, then push when mature. Evidence. no remote configured.
 - [x] DONE. Branch, PR, merge workflow is the standing rule once a remote exists. Evidence. agent-os rule.
-- [ ] DEFERRED (awaiting your go). Make public on GitHub. Eval is green and no fabrication remains, so it is ready. Awaiting your yes to create the public repo.
+- [x] DONE. Public on GitHub at https://github.com/mjmirza/hetzner-mcp, secret-scan clean before publish.
 - [ ] DEFERRED (awaiting your go). Publish to npm and register in MCP directories, after public.
 - [x] DONE. Hetzner sponsorship email drafted, mutual benefit, draft only for you to send. Evidence. docs/outreach/hetzner-sponsorship.md.
 - [x] DONE. agent-os integration guide plus tech-stack registry entry. Evidence. docs/AGENT-OS.md, tech-stack/services.md.
