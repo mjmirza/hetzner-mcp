@@ -40,14 +40,14 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Input validation with zod on every tool. Evidence. src/tools/.
 - [x] DONE. Robot Basic auth built from env, never echoed. Evidence. src/http.ts.
 - [x] DONE. Destructive guard. DELETE requires confirm true to prevent data loss, plus read-only blocks it. Evidence. src/tools/generic.ts.
-- [ ] PENDING. A written security audit document covering the threat model and each control. File. docs/SECURITY.md.
+- [x] DONE. Written security audit, threat model and per-threat control. Evidence. docs/SECURITY.md.
 
 ## E. Token efficiency, highly valuable
 
 - [x] DONE. Compact projection of list responses by default, verbose on request. Evidence. src/format.js.
 - [x] DONE. Hard response size cap with a truncation hint. Evidence. src/format.js MAX_CHARS.
 - [x] DONE. Concise tool descriptions, lean tool count. Evidence. src/tools/.
-- [ ] PENDING. Measure and document the token footprint of the tool list and typical responses. File. docs/TOKEN-BUDGET.md.
+- [x] DONE. Token footprint documented, 32 tools, compact default, 24000 char cap. Evidence. docs/TOKEN-BUDGET.md.
 
 ## F. Quality and tooling, no stupidity
 
@@ -56,7 +56,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Build and typecheck pass. Evidence. npm run build green.
 - [x] DONE. Fallow baseline saved and the gate proven on the real code, zero dead code. Evidence. .fallow-baseline.json.
 - [x] DONE. Evals cover security, cost-guard, redaction, plus the live endpoint harness. Evidence. test/eval.ts, test/smoke.ts.
-- [ ] PENDING. Comparison with multiple auditors. run fallow plus knip plus tsc plus npm audit and record results. File. docs/AUDIT.md.
+- [x] DONE. Multi-auditor comparison, tsc, npm audit, fallow, knip, all clean. Evidence. docs/AUDITORS.md.
 
 ## G. Documentation, enterprise and non technical
 
