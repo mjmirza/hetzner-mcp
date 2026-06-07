@@ -1,0 +1,19 @@
+node_modules/
+dist/
+*.log
+
+# Secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.token
+*-token.txt
+secrets/
+
+# Local test artifacts
+test/.live/
+coverage/
+.fallow-baseline.json
+
+# OS
+.DS_Store
