@@ -7,7 +7,6 @@
 Manage your entire Hetzner platform from any AI assistant. Cloud servers, networks, volumes, firewalls, load balancers, IPs and DNS, plus Storage Boxes and Robot dedicated servers. One Model Context Protocol server, every surface, tested live, with a hard cost guard so you never get a surprise bill.
 
 [![npm version](https://img.shields.io/npm/v/hetzner-mcp?logo=npm)](https://www.npmjs.com/package/hetzner-mcp)
-[![CI](https://img.shields.io/github/actions/workflow/status/mjmirza/hetzner-mcp/ci.yml?branch=main&label=CI)](https://github.com/mjmirza/hetzner-mcp/actions)
 [![MCP](https://img.shields.io/badge/MCP-server-000000?logo=anthropic&logoColor=white)](#quick-start)
 [![License](https://img.shields.io/badge/License-MIT_plus_CC_BY_4.0-2ea44f)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-2ea44f)](CONTRIBUTING.md)
