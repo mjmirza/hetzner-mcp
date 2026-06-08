@@ -3,6 +3,29 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.2.3] - 2026-06-08
+
+### Added
+- A live validation suite, `npm run validate:live`, that drives the compiled server over
+  stdio and exercises every tool. Reads on all cloud, Storage Box, and Robot list
+  endpoints, the cost and destructive guards, and a create then delete lifecycle for both
+  free and billed resources. Every billed resource is removed in a finally block, so a
+  failure never leaks a charge.
+- An integrated deploy demo, `npm run deploy:demo`, and its teardown, `npm run teardown:demo`.
+  The demo builds a private network, firewall, placement group, two cheapest cx23 web nodes
+  with cloud-init nginx, and a load balancer with a health checked HTTP service, then proves
+  traffic round robins across both backends.
+- A validation report at `docs/VALIDATION.md` with the per tool table, diagrams, and the
+  exact commands to reproduce the run.
+
+### Changed
+- The published package is now lean. Only the runtime JavaScript, the README, and the
+  license files ship. Source maps, type declarations, and the docs folder are no longer
+  published, taking the package from 53 files to 15, and roughly 134 kB down to 51 kB on disk.
+- The hygiene config now tracks every source, test, and script file, so dead code in tests
+  is caught too. This surfaced and wired in an existing but orphaned eval suite,
+  `npm run eval`.
+
 ## [0.2.2] - 2026-06-08
 
 ### Fixed

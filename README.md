@@ -29,6 +29,16 @@ Manage your entire Hetzner platform from any AI assistant. Cloud servers, networ
 
 This is built and maintained in the open, for free, under a license that only asks for attribution. If your team relies on it, [becoming a sponsor](https://github.com/sponsors/mjmirza) directly buys the time to cover more endpoints, keep the endpoint audit current as Hetzner changes, and respond to issues and pull requests faster. Even a small monthly amount makes a real difference. Thank you.
 
+## Validated live, not theorized
+
+Every tool and every scenario in this server was run live against the real Hetzner API, not described from theory. 91 automated checks across cloud, Storage Box, and Robot, with 0 failures. Every billed resource was created and then destroyed, a full load balanced stack was deployed and proven to round robin across two backends, and the account was left clean. Zero dead code, with fallow tracking every source, test, and script file.
+
+| Checks run live | Failures | Tools exercised | Surfaces | Dead code |
+|---|---|---|---|---|
+| 91 | 0 | every registered tool | cloud, storage box, robot | 0 |
+
+Read the full [validation report](docs/VALIDATION.md) for the per tool table, the cost discipline, the diagrams, and the exact commands to reproduce it yourself (`npm run validate:live`, `npm run eval`, `npm run deploy:demo`).
+
 ## Set it up by pasting one prompt
 
 No setup effort. Copy the block below, paste it into Claude Code, Codex, Cursor, or any AI coding tool, and it installs the server, wires it into your flow, and walks you through the one manual step, getting a token.

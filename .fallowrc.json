@@ -1,4 +1,11 @@
 {
-  "entry": ["src/index.ts"],
-  "ignorePatterns": ["dist/**", "node_modules/**", "test/**", "assets/**"]
+  "entry": [
+    "src/index.ts",
+    "test/smoke.ts",
+    "test/fix-verify.ts",
+    "test/live-validate.ts",
+    "scripts/deploy-demo.ts",
+    "scripts/teardown-demo.ts"
+  ],
+  "ignorePatterns": ["dist/**", "node_modules/**", "assets/**"]
 }
