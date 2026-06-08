@@ -3,6 +3,12 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.2.1] - 2026-06-08
+
+### Added
+- A FAQ for technical and non-technical readers that answers the real objections. docs/FAQ.md.
+- A README section on why to use this rather than build your own or use Terraform.
+
 ## [0.2.0] - 2026-06-08
 
 ### Added

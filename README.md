@@ -164,6 +164,18 @@ There is no official Hetzner MCP. Several community servers exist, and this proj
 
 If another project covers something this one does not, that is a great pull request. See below.
 
+## Why this instead of building your own
+
+You could write your own. Most people say they will and never do, and the ones who do end up rebuilding the same things this already has, tested.
+
+- A cost guard. Your own script will happily create a billed server. This one refuses without a confirm and shows the live price first, which matters most when an AI agent is the one calling it.
+- The safety layer. Secret redaction, relative-path-only requests so an agent cannot be pointed at another host, request timeouts, and input validation on every call.
+- Coverage that does not rot. Three generic tools reach every endpoint, so it keeps working when Hetzner adds a new one, and every endpoint is validated live, 39 of 39.
+
+Prefer infrastructure as code? Use Terraform or the hcloud CLI, they are excellent for that. This is for the other case, when your AI assistant should do the work in plain language, safely, without you writing or maintaining the glue. It is MIT, so if you would rather build on it than from zero, fork it.
+
+Common questions, technical and non technical, are answered in [docs/FAQ.md](docs/FAQ.md).
+
 ## Missing something? The contribution loop
 
 This MCP is designed to grow from real use. If you ask it for something it does not cover yet, it will hand you a prefilled link to open a feature request, and if you already have the fix, the steps to open a pull request. Every gap becomes a contribution.
