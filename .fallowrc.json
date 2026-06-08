@@ -2,6 +2,7 @@
   "entry": [
     "src/index.ts",
     "test/smoke.ts",
+    "test/setup.ts",
     "test/fix-verify.ts",
     "test/live-validate.ts",
     "scripts/deploy-demo.ts",

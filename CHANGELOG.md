@@ -3,6 +3,29 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.3.0] - 2026-06-08
+
+### Added
+- A guided onboarding wizard, `npx hetzner-mcp setup`. It prompts for your Hetzner API token,
+  verifies it live against the Hetzner Cloud API before saving, then detects and writes the
+  config for Claude Desktop, Claude Code, Cursor, Windsurf, and VS Code. Existing configs are
+  backed up first and merged, never overwritten, and the token is stored with owner only file
+  permissions and never printed. Previously the only path was hand editing each client config.
+- A `npx hetzner-mcp doctor` command. A read only status board that verifies your token against
+  the live API and shows which assistants are wired. It writes nothing.
+- `npx hetzner-mcp help` and `version`, and `setup --print` to copy the config block by hand for
+  any other MCP client.
+- The wizard handles the real human behaviors, an unreachable Hetzner (save now and verify later),
+  a cancel partway through (clean exit, nothing written), a corrupt client config (refuses to
+  clobber), and a non interactive or CI run (flag driven). An offline unit suite covers the
+  config merge, client detection, flag parsing, and token verification.
+
+### Changed
+- The MCP server now reports its real package version on startup, and a bare run with no token
+  points to `npx hetzner-mcp setup` instead of a raw environment variable hint.
+- The README leads with the one command setup, embeds the demo cleanly, and documents exactly
+  where the token is stored per assistant.
+
 ## [0.2.6] - 2026-06-08
 
 ### Changed
