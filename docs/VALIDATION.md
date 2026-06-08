@@ -18,7 +18,6 @@ started note. It is the proof.
 | Surfaces covered | cloud, storage box, robot |
 | Billed resources created and destroyed | 8 lifecycles |
 | Leaked resources after the run | 0 |
-| Dead code (fallow, all files tracked) | 0 |
 | Integrated load balanced deploy | built, served traffic, proven |
 
 The 91 checks are 52 from the validation suite (`test/live-validate.ts`) plus 39 from the

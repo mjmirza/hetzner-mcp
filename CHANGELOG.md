@@ -3,6 +3,12 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.2.5] - 2026-06-08
+
+### Changed
+- Trimmed the validation summary table in the README and the report to the live check
+  count, failures, tools, and surfaces.
+
 ## [0.2.4] - 2026-06-08
 
 ### Fixed

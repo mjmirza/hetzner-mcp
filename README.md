@@ -31,11 +31,11 @@ This is built and maintained in the open, for free, under a license that only as
 
 ## Validated live, not theorized
 
-Every tool and every scenario in this server was run live against the real Hetzner API, not described from theory. 91 automated checks across cloud, Storage Box, and Robot, with 0 failures. Every billed resource was created and then destroyed, a full load balanced stack was deployed and proven to round robin across two backends, and the account was left clean. Zero dead code, with fallow tracking every source, test, and script file.
+Every tool and every scenario in this server was run live against the real Hetzner API, not described from theory. 91 automated checks across cloud, Storage Box, and Robot, with 0 failures. Every billed resource was created and then destroyed, a full load balanced stack was deployed and proven to round robin across two backends, and the account was left clean.
 
-| Checks run live | Failures | Tools exercised | Surfaces | Dead code |
-|---|---|---|---|---|
-| 91 | 0 | every registered tool | cloud, storage box, robot | 0 |
+| Checks run live | Failures | Tools exercised | Surfaces |
+|---|---|---|---|
+| 91 | 0 | every registered tool | cloud, storage box, robot |
 
 Read the full [validation report](docs/VALIDATION.md) for the per tool table, the cost discipline, the diagrams, and the exact commands to reproduce it yourself (`npm run validate:live`, `npm run eval`, `npm run deploy:demo`).
 
