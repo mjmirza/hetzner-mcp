@@ -39,6 +39,12 @@ Every tool and every scenario in this server was run live against the real Hetzn
 
 Read the full [validation report](docs/VALIDATION.md) for the per tool table, the cost discipline, the diagrams, and the exact commands to reproduce it yourself (`npm run validate:live`, `npm run eval`, `npm run deploy:demo`).
 
+## Watch it work
+
+A two minute demo. hetzner-mcp stands up a load-balanced stack and tears it back down, driven in plain language, with a cost guard in front of every billed action.
+
+[![hetzner-mcp demo](https://img.youtube.com/vi/OhaUP-Fhq_0/hqdefault.jpg)](https://youtu.be/OhaUP-Fhq_0)
+
 ## Set it up by pasting one prompt
 
 No setup effort. Copy the block below, paste it into Claude Code, Codex, Cursor, or any AI coding tool, and it installs the server, wires it into your flow, and walks you through the one manual step, getting a token.
