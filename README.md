@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/hetzner-cloud-logo.svg" alt="Hetzner" height="56" />
+<img src="https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/hetzner-cloud-logo.png" alt="Hetzner" height="56" />
 
 # hetzner-mcp
 
@@ -144,17 +144,17 @@ Full, beginner friendly, step by step instructions, including the German console
 
 Open the Cloud Console, then your project.
 
-![Open the Hetzner Cloud Console](assets/setup/01-cloud-open-console.png)
-![Select your project](assets/setup/02-cloud-select-project.png)
+![Open the Hetzner Cloud Console](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/01-cloud-open-console.png)
+![Select your project](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/02-cloud-select-project.png)
 
 Open Security, then the API Tokens tab, and generate the token.
 
-![Open Security](assets/setup/03-cloud-open-security.png)
-![API Tokens tab and generate](assets/setup/04-cloud-api-tokens.png)
+![Open Security](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/03-cloud-open-security.png)
+![API Tokens tab and generate](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/04-cloud-api-tokens.png)
 
 For dedicated servers, create a Robot webservice user.
 
-![Robot web service and app settings](assets/setup/05-robot-webservice-settings.png)
+![Robot web service and app settings](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/05-robot-webservice-settings.png)
 
 ## What is tested, and how this compares
 
