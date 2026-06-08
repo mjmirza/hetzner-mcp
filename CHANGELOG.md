@@ -3,6 +3,19 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.2.2] - 2026-06-08
+
+### Fixed
+- Write bodies now reach the API from every MCP client. `cloud_request`,
+  `storagebox_request`, and `robot_request` typed the `body` parameter as an
+  unconstrained `unknown`, which compiles to an empty JSON schema. Some MCP clients,
+  including Claude Code, drop properties with an empty schema, so `POST`/`PUT`/`PATCH`
+  bodies arrived empty and the Hetzner API rejected them with "A valid JSON document
+  is required". `body` is now an object schema, and a JSON string is also accepted and
+  parsed, so creating a network, firewall, or load balancer through the generic request
+  tool works as documented. Previously write bodies were silently dropped by some
+  clients. Now write bodies round-trip reliably regardless of client.
+
 ## [0.2.1] - 2026-06-08
 
 ### Added

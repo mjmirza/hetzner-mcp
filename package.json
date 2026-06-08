@@ -1,6 +1,6 @@
 {
   "name": "hetzner-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Model Context Protocol server for the full Hetzner platform. Cloud (servers, networks, volumes, firewalls, load balancers, IPs, DNS), Storage Box, and Robot dedicated servers. Spin up and manage every part of Hetzner from any MCP client.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -47,6 +47,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx test/smoke.ts",
+    "verify:live": "npm run build && tsx test/fix-verify.ts",
     "hygiene": "npx -y fallow@2.88.2 dead-code --baseline .fallow-baseline.json",
     "hygiene:baseline": "npx -y fallow@2.88.2 dead-code --save-baseline .fallow-baseline.json",
     "prepublishOnly": "npm run build"

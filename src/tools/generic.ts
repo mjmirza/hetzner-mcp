@@ -49,7 +49,13 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
           .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
           .optional()
           .describe("Query string parameters."),
-        body: z.unknown().optional().describe("Request body for write methods."),
+        body: z
+          .union([z.record(z.string(), z.unknown()), z.string()])
+          .optional()
+          .describe(
+            "Request body for write methods, as a JSON object, for example " +
+              '{"name":"web1","type":"spread"}. A JSON string is also accepted and parsed.',
+          ),
         confirm: z
           .boolean()
           .optional()
@@ -63,6 +69,22 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
     async (args) => {
       try {
         const method = normalizeMethod(args.method);
+        // Accept a JSON string body and parse it to an object, so any MCP client
+        // works whether it forwards the body as an object or a JSON string.
+        let bodyVal: unknown = args.body;
+        if (typeof bodyVal === "string") {
+          const trimmed = bodyVal.trim();
+          if (trimmed.length > 0) {
+            try {
+              bodyVal = JSON.parse(trimmed);
+            } catch {
+              return textResult(
+                `Error: the body was a string but not valid JSON. Pass a JSON object, for example {"name":"web1"}.`,
+                true,
+              );
+            }
+          }
+        }
         if (isWrite(method) && cfg.readOnly) {
           return textResult(
             `Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1), so ${method} ${args.path} is not allowed.`,
@@ -87,7 +109,7 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
             if (args.confirm !== true) {
               let note = "";
               if (surface === "cloud" && /^\/servers\/?$/i.test(args.path)) {
-                const body = args.body as { server_type?: string } | undefined;
+                const body = bodyVal as { server_type?: string } | undefined;
                 const priced = await cloudServerPriceNote(cfg, body?.server_type);
                 if (priced) note = " " + priced;
               }
@@ -103,7 +125,7 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
           method,
           path: args.path,
           query: args.query,
-          body: args.body,
+          body: bodyVal,
         });
         return { content: [{ type: "text", text: formatResult(result, args.verbose ?? false) }] };
       } catch (err) {
