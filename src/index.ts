@@ -9,6 +9,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { loadConfig, availableSurfaces } from "./config.js";
 import { registerGenericTools } from "./tools/generic.js";
 import { registerReadTools } from "./tools/resources.js";
+import { registerWriteTools } from "./tools/write.js";
 import { registerContributeTool } from "./tools/contribute.js";
 
 async function main(): Promise<void> {
@@ -17,6 +18,7 @@ async function main(): Promise<void> {
 
   registerGenericTools(server, cfg);
   registerReadTools(server, cfg);
+  registerWriteTools(server, cfg);
   registerContributeTool(server);
 
   // Diagnostics go to stderr so they never corrupt the stdio protocol on stdout.

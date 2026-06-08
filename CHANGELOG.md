@@ -3,6 +3,15 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.2.0] - 2026-06-08
+
+### Added
+- Two typed write tools for the most common, highest-risk operations.
+  cloud_create_server, billed, with a live price preview and a confirm gate.
+  cloud_delete_server, with a destructive confirm gate.
+- A use case doc grounded in a real community need, agent-driven ephemeral compute on
+  Hetzner, with sources. See docs/USE-CASE.md.
+
 ## [0.1.1] - 2026-06-07
 
 ### Added
