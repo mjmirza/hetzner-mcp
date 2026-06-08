@@ -17,16 +17,16 @@ Result. 39 passed, 0 failed, 0 skipped, 39 total.
 | cost-guard | DELETE /servers/1 is not billed | billed=false | PASS |
 | cost-guard | POST /storage_boxes is billed | billed=true | PASS |
 | security | redact bearer token | redacted | PASS |
-| cloud | servers | 200, count 2 | PASS |
-| cloud | ssh_keys | 200, count 2 | PASS |
-| cloud | networks | 200, count 1 | PASS |
-| cloud | firewalls | 200, count 1 | PASS |
+| cloud | servers | 200, count 0 | PASS |
+| cloud | ssh_keys | 200, count 1 | PASS |
+| cloud | networks | 200, count 0 | PASS |
+| cloud | firewalls | 200, count 0 | PASS |
 | cloud | volumes | 200, count 0 | PASS |
-| cloud | load_balancers | 200, count 1 | PASS |
+| cloud | load_balancers | 200, count 0 | PASS |
 | cloud | load_balancer_types | 200, count 3 | PASS |
 | cloud | floating_ips | 200, count 0 | PASS |
-| cloud | primary_ips | 200, count 4 | PASS |
-| cloud | placement_groups | 200, count 1 | PASS |
+| cloud | primary_ips | 200, count 0 | PASS |
+| cloud | placement_groups | 200, count 0 | PASS |
 | cloud | certificates | 200, count 0 | PASS |
 | cloud | images | 200, count 25 | PASS |
 | cloud | isos | 200, count 25 | PASS |
@@ -45,5 +45,5 @@ Result. 39 passed, 0 failed, 0 skipped, 39 total.
 | robot | robot_ssh_keys | 404, empty collection, auth OK | PASS |
 | robot | robot_storageboxes | 404, empty collection, auth OK | PASS |
 | robot | robot_rdns | 200, count 0 | PASS |
-| write | ssh_key create (free) | created id 113479755 | PASS |
+| write | ssh_key create (free) | created id 113481650 | PASS |
 | write | ssh_key delete | deleted and verified gone | PASS |

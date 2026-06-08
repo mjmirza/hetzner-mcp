@@ -56,8 +56,18 @@ async function main(): Promise<void> {
     await Promise.all(ids.map((id) => del(collection, id)));
   };
 
-  // Attached resources first (so the network can then be removed), then the free blocks.
+  // Attached resources first (so the free blocks can then be removed), then the rest.
+  // Server and load balancer deletion is asynchronous, so a firewall or network cannot be
+  // removed until they are actually gone. Wait for the servers to clear before continuing.
+  const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
   await Promise.all([wipe("servers"), wipe("load_balancers")]);
+  const deadline = Date.now() + 90_000;
+  // BESTPRACTICE_OK: deletion is asynchronous; poll one check after another until clear.
+  while (Date.now() < deadline) {
+    const [srv, lbs] = await Promise.all([idsOf("servers"), idsOf("load_balancers")]);
+    if (srv.length === 0 && lbs.length === 0) break;
+    await sleep(3000);
+  }
   await Promise.all([wipe("networks"), wipe("firewalls"), wipe("placement_groups"), wipe("ssh_keys")]);
 
   await client.close();

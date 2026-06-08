@@ -21,10 +21,13 @@ const BILLED_CREATE: Record<SurfaceName, RegExp[]> = {
 };
 
 /**
- * Server actions that increase cost (resize up, enable backups, etc.) live under
- * /servers/{id}/actions/. We flag these so the guard can warn, since they can raise a bill.
+ * Resource actions that increase cost live under /{resource}/{id}/actions/. Creating a
+ * snapshot image, upgrading a server type, enabling backups, and resizing a volume up all
+ * raise the bill, so the guard requires confirm for them. attach_iso and request_console
+ * are free but kept here as a cautious extra confirm.
  */
-const BILLED_ACTIONS = /\/(actions)\/(change_type|enable_backups|attach_iso|request_console)\/?$/i;
+const BILLED_ACTIONS =
+  /\/(actions)\/(create_image|change_type|enable_backups|resize|attach_iso|request_console)\/?$/i;
 
 export interface CostDecision {
   billed: boolean;
@@ -38,7 +41,7 @@ export function classifyCost(surface: SurfaceName, method: string, path: string)
     if (re.test(path)) return { billed: true, reason: `${m} ${path} creates a billed ${surface} resource` };
   }
   if (surface === "cloud" && BILLED_ACTIONS.test(path)) {
-    return { billed: true, reason: `${m} ${path} is a server action that can increase your bill` };
+    return { billed: true, reason: `${m} ${path} is an action that can increase your bill` };
   }
   return { billed: false };
 }

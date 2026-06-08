@@ -7,6 +7,7 @@ import { loadConfig, availableSurfaces } from "../src/config.js";
 import { hetznerRequest } from "../src/http.js";
 import { formatResult } from "../src/format.js";
 import { normalizePath } from "../src/security.js";
+import { classifyCost } from "../src/cost.js";
 
 const cfg = loadConfig();
 
@@ -52,6 +53,17 @@ async function main(): Promise<void> {
   }
   assert("security: reject path traversal", travOk);
 
+  // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
+  // free actions and reads must not be. create_image is the snapshot action from issue #2.
+  const costChecks = [
+    assert("cost: server create is billed", classifyCost("cloud", "POST", "/servers").billed),
+    assert("cost: create_image is billed", classifyCost("cloud", "POST", "/servers/9/actions/create_image").billed),
+    assert("cost: change_type is billed", classifyCost("cloud", "POST", "/servers/9/actions/change_type").billed),
+    assert("cost: volume resize is billed", classifyCost("cloud", "POST", "/volumes/9/actions/resize").billed),
+    assert("cost: poweron is free", !classifyCost("cloud", "POST", "/servers/9/actions/poweron").billed),
+    assert("cost: list is free", !classifyCost("cloud", "GET", "/servers").billed),
+  ];
+
   // Live free reads across all three surfaces.
   const results = [
     await check("cloud /servers", "cloud", "/servers"),
@@ -60,8 +72,9 @@ async function main(): Promise<void> {
     await check("storagebox /storage_box_types", "storagebox", "/storage_box_types"),
     await check("robot /server", "robot", "/server"),
   ];
-  const passed = results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0);
-  const total = results.length + 2;
+  const passed =
+    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + costChecks.filter(Boolean).length;
+  const total = results.length + 2 + costChecks.length;
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
 }

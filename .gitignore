@@ -14,6 +14,7 @@ secrets/
 test/.live/
 coverage/
 .fallow-baseline.json
+.fallow/
 
 # OS
 .DS_Store

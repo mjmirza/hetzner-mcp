@@ -3,6 +3,15 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.2.4] - 2026-06-08
+
+### Fixed
+- The cost guard now flags the billed snapshot action `create_image` and the billed volume
+  `resize` action, so both require a confirm like any other billed operation. Reported in
+  issue #2. Previously a POST to `/servers/{id}/actions/create_image` was not guarded, so a
+  snapshot, which Hetzner bills per gigabyte, could be created without a confirm step. Now
+  it requires confirm. An offline unit check in the smoke test locks this in.
+
 ## [0.2.3] - 2026-06-08
 
 ### Added
