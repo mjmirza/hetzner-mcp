@@ -17,3 +17,6 @@ coverage/
 
 # OS
 .DS_Store
+
+# npm pack artifacts
+*.tgz
