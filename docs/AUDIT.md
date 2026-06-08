@@ -47,3 +47,8 @@ Result. 39 passed, 0 failed, 0 skipped, 39 total.
 | robot | robot_rdns | 200, count 0 | PASS |
 | write | ssh_key create (free) | created id 113456675 | PASS |
 | write | ssh_key delete | deleted and verified gone | PASS |
+
+
+## Full lifecycle validation 2026-06-08
+
+Built a complete stack live (SSH key, private network with subnet, firewall, cx23 server with cloud-init and a public IP attached to the private network), validated it was running with a public IP and network attachment, then destroyed every resource and confirmed the account returned to zero across servers, networks, firewalls, primary IPs, volumes, load balancers, and floating IPs. Cost under 0.01 EUR. Finding. a server create auto-spawns IPv4 and IPv6 primary IPs, teardown must delete them explicitly or the IPv4 keeps billing.

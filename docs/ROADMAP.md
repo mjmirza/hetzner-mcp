@@ -75,6 +75,7 @@ estimated charge. Target total. under 0.05 EUR for the entire build.
 |---|---|---|---|
 | 2026-06-07 | none yet, only free reads | n/a | 0.00 EUR |
 | 2026-06-08 | cx23 server, billed-path test | ~5 seconds, then deleted | under 0.01 EUR |
+| 2026-06-08 | full-stack test (ssh key, network, firewall, cx23 server) | seconds, fully destroyed | under 0.01 EUR |
 
 ## Decisions locked 2026-06-07
 
