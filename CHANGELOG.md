@@ -3,6 +3,13 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.2.6] - 2026-06-08
+
+### Changed
+- Published with npm provenance from GitHub Actions, so the package is cryptographically
+  linked to its source repository and commit, and the README on npm stays current. Adds a
+  release-triggered publish workflow with pinned actions and OIDC.
+
 ## [0.2.5] - 2026-06-08
 
 ### Changed
