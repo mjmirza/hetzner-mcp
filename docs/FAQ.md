@@ -54,7 +54,18 @@ is declarative state for humans and pipelines. The hcloud CLI is for your termin
 an AI agent to act in plain language with guardrails. It wraps the same official Hetzner API, so
 you are not trading away correctness, you are adding an agent safe way to call it.
 
-### It is just an API wrapper. Where is the value?
+### Why not an ansible playbook or a shell script?
+
+This is the most common reaction, and it is fair for a repeatable setup. The difference is who
+operates it and when. A playbook or a script is glue you write, version, and maintain, and you
+run it from a terminal or a pipeline. This server lets your AI assistant do the work in plain
+language, in the middle of a normal conversation, with a cost guard and a destructive guard in
+front of every billed or irreversible call, and without handing a raw token to an ad hoc script.
+It does not replace ansible for infrastructure you stand up the same way every time. It covers
+the other moment, the exploratory, one off, assistant driven one, safely. The two live happily
+side by side.
+
+### It is an API wrapper. Where is the value?
 
 The value is everything around the wrapper. a cost guard with a live price preview, a destructive
 guard on delete, secret redaction, relative path only requests so an agent cannot be pointed at

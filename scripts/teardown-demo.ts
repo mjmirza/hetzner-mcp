@@ -17,6 +17,7 @@ type CallResult = { content?: Array<{ type: string; text?: string }>; isError?: 
 function textOf(r: CallResult): string {
   return (r.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n");
 }
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 async function main(): Promise<void> {
   const token = process.env.HETZNER_CLOUD_TOKEN;
@@ -44,8 +45,22 @@ async function main(): Promise<void> {
     }
   };
   const del = async (collection: string, id: number): Promise<void> => {
-    const r = await req({ method: "DELETE", path: `/${collection}/${id}`, confirm: true });
-    console.log(`${r.isError ? "FAIL" : "OK  "}  delete ${collection}/${id}`);
+    // A firewall or network can stay briefly attached to a server that is still finishing
+    // its own deletion, which makes the delete fail. Retry with a short backoff until the
+    // association clears.
+    // BESTPRACTICE_OK: a delete that depends on an async detach must retry one after another.
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      const r = await req({ method: "DELETE", path: `/${collection}/${id}`, confirm: true });
+      if (!r.isError) {
+        console.log(`OK    delete ${collection}/${id}`);
+        return;
+      }
+      if (attempt === 6) {
+        console.log(`FAIL  delete ${collection}/${id} after 6 attempts -> ${textOf(r).slice(0, 80)}`);
+        return;
+      }
+      await sleep(5000);
+    }
   };
   const wipe = async (collection: string): Promise<void> => {
     const ids = await idsOf(collection);
@@ -56,10 +71,9 @@ async function main(): Promise<void> {
     await Promise.all(ids.map((id) => del(collection, id)));
   };
 
-  // Attached resources first (so the free blocks can then be removed), then the rest.
-  // Server and load balancer deletion is asynchronous, so a firewall or network cannot be
-  // removed until they are actually gone. Wait for the servers to clear before continuing.
-  const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+  // Attached resources first (servers and load balancer), then wait for them to actually
+  // clear, then the free blocks. The retry inside del covers any association that is still
+  // detaching when the network or firewall delete is attempted.
   await Promise.all([wipe("servers"), wipe("load_balancers")]);
   const deadline = Date.now() + 90_000;
   // BESTPRACTICE_OK: deletion is asynchronous; poll one check after another until clear.
