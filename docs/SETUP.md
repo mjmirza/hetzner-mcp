@@ -76,6 +76,51 @@ HETZNER_ROBOT_PASSWORD=your-robot-password
 The .env file is git ignored. Never commit it. Never share it. If a token leaks, revoke it
 in the console and generate a new one.
 
+### Wire it into Claude Desktop
+
+Edit the Claude Desktop config file, add the server under `mcpServers`, then fully quit and
+reopen Claude Desktop so it loads the change.
+
+- macOS. `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows. `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "hetzner": {
+      "command": "npx",
+      "args": ["-y", "hetzner-mcp"],
+      "env": {
+        "HETZNER_CLOUD_TOKEN": "your-cloud-api-token",
+        "HETZNER_ROBOT_USER": "#ws+XXXXXXXX",
+        "HETZNER_ROBOT_PASSWORD": "your-robot-password"
+      }
+    }
+  }
+}
+```
+
+Keep your existing servers in the same `mcpServers` object. Only add the `hetzner` key. Drop
+the two Robot lines if you do not use dedicated servers. If Claude Desktop reports that `npx`
+was not found, replace `"npx"` with the absolute path from `which npx`, for example
+`/opt/homebrew/bin/npx`, because the app does not always inherit your shell PATH.
+
+### Wire it into Claude Code
+
+```bash
+claude mcp add -s user hetzner \
+  -e HETZNER_CLOUD_TOKEN=your-cloud-api-token \
+  -- npx -y hetzner-mcp
+```
+
+Add `-e HETZNER_ROBOT_USER=...` and `-e HETZNER_ROBOT_PASSWORD=...` if you use dedicated
+servers. Run `/mcp` inside Claude Code to confirm it connected.
+
+### Wire it into Cursor, Windsurf, and other MCP clients
+
+These read the same `mcpServers` JSON shape as Claude Desktop. Paste the block above into the
+client's MCP settings file and restart the client.
+
 ## 4. Confirm it works, at zero cost
 
 Every check below is a read, and reads are always free on Hetzner. After you configure the
