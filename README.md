@@ -41,9 +41,57 @@ Read the full [validation report](docs/VALIDATION.md) for the per tool table, th
 
 ## Watch it work
 
-A two minute demo. hetzner-mcp stands up a load-balanced stack and tears it back down, driven in plain language, with a cost guard in front of every billed action.
+Hetzner, managed from Claude Desktop in plain language. Open a chat, ask in plain words, and the answer comes straight back from your live account. No commands to memorize, no API to learn.
 
-[![hetzner-mcp demo](https://img.youtube.com/vi/OhaUP-Fhq_0/hqdefault.jpg)](https://youtu.be/OhaUP-Fhq_0)
+<div align="center">
+<a href="https://youtu.be/OhaUP-Fhq_0">
+<img src="https://img.youtube.com/vi/OhaUP-Fhq_0/maxresdefault.jpg" alt="Watch the hetzner-mcp demo on YouTube" width="720" />
+</a>
+<br/>
+<sub><a href="https://youtu.be/OhaUP-Fhq_0">Watch the 2 minute demo on YouTube</a></sub>
+</div>
+
+## Set up in one command
+
+If you have Node, this is the whole setup.
+
+```
+npx hetzner-mcp setup
+```
+
+It asks for your Hetzner API token, checks it against the live Hetzner API on the spot, then writes the config for whichever assistant you use. It detects and wires Claude Desktop, Claude Code, Cursor, Windsurf, and VS Code, and backs up any existing config first.
+
+No token yet? The wizard links you straight to the page that creates one. In the Hetzner Cloud Console, open your project, then Security, then API Tokens, then Generate, and choose Read and Write. The same token also covers Storage Boxes.
+
+Check it anytime.
+
+```
+npx hetzner-mcp doctor
+```
+
+Doctor verifies your token against the live API and shows which assistants are wired, all read only, writing nothing.
+
+### Where your token is stored
+
+Your token goes nowhere except Hetzner. The wizard saves it locally, inside your assistant's own config file, with owner only file permissions, and never prints it.
+
+| Assistant | Where the token is written |
+|---|---|
+| Claude Desktop | the Claude config in your user Library (macOS), AppData (Windows), or .config (Linux) |
+| Claude Code | `~/.claude.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | the Windsurf `mcp_config.json` |
+| VS Code | `.vscode/mcp.json` in your project |
+
+### Using a different assistant?
+
+hetzner-mcp is a standard MCP server, so it works with any MCP client. For an assistant the wizard does not write to directly, print the block and paste it where that client keeps its MCP servers.
+
+```
+npx hetzner-mcp setup --print
+```
+
+A note on ChatGPT. OpenAI's MCP support is built around remote connectors rather than a local config file, so the desktop assistants above are the most direct fit for a local server like this. Any client that speaks MCP over stdio needs only the printed block.
 
 ## Set it up by pasting one prompt
 
@@ -95,6 +143,8 @@ A wrong API call should never cost you money you did not intend. This tool is bu
 - Nothing in the test suite leaves a billed resource running. The whole build is tracked in a cost ledger in [docs/ROADMAP.md](docs/ROADMAP.md), with a target of under five cents total.
 
 ## Quick start
+
+The fastest path is `npx hetzner-mcp setup` above. The steps below are the manual path, for wiring a client by hand or scripting it in CI.
 
 ### Use it with Claude Code or any MCP client
 

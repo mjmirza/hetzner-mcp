@@ -64,6 +64,22 @@ Bestellung, on that same settings page.
 
 ## 3. Give the credentials to the MCP
 
+### The one command path (recommended)
+
+If you have Node, skip the manual editing below. Run the guided wizard, paste your token, and
+it verifies the token against the live Hetzner API, then wires your assistant for you.
+
+```
+npx hetzner-mcp setup
+```
+
+It detects and writes the config for Claude Desktop, Claude Code, Cursor, Windsurf, and VS Code,
+backs up any existing config, and stores the token only in that assistant's own config file with
+owner only permissions. Check it anytime with `npx hetzner-mcp doctor`. The manual steps below are
+for wiring a client by hand or scripting it in CI.
+
+### Or set it by hand
+
 Copy .env.example to .env in the project root and fill it in.
 
 ```
