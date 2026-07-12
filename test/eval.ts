@@ -87,6 +87,9 @@ function unitChecks(): Row[] {
   sec("reject full URL", () => normalizePath("https://evil.example.com"), true);
   sec("reject protocol-relative", () => normalizePath("//evil.example.com"), true);
   sec("reject path traversal", () => normalizePath("/a/../../etc"), true);
+  sec("reject URL-encoded path traversal", () => normalizePath("/servers/%2e%2e/admin"), true);
+  sec("reject backslash path traversal", () => normalizePath("/servers/..\\..\\admin"), true);
+  sec("reject URL-encoded control chars", () => normalizePath("/servers/%00admin"), true);
   sec("accept normal path", () => normalizePath("/servers"), false);
 
   const cost = (name: string, got: boolean, want: boolean) =>

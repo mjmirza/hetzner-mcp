@@ -19,15 +19,29 @@ export function normalizePath(path: string): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//")) {
     throw new Error("path must be a relative API path like /servers, not a full URL");
   }
-  if (raw.includes("..")) {
-    throw new Error("path must not contain '..'");
+
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    throw new Error("path contains invalid URL encoding");
   }
-  for (let i = 0; i < raw.length; i++) {
-    const c = raw.charCodeAt(i);
-    if (c < 0x20 || c === 0x7f) {
-      throw new Error("path must not contain control characters");
+
+  // Reject path traversal via '..' or backslashes on both raw and decoded inputs
+  if (raw.includes("..") || decoded.includes("..") || raw.includes("\\") || decoded.includes("\\")) {
+    throw new Error("path must not contain '..' or backslashes");
+  }
+
+  // Reject control characters on both raw and decoded inputs
+  for (const str of [raw, decoded]) {
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      if (c < 0x20 || c === 0x7f) {
+        throw new Error("path must not contain control characters");
+      }
     }
   }
+
   return raw.startsWith("/") ? raw : "/" + raw;
 }
 
