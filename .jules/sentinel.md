@@ -1,0 +1,4 @@
+## 2026-06-07 - Path Traversal Bypass via Percent-Encoded Dots and Backslashes
+**Vulnerability:** The `normalizePath` function only blocked literal `..` sequences, permitting path traversal bypasses using backslashes `\` or percent-encoded dots (e.g. `%2e%2e`, `%2e.`, `.%2e`). Because Node.js's standard `new URL` parser normalizes backslashes to forward slashes and resolves percent-encoded dots as path navigation segments, these bypassed paths successfully traversed out of the intended API prefixes.
+**Learning:** Checking for raw substring patterns like `..` is insufficient when the path is passed to a modern WHATWG URL parser. The URL parser decodes percent-encoded characters and normalizes backslashes, leading to client-side path resolution.
+**Prevention:** Paths must be normalized and validated after decoding percent-encoded sequences using `decodeURIComponent`, and backslashes `\` must be explicitly blocked in both their raw and decoded forms.
