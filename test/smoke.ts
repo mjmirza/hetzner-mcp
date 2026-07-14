@@ -53,6 +53,33 @@ async function main(): Promise<void> {
   }
   assert("security: reject path traversal", travOk);
 
+  let travPercentDotOk = true;
+  try {
+    normalizePath("/servers/%2e%2e/%2e%2e/admin");
+    travPercentDotOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject percent-encoded path traversal", travPercentDotOk);
+
+  let backslashOk = true;
+  try {
+    normalizePath("/servers/..\\..\\admin");
+    backslashOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject literal backslash traversal", backslashOk);
+
+  let percentBackslashOk = true;
+  try {
+    normalizePath("/servers/..%5c..%5cadmin");
+    percentBackslashOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject percent-encoded backslash traversal", percentBackslashOk);
+
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
   const costChecks = [
@@ -73,8 +100,14 @@ async function main(): Promise<void> {
     await check("robot /server", "robot", "/server"),
   ];
   const passed =
-    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + costChecks.filter(Boolean).length;
-  const total = results.length + 2 + costChecks.length;
+    results.filter(Boolean).length +
+    (secOk ? 1 : 0) +
+    (travOk ? 1 : 0) +
+    (travPercentDotOk ? 1 : 0) +
+    (backslashOk ? 1 : 0) +
+    (percentBackslashOk ? 1 : 0) +
+    costChecks.filter(Boolean).length;
+  const total = results.length + 5 + costChecks.length;
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
 }
