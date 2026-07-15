@@ -1,0 +1,4 @@
+## 2026-06-07 - Node WHATWG URL Path Normalization Bypass
+**Vulnerability:** Path Traversal and Server-Side Request Forgery (SSRF) bypass through WHATWG URL path parser normalization.
+**Learning:** In Node's WHATWG URL implementation, backslashes `\` are normalized to `/` and percent-encoded dot segments (like `%2e%2e` and `%2E%2E`) are resolved to dot-dot segments during URL parsing. If path verification only scans raw user input for `..` or standard traversal patterns without decoding and verifying both dot segments and backslashes, a malicious actor can bypass path validation and traverse or redirect the server request.
+**Prevention:** Always decode the user-supplied path via `decodeURIComponent` and explicitly verify that the decoded string contains neither `..` nor `\` before passing it to any WHATWG URL parser or HTTP request constructor.
