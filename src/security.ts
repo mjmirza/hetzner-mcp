@@ -19,11 +19,19 @@ export function normalizePath(path: string): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//")) {
     throw new Error("path must be a relative API path like /servers, not a full URL");
   }
-  if (raw.includes("..")) {
-    throw new Error("path must not contain '..'");
+  // Decode the path to defend against percent-encoded path traversal/SSRF (e.g. %2e%2e, %5c)
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    throw new Error("path contains invalid percent-encoding");
   }
-  for (let i = 0; i < raw.length; i++) {
-    const c = raw.charCodeAt(i);
+
+  if (raw.includes("..") || decoded.includes("..") || raw.includes("\\") || decoded.includes("\\")) {
+    throw new Error("path must not contain '..' or '\\'");
+  }
+  for (let i = 0; i < decoded.length; i++) {
+    const c = decoded.charCodeAt(i);
     if (c < 0x20 || c === 0x7f) {
       throw new Error("path must not contain control characters");
     }
