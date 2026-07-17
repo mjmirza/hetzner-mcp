@@ -1,0 +1,4 @@
+## 2026-06-08 - Path Traversal & SSRF Prevention with WHATWG URL Parsing
+**Vulnerability:** Node's WHATWG `URL` parser automatically normalizes backslashes (`\`) to forward slashes (`/`), and decodes percent-encoded characters like `%2e` to `.` before resolving path relative segments. This can bypass naive string-level checks like `.includes('..')` if the check runs on the raw input string, allowing path traversal or Server-Side Request Forgery (SSRF).
+**Learning:** To safely prevent path traversal and SSRF, path validation must decode the path via `decodeURIComponent` and explicitly check for both `..` and `\` before passing the value to the `URL` constructor or other URL parsers.
+**Prevention:** Always sanitize inputs with `decodeURIComponent` first, check for traversal patterns such as `..` and backslashes `\`, and only then construct the URLs.

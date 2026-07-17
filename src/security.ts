@@ -19,8 +19,17 @@ export function normalizePath(path: string): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//")) {
     throw new Error("path must be a relative API path like /servers, not a full URL");
   }
-  if (raw.includes("..")) {
-    throw new Error("path must not contain '..'");
+  // Decode URL components to prevent percent-encoded bypasses (e.g., %2e%2e)
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    throw new Error("path contains malformed URI encoding");
+  }
+
+  // Reject both standard dot-dot and any backslashes which can normalize to slashes
+  if (decoded.includes("..") || decoded.includes("\\")) {
+    throw new Error("path must not contain '..' or backslashes");
   }
   for (let i = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
