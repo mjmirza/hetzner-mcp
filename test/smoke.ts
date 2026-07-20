@@ -52,6 +52,46 @@ async function main(): Promise<void> {
     /* expected */
   }
   assert("security: reject path traversal", travOk);
+  let travEncOk = true;
+  try {
+    normalizePath("/servers/%2e%2e/admin");
+    travEncOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject percent-encoded path traversal", travEncOk);
+  let backslashOk = true;
+  try {
+    normalizePath("/servers/..\\admin");
+    backslashOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject backslash path traversal", backslashOk);
+  let backslashEncOk = true;
+  try {
+    normalizePath("/servers/..%5cadmin");
+    backslashEncOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject percent-encoded backslash path traversal", backslashEncOk);
+  let badPercentOk = true;
+  try {
+    normalizePath("/servers/%invalid");
+    badPercentOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject malformed percent encoding", badPercentOk);
+  let encControlOk = true;
+  try {
+    normalizePath("/servers/%00admin");
+    encControlOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject percent-encoded control characters", encControlOk);
 
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
@@ -73,8 +113,16 @@ async function main(): Promise<void> {
     await check("robot /server", "robot", "/server"),
   ];
   const passed =
-    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + costChecks.filter(Boolean).length;
-  const total = results.length + 2 + costChecks.length;
+    results.filter(Boolean).length +
+    (secOk ? 1 : 0) +
+    (travOk ? 1 : 0) +
+    (travEncOk ? 1 : 0) +
+    (backslashOk ? 1 : 0) +
+    (backslashEncOk ? 1 : 0) +
+    (badPercentOk ? 1 : 0) +
+    (encControlOk ? 1 : 0) +
+    costChecks.filter(Boolean).length;
+  const total = results.length + 7 + costChecks.length;
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
 }
