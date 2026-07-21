@@ -1,0 +1,4 @@
+## 2026-06-07 - Strict API Path Validation to Prevent Path Traversal and SSRF
+**Vulnerability:** Path Traversal and potential SSRF via URL path manipulation using backslashes, percent-encoded dots (`%2e%2e`), or encoded control characters.
+**Learning:** Node's WHATWG URL implementation normalizes backslashes (`\`) to forward slashes (`/`), and percent-encoded dots (such as `%2e%2e`) are resolved to dot-dot (`..`) segments during URL parsing. If the path validation only performs raw string searches for `..` and control characters without decoding first, an attacker can bypass those checks using percent encoding or backslashes.
+**Prevention:** Always decode input paths using `decodeURIComponent` (handling any potential malformed encoding exceptions) and explicitly check the decoded string for `..`, `\`, and control characters before passing it to URL parsing or fetch operations.
