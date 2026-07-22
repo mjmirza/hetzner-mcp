@@ -36,22 +36,32 @@ async function main(): Promise<void> {
   process.stdout.write(`\nSurfaces available: ${availableSurfaces(cfg).join(", ") || "none"}\n\n`);
 
   // Security unit checks (no network).
-  let secOk = true;
-  try {
-    normalizePath("https://evil.example.com/steal");
-    secOk = false;
-  } catch {
-    /* expected */
-  }
-  assert("security: reject full URL path", secOk);
-  let travOk = true;
-  try {
-    normalizePath("/servers/../../admin");
-    travOk = false;
-  } catch {
-    /* expected */
-  }
-  assert("security: reject path traversal", travOk);
+  const secChecks = [
+    assert("security: reject full URL path", (() => {
+      try { normalizePath("https://evil.example.com/steal"); return false; } catch { return true; }
+    })()),
+    assert("security: reject path traversal", (() => {
+      try { normalizePath("/servers/../../admin"); return false; } catch { return true; }
+    })()),
+    assert("security: reject percent-encoded path traversal", (() => {
+      try { normalizePath("/servers/%2e%2e/admin"); return false; } catch { return true; }
+    })()),
+    assert("security: reject backslash path traversal", (() => {
+      try { normalizePath("/servers/..\\admin"); return false; } catch { return true; }
+    })()),
+    assert("security: reject percent-encoded backslash traversal", (() => {
+      try { normalizePath("/servers/..%5cadmin"); return false; } catch { return true; }
+    })()),
+    assert("security: reject malformed percent encoding", (() => {
+      try { normalizePath("/servers/item%99%"); return false; } catch { return true; }
+    })()),
+    assert("security: reject percent-encoded control characters", (() => {
+      try { normalizePath("/servers/%00admin"); return false; } catch { return true; }
+    })()),
+    assert("security: reject percent-encoded full URLs", (() => {
+      try { normalizePath("http%3a%2f%2fevil.example.com%2fsteal"); return false; } catch { return true; }
+    })()),
+  ];
 
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
@@ -73,8 +83,8 @@ async function main(): Promise<void> {
     await check("robot /server", "robot", "/server"),
   ];
   const passed =
-    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + costChecks.filter(Boolean).length;
-  const total = results.length + 2 + costChecks.length;
+    results.filter(Boolean).length + secChecks.filter(Boolean).length + costChecks.filter(Boolean).length;
+  const total = results.length + secChecks.length + costChecks.length;
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
 }
