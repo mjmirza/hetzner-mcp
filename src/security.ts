@@ -16,18 +16,50 @@ export function normalizePath(path: string): string {
     throw new Error("path is required");
   }
   const raw = path.trim();
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//")) {
-    throw new Error("path must be a relative API path like /servers, not a full URL");
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch (err) {
+    throw new Error("path contains malformed percent encoding");
   }
-  if (raw.includes("..")) {
+
+  // Reject backslashes which can be normalized to slashes in some environments/parsers
+  if (raw.includes("\\") || decoded.includes("\\")) {
+    throw new Error("path must not contain backslashes");
+  }
+
+  // Reject path traversal
+  if (raw.includes("..") || decoded.includes("..")) {
     throw new Error("path must not contain '..'");
   }
+
+  // Reject full URLs and protocol-relative URLs on both raw and decoded to prevent SSRF
+  if (
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ||
+    raw.startsWith("//") ||
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(decoded) ||
+    decoded.startsWith("//")
+  ) {
+    throw new Error("path must be a relative API path like /servers, not a full URL");
+  }
+
+  // Reject control characters on raw
   for (let i = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
     if (c < 0x20 || c === 0x7f) {
       throw new Error("path must not contain control characters");
     }
   }
+
+  // Reject control characters on decoded
+  for (let i = 0; i < decoded.length; i++) {
+    const c = decoded.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) {
+      throw new Error("path must not contain control characters");
+    }
+  }
+
   return raw.startsWith("/") ? raw : "/" + raw;
 }
 
