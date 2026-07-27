@@ -1,0 +1,4 @@
+## 2026-06-07 - WHATWG URL Parsing Traversal and SSRF Bypass via Percent-Encoding or Backslashes
+**Vulnerability:** Node's WHATWG `URL` implementation normalizes backslashes (`\`) to forward slashes (`/`) and decodes percent-encoded dots (`%2e%2e` / `%2E%2E`) to dot-dot (`..`) segments during URL parsing. Standard path validation checks (like `raw.includes("..")`) do not detect these before passing to `new URL()`, allowing path traversal/SSRF bypasses to arbitrary endpoints or paths outside the expected API scope.
+**Learning:** Checking paths for traversal before decoding percent-encoding or checking for backslashes is insufficient. Node's URL parser's internal normalization happens post-validation if the validation only scans raw strings.
+**Prevention:** Always decode paths using `decodeURIComponent` first, handle malformed percent encoding, and explicitly check the decoded path for both `..` and `\`, as well as control characters.
