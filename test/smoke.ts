@@ -36,22 +36,28 @@ async function main(): Promise<void> {
   process.stdout.write(`\nSurfaces available: ${availableSurfaces(cfg).join(", ") || "none"}\n\n`);
 
   // Security unit checks (no network).
-  let secOk = true;
-  try {
-    normalizePath("https://evil.example.com/steal");
-    secOk = false;
-  } catch {
-    /* expected */
+  const securityTests = [
+    { label: "security: reject full URL path", path: "https://evil.example.com/steal", shouldThrow: true },
+    { label: "security: reject path traversal", path: "/servers/../../admin", shouldThrow: true },
+    { label: "security: reject percent-encoded path traversal", path: "/servers/%2e%2e/admin", shouldThrow: true },
+    { label: "security: reject backslash path traversal", path: "/servers\\..\\..\\admin", shouldThrow: true },
+    { label: "security: reject percent-encoded backslash", path: "/servers%5C%2E%2E%5Cadmin", shouldThrow: true },
+    { label: "security: reject malformed percent encoding", path: "/servers/%invalid", shouldThrow: true },
+    { label: "security: accept safe path", path: "/servers", shouldThrow: false },
+  ];
+
+  let secPassed = 0;
+  for (const t of securityTests) {
+    let threw = false;
+    try {
+      normalizePath(t.path);
+    } catch {
+      threw = true;
+    }
+    if (assert(t.label, threw === t.shouldThrow)) {
+      secPassed++;
+    }
   }
-  assert("security: reject full URL path", secOk);
-  let travOk = true;
-  try {
-    normalizePath("/servers/../../admin");
-    travOk = false;
-  } catch {
-    /* expected */
-  }
-  assert("security: reject path traversal", travOk);
 
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
@@ -73,8 +79,8 @@ async function main(): Promise<void> {
     await check("robot /server", "robot", "/server"),
   ];
   const passed =
-    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + costChecks.filter(Boolean).length;
-  const total = results.length + 2 + costChecks.length;
+    results.filter(Boolean).length + secPassed + costChecks.filter(Boolean).length;
+  const total = results.length + securityTests.length + costChecks.length;
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
 }
