@@ -16,18 +16,35 @@ export function normalizePath(path: string): string {
     throw new Error("path is required");
   }
   const raw = path.trim();
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//")) {
-    throw new Error("path must be a relative API path like /servers, not a full URL");
+
+  // Decode URI component to check for hidden traversal segments
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    throw new Error("path contains malformed percent encoding");
   }
-  if (raw.includes("..")) {
-    throw new Error("path must not contain '..'");
-  }
-  for (let i = 0; i < raw.length; i++) {
-    const c = raw.charCodeAt(i);
-    if (c < 0x20 || c === 0x7f) {
-      throw new Error("path must not contain control characters");
+
+  // Check both raw and decoded strings for security issues
+  const checks = [raw, decoded];
+  for (const str of checks) {
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(str) || str.startsWith("//")) {
+      throw new Error("path must be a relative API path like /servers, not a full URL");
+    }
+    if (str.includes("..")) {
+      throw new Error("path must not contain '..'");
+    }
+    if (str.includes("\\")) {
+      throw new Error("path must not contain '\\'");
+    }
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      if (c < 0x20 || c === 0x7f) {
+        throw new Error("path must not contain control characters");
+      }
     }
   }
+
   return raw.startsWith("/") ? raw : "/" + raw;
 }
 
