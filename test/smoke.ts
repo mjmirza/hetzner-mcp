@@ -53,6 +53,33 @@ async function main(): Promise<void> {
   }
   assert("security: reject path traversal", travOk);
 
+  let encTravOk = true;
+  try {
+    normalizePath("/servers/%2e%2e/admin");
+    encTravOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject percent-encoded path traversal", encTravOk);
+
+  let backslashOk = true;
+  try {
+    normalizePath("/servers\\..\\admin");
+    backslashOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject backslash path traversal", backslashOk);
+
+  let malformedOk = true;
+  try {
+    normalizePath("/servers/%xyz");
+    malformedOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject malformed percent-encoding", malformedOk);
+
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
   const costChecks = [

@@ -1,0 +1,6 @@
+# Sentinel Journal - Critical Security Learnings
+
+## 2025-02-15 - URL Parsing Path Traversal & SSRF Bypass
+**Vulnerability:** Under Node.js WHATWG URL implementation, path validation in `normalizePath` was vulnerable to path traversal and Server-Side Request Forgery (SSRF) bypasses because it checked the raw input path string before it was parsed as a URL. Specifically, backslashes (`\`) are normalized to forward slashes (`/`), and percent-encoded dots (like `%2e%2e` or `%2E%2E`) are resolved to dot-dot (`..`) segments during URL parsing. Consequently, a path like `/servers/%2e%2e/admin` or `/servers\%2e%2e\admin` bypassed the raw `..` check but parsed to `/admin`.
+**Learning:** Checking paths for traversal sequences (like `..`) or full URLs without first decoding percent-encoding and normalizing backslashes allows attackers to construct bypasses that are normalized only *after* the validation step, when the final URL is constructed.
+**Prevention:** Always decode the path parameter using `decodeURIComponent` (and handle malformed percent-encoding) before performing any checks. Reject both `..` and `\` within the decoded path, and perform control character and other validations on the decoded output rather than the raw input.
