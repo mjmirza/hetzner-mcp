@@ -19,8 +19,26 @@ export function normalizePath(path: string): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//")) {
     throw new Error("path must be a relative API path like /servers, not a full URL");
   }
-  if (raw.includes("..")) {
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    throw new Error("path must not contain malformed percent encoding");
+  }
+
+  if (decoded.includes("..") || raw.includes("..")) {
     throw new Error("path must not contain '..'");
+  }
+  if (decoded.includes("\\") || raw.includes("\\")) {
+    throw new Error("path must not contain '\\'");
+  }
+
+  for (let i = 0; i < decoded.length; i++) {
+    const c = decoded.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) {
+      throw new Error("path must not contain control characters");
+    }
   }
   for (let i = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
@@ -28,6 +46,7 @@ export function normalizePath(path: string): string {
       throw new Error("path must not contain control characters");
     }
   }
+
   return raw.startsWith("/") ? raw : "/" + raw;
 }
 
