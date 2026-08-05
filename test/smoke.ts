@@ -53,6 +53,51 @@ async function main(): Promise<void> {
   }
   assert("security: reject path traversal", travOk);
 
+  let pctsOk = true;
+  try {
+    normalizePath("/%2e%2e/servers");
+    pctsOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject percent-encoded traversal", pctsOk);
+
+  let bslashOk = true;
+  try {
+    normalizePath("/foo\\bar");
+    bslashOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject raw backslash", bslashOk);
+
+  let pctBslashOk = true;
+  try {
+    normalizePath("/foo%5cbar");
+    pctBslashOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject percent-encoded backslash", pctBslashOk);
+
+  let malformedPctOk = true;
+  try {
+    normalizePath("/foo%zbar");
+    malformedPctOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject malformed percent encoding", malformedPctOk);
+
+  let pctCtrlOk = true;
+  try {
+    normalizePath("/foo%09bar");
+    pctCtrlOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject percent-encoded control char", pctCtrlOk);
+
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
   const costChecks = [
@@ -73,8 +118,16 @@ async function main(): Promise<void> {
     await check("robot /server", "robot", "/server"),
   ];
   const passed =
-    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + costChecks.filter(Boolean).length;
-  const total = results.length + 2 + costChecks.length;
+    results.filter(Boolean).length +
+    (secOk ? 1 : 0) +
+    (travOk ? 1 : 0) +
+    (pctsOk ? 1 : 0) +
+    (bslashOk ? 1 : 0) +
+    (pctBslashOk ? 1 : 0) +
+    (malformedPctOk ? 1 : 0) +
+    (pctCtrlOk ? 1 : 0) +
+    costChecks.filter(Boolean).length;
+  const total = results.length + 7 + costChecks.length;
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
 }
