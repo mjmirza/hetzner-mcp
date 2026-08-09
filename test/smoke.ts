@@ -53,6 +53,32 @@ async function main(): Promise<void> {
   }
   assert("security: reject path traversal", travOk);
 
+  // New path traversal and SSRF bypass checks
+  const badPaths = [
+    "/servers/..\\admin",
+    "/servers\\admin",
+    "/servers/%2e%2e/admin",
+    "/servers/%2E%2E/admin",
+    "/servers/.%2e/admin",
+    "/servers/%2e./admin",
+    "/servers/..%5cadmin",
+    "/servers/..%5Cadmin",
+    "%2e%2e%5cadmin",
+    "/%invalid",
+    "/servers/%00admin",
+  ];
+  let bypassOk = true;
+  for (const bp of badPaths) {
+    try {
+      normalizePath(bp);
+      bypassOk = false;
+      console.error(`FAIL: expected path to be rejected: ${bp}`);
+    } catch {
+      /* expected */
+    }
+  }
+  assert("security: reject traversal/backslash/SSRF bypasses", bypassOk);
+
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
   const costChecks = [
@@ -73,8 +99,8 @@ async function main(): Promise<void> {
     await check("robot /server", "robot", "/server"),
   ];
   const passed =
-    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + costChecks.filter(Boolean).length;
-  const total = results.length + 2 + costChecks.length;
+    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + (bypassOk ? 1 : 0) + costChecks.filter(Boolean).length;
+  const total = results.length + 3 + costChecks.length;
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
 }
