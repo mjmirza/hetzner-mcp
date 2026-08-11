@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   } catch {
     /* expected */
   }
-  assert("security: reject full URL path", secOk);
+
   let travOk = true;
   try {
     normalizePath("/servers/../../admin");
@@ -51,7 +51,56 @@ async function main(): Promise<void> {
   } catch {
     /* expected */
   }
-  assert("security: reject path traversal", travOk);
+
+  let encodedTravOk = true;
+  try {
+    normalizePath("/servers/%2e%2e/%2e%2e/actions");
+    encodedTravOk = false;
+  } catch {
+    /* expected */
+  }
+
+  let backslashOk = true;
+  try {
+    normalizePath("/servers/..\\..\\actions");
+    backslashOk = false;
+  } catch {
+    /* expected */
+  }
+
+  let encodedBackslashOk = true;
+  try {
+    normalizePath("/servers/..%5c..%5cactions");
+    encodedBackslashOk = false;
+  } catch {
+    /* expected */
+  }
+
+  let encodedControlOk = true;
+  try {
+    normalizePath("/servers/%00secret");
+    encodedControlOk = false;
+  } catch {
+    /* expected */
+  }
+
+  let malformedPercentOk = true;
+  try {
+    normalizePath("/servers/%test");
+    malformedPercentOk = false;
+  } catch {
+    /* expected */
+  }
+
+  const secChecks = [
+    assert("security: reject full URL path", secOk),
+    assert("security: reject path traversal", travOk),
+    assert("security: reject percent-encoded path traversal", encodedTravOk),
+    assert("security: reject backslashes", backslashOk),
+    assert("security: reject percent-encoded backslashes", encodedBackslashOk),
+    assert("security: reject percent-encoded control characters", encodedControlOk),
+    assert("security: reject malformed percent-encoding", malformedPercentOk),
+  ];
 
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
@@ -73,8 +122,10 @@ async function main(): Promise<void> {
     await check("robot /server", "robot", "/server"),
   ];
   const passed =
-    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + costChecks.filter(Boolean).length;
-  const total = results.length + 2 + costChecks.length;
+    results.filter(Boolean).length +
+    secChecks.filter(Boolean).length +
+    costChecks.filter(Boolean).length;
+  const total = results.length + secChecks.length + costChecks.length;
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
 }
