@@ -1,0 +1,4 @@
+## 2025-08-13 - Path Traversal & SSRF bypass via encoded URI segments in URL parsing
+**Vulnerability:** Attackers could bypass path validation checks by utilizing percent-encoded dot-dots (`%2e%2e`) or percent-encoded backslashes (`%5c`) in API paths. Node.js's WHATWG URL parser automatically normalizes backslashes to forward slashes and resolves decoded dot-dots during URL instantiation, allowing path traversal / SSRF to arbitrary endpoints even if raw string checks look for `..`.
+**Learning:** Checking raw, undecoded path strings for characters like `..` is insufficient when those paths are later passed into standard URL parsing libraries (like WHATWG `URL`) that decode or normalize percent-encoded sequences or backslashes during construction.
+**Prevention:** Always decode user-provided URL path segments using `decodeURIComponent` (and handle any malformed percent-encoding errors) before conducting blocklist checks like containing `..` or `\`.
