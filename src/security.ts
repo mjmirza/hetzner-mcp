@@ -9,7 +9,8 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * Normalize and validate a relative API path.
- * Rejects full URLs, protocol-relative URLs, path traversal, and control characters.
+ * Rejects full URLs, protocol-relative URLs, path traversal, backslashes, and control characters.
+ * Decodes URL components to prevent path traversal via percent encoding (e.g., %2e%2e).
  */
 export function normalizePath(path: string): string {
   if (typeof path !== "string" || path.trim().length === 0) {
@@ -19,8 +20,14 @@ export function normalizePath(path: string): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//")) {
     throw new Error("path must be a relative API path like /servers, not a full URL");
   }
-  if (raw.includes("..")) {
-    throw new Error("path must not contain '..'");
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    throw new Error("path contains invalid percent encoding");
+  }
+  if (raw.includes("..") || raw.includes("\\") || decoded.includes("..") || decoded.includes("\\")) {
+    throw new Error("path must not contain '..' or '\\'");
   }
   for (let i = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
