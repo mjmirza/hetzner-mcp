@@ -51,6 +51,18 @@ async function main(): Promise<void> {
   } catch {
     /* expected */
   }
+  try {
+    normalizePath("/%2e%2e/admin");
+    travOk = false;
+  } catch {
+    /* expected */
+  }
+  try {
+    normalizePath("/foo\\..\\bar");
+    travOk = false;
+  } catch {
+    /* expected */
+  }
   assert("security: reject path traversal", travOk);
 
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
