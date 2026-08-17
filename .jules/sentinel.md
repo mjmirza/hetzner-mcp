@@ -1,0 +1,4 @@
+## 2025-05-18 - Prevent Path Traversal and SSRF via URL Percent-Encoding and Backslashes
+**Vulnerability:** Input paths passed to `normalizePath` containing percent-encoded sequences like `%2e%2e` or backslashes `\` bypassed path traversal checks because `normalizePath` checked `raw.includes("..")` on undecoded strings without inspecting decoded URL segments or backslashes.
+**Learning:** Node's WHATWG `URL` constructor normalizes backslashes to slashes (`\evil.com` -> `//evil.com`) and resolves percent-encoded dots (`%2e%2e`) into dot-dot path segments during parsing, which can lead to SSRF or path traversal when constructed via `new URL(base + path)`.
+**Prevention:** Always decode URL paths using `decodeURIComponent` before performing validation checks, explicitly check for both `..` and `\`, and reject malformed percent-encoding strings.
