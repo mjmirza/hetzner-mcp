@@ -22,8 +22,23 @@ export function normalizePath(path: string): string {
   if (raw.includes("..")) {
     throw new Error("path must not contain '..'");
   }
-  for (let i = 0; i < raw.length; i++) {
-    const c = raw.charCodeAt(i);
+  if (raw.includes("\\")) {
+    throw new Error("path must not contain '\\'");
+  }
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    throw new Error("path contains malformed percent encoding");
+  }
+  if (decoded.includes("..")) {
+    throw new Error("path must not contain '..'");
+  }
+  if (decoded.includes("\\")) {
+    throw new Error("path must not contain '\\'");
+  }
+  for (let i = 0; i < decoded.length; i++) {
+    const c = decoded.charCodeAt(i);
     if (c < 0x20 || c === 0x7f) {
       throw new Error("path must not contain control characters");
     }

@@ -53,6 +53,44 @@ async function main(): Promise<void> {
   }
   assert("security: reject path traversal", travOk);
 
+  let encTravOk = true;
+  try {
+    normalizePath("/%2e%2e/admin");
+    encTravOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject encoded path traversal", encTravOk);
+
+  let backslashOk = true;
+  try {
+    normalizePath("/servers\\..\\admin");
+    backslashOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject backslash in path", backslashOk);
+
+  let encBackslashOk = true;
+  try {
+    normalizePath("/servers/%5c../admin");
+    encBackslashOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject encoded backslash", encBackslashOk);
+
+  let malformedOk = true;
+  try {
+    normalizePath("/%ff");
+    malformedOk = false;
+  } catch {
+    /* expected */
+  }
+  assert("security: reject malformed encoding", malformedOk);
+
+  const secChecks = [secOk, travOk, encTravOk, backslashOk, encBackslashOk, malformedOk];
+
   // Cost guard unit checks (no network). Billed creates and billed actions must be flagged,
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
   const costChecks = [
@@ -73,8 +111,10 @@ async function main(): Promise<void> {
     await check("robot /server", "robot", "/server"),
   ];
   const passed =
-    results.filter(Boolean).length + (secOk ? 1 : 0) + (travOk ? 1 : 0) + costChecks.filter(Boolean).length;
-  const total = results.length + 2 + costChecks.length;
+    results.filter(Boolean).length +
+    secChecks.filter(Boolean).length +
+    costChecks.filter(Boolean).length;
+  const total = results.length + secChecks.length + costChecks.length;
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
 }

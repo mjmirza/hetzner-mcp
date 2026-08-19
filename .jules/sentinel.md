@@ -1,0 +1,4 @@
+## 2026-06-07 - Node WHATWG URL Encoded Path Traversal and Backslash Evasion
+**Vulnerability:** API path validation previously performed a simple check for `".."`, which failed to reject percent-encoded dot segments (e.g. `"%2e%2e"`) and backslashes (e.g. `"\\"` or `"%5c"`). When concatenated with a base URL, Node's WHATWG URL parser resolved percent-encoded dot segments and normalized backslashes to forward slashes, enabling path traversal out of the API prefix.
+**Learning:** Checking raw strings for `".."` is insufficient when the string is later parsed by URL parsers like WHATWG `URL`, which normalize `\` to `/` and resolve `%2e%2e` dot segments.
+**Prevention:** Always decode paths using `decodeURIComponent()` before validation and explicitly reject both `".."` and `"\\"` in raw and decoded forms, as well as handling malformed percent encodings.
