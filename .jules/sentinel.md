@@ -1,0 +1,4 @@
+## 2026-08-20 - Prevent Path Traversal and SSRF via URL Decoding in API Path Normalization
+**Vulnerability:** Path traversal (`..` and backslash `\`) and URL bypasses could be obfuscated using percent encoding (e.g. `%2e%2e`) or backslashes when passed to `normalizePath`. In Node's `URL` implementation (`new URL(base + path)`), percent-encoded dots are resolved during URL parsing into directory traversal segments (`..`), bypassing string-based `includes("..")` checks.
+**Learning:** Checking raw strings for `..` is insufficient when the string is later processed by `new URL()`, as `URL` resolves percent-encoded characters like `%2e%2e` and normalizes backslashes.
+**Prevention:** Always decode input paths using `decodeURIComponent` first, validate that percent encoding is valid, and check the decoded path for `..`, `\`, control characters, and full URL schemas before constructing downstream URLs.
