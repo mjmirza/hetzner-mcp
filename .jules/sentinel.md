@@ -1,0 +1,4 @@
+## 2026-06-08 - Percent-Encoded Path Traversal and SSRF Bypass
+**Vulnerability:** `normalizePath` checked for `..` and control characters only on the raw string before URL parsing, missing percent-encoded dot segments (`%2e%2e`), backslashes (`\`, `%5c`), and encoded control characters.
+**Learning:** Node's WHATWG `URL` implementation resolves percent-encoded dots (`%2e%2e`) into path traversal segments and normalizes backslashes (`\`) to forward slashes (`/`). If validation runs before `decodeURIComponent`, encoded traversal sequences bypass validation and get resolved by the URL parser.
+**Prevention:** Always decode URI components before validating paths, check both raw and decoded strings for `..` and `\`, handle `URIError` exceptions from malformed percent encoding, and sanitize control characters in decoded inputs.
