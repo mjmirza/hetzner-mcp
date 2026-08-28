@@ -4,6 +4,8 @@
 
 # hetzner-mcp
 
+[![OpenRoots ORA 2.3](https://openroots.org/badge/ora.svg)](https://openroots.org/licenses/ora/2.3)
+
 Manage your entire Hetzner platform from any AI assistant. Cloud servers, networks, volumes, firewalls, load balancers, IPs and DNS, plus Storage Boxes and Robot dedicated servers. One Model Context Protocol server, every surface, tested live, with a hard cost guard so you never get a surprise bill.
 
 [![npm version](https://img.shields.io/npm/v/hetzner-mcp?logo=npm)](https://www.npmjs.com/package/hetzner-mcp)
