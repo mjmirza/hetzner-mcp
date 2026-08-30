@@ -3,6 +3,24 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [Unreleased]
+
+### Security
+- normalizePath now decodes a path once and rejects `..` and backslash in the
+  decoded form, so a percent-encoded traversal like `%2e%2e` cannot slip past the
+  literal checks. Defense in depth. the surface base URL fixes the host, so this
+  hardens caller intent rather than closing a live exploit.
+- Patched transitive dependency advisories via npm audit fix. npm audit is back
+  to 0 vulnerabilities in both the production and full trees. No production
+  dependency changed (the tree is only the MCP SDK and zod).
+
+### Changed
+- Re-validated every surface against the live Hetzner API changelog on
+  2026-08-30. The server is still valid. See docs/ENDPOINT-AUDIT.md for the
+  delta since the 2026-06-07 sweep (Data Center endpoint sunset after Oct 1,
+  reverse-DNS dns_ptr and RRSet TTL now required, unassign-before-delete for
+  assigned IPs). All are caller-side or additive, no curated tool is affected.
+
 ## [0.3.0] - 2026-06-08
 
 ### Added

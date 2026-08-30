@@ -88,3 +88,28 @@ Credentials verified working. The account has real dedicated servers and vSwitch
 
 Note. Robot returns 404 with an error body when a resource collection is empty, which
 still confirms authentication succeeded. Only 401 would indicate bad credentials.
+
+## Live re-validation against the Hetzner API changelog (2026-08-30)
+
+Re-checked every surface against the current Hetzner Cloud API changelog
+(docs.hetzner.cloud/changelog) and the Storage Box API host, three months after
+the 2026-06-07 sweep. The server is still valid. Its generic-request design means
+write-parameter changes fall to the caller, and the curated create and delete
+tools do not touch any removed field. The deltas that matter, and why each is safe.
+
+| Date | Change | Affected here | Status |
+|---|---|---|---|
+| 2026-06-02 | Data Center endpoints deprecated, removal planned after 2026-10-01 | cloud_list_datacenters reads /datacenters | Safe today. The eval already treats a 410 on a deprecated endpoint as a pass, so removal will not fail the suite. Prefer /locations and server_types.locations.available going forward. |
+| 2026-07-01 | datacenter property removed from Servers and Primary IPs request and response bodies | cloud_create_server body | Not affected. The curated create body sends location, never datacenter. Verified in src/tools/write.ts. |
+| 2026-07-08 | dns_ptr now required when changing reverse DNS (deadline 2026-09-30); TTL now required when updating an RRSet TTL | reverse DNS and DNS writes go through the generic cloud_request tool | Caller responsibility. The generic tool passes the body through, so a caller supplies dns_ptr and ttl. No curated tool breaks. |
+| 2026-05-01 | Assigned Primary IPs and Floating IPs can no longer be deleted, they must be unassigned first | teardown ordering in the provision skill | Advisory. Unassign before delete during teardown. |
+| 2026-06-05 | Load Balancer Types "deprecated" field itself deprecated in favour of a new "deprecation" field | /load_balancer_types read | Not affected. The compact projection is generic and does not reference the deprecated field. Verified in src/format.ts. |
+| 2026-08-17 | Load Balancer health checks gained detail and http_status_code response fields | /load_balancers read | Additive only, no break. |
+
+Storage Box host confirmed current. GET https://api.hetzner.com/v1/storage_boxes with
+Bearer auth is the live endpoint, matching the storagebox surface base in src/config.ts.
+
+Method. Each row was cross-checked against the live changelog entry and against the
+code that would be affected, then the code was inspected to confirm the stated status.
+No billed live calls were re-run, the 2026-06-07 billed lifecycle sweep stands and this
+pass validates only what the API changed since.

@@ -3,7 +3,7 @@
 This project does not rely on a single tool to call the code clean. It runs four
 independent auditors and records their real output. Re-run any of them yourself.
 
-Run on 2026-06-07 against the full source.
+Run on 2026-06-07, re-validated 2026-08-30 against the full source.
 
 | Auditor | What it checks | Command | Result |
 |---|---|---|---|
@@ -32,3 +32,11 @@ npx knip
 npm run smoke      # live, free reads across all three surfaces
 npx tsx test/eval.ts   # live validating audit, 39 of 39
 ```
+
+## Re-validation 2026-08-30
+
+All four auditors were re-run today. tsc clean, fallow clean, knip clean, and
+npm audit reports 0 vulnerabilities in both the production tree and the full
+tree. Between 2026-06-07 and today, transitive advisories had appeared and npm
+audit fix cleared them with no production dependency change. The production tree
+is only the MCP SDK and zod. The grade is current, not a stale carry-forward.
