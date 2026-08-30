@@ -1,6 +1,6 @@
 <div align="center">
 
-# hetzner-mcp
+<img src="https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/hetzner-cloud-logo.png" alt="Hetzner" height="56" />
 
 [![OpenRoots ORA 2.3](https://openroots.org/badge/ora.svg)](https://openroots.org/licenses/ora/2.3)
 
