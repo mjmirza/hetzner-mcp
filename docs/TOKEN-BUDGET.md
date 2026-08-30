@@ -5,10 +5,14 @@ token efficient on purpose.
 
 ## Tool surface
 
-- 32 tools total. 3 generic per surface request tools, 28 curated read tools, 1 contribute
-  tool. Tool titles and descriptions are kept short and concrete.
+- About 56 tools total. 3 generic per surface request tools, 28 curated read tools, 24
+  curated write tools, and 1 contribute tool. Titles and descriptions are kept short.
+- The 24 curated write tools cover create, delete, attach, detach, and assign for servers,
+  volumes, networks, firewalls, load balancers, floating and primary IPs, SSH keys, and
+  placement groups. Every billed create needs confirm, and every delete needs confirm.
 - The 3 generic tools alone give complete coverage of every endpoint, so the curated tools
-  are an ergonomic convenience, not a requirement.
+  are an ergonomic, safer convenience, not a requirement. A caller with a tight tool budget
+  can rely on the generic tools plus the reads.
 
 ## Response discipline
 
