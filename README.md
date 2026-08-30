@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/hetzner-cloud-logo.png" alt="Hetzner" height="56" />
-
 # hetzner-mcp
 
 [![OpenRoots ORA 2.3](https://openroots.org/badge/ora.svg)](https://openroots.org/licenses/ora/2.3)
@@ -10,7 +8,7 @@ Manage your entire Hetzner platform from any AI assistant. Cloud servers, networ
 
 [![npm version](https://img.shields.io/npm/v/hetzner-mcp?logo=npm)](https://www.npmjs.com/package/hetzner-mcp)
 [![MCP](https://img.shields.io/badge/MCP-server-000000?logo=anthropic&logoColor=white)](#quick-start)
-[![License](https://img.shields.io/badge/License-MIT_plus_CC_BY_4.0-2ea44f)](LICENSE)
+[![License](https://img.shields.io/badge/License-OpenRoots_ORA_2.3-2ea44f)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-2ea44f)](CONTRIBUTING.md)
 [![Node](https://img.shields.io/badge/node-%3E%3D18.18-339933?logo=nodedotjs&logoColor=white)](package.json)
 
@@ -240,7 +238,7 @@ You could write your own. Most people say they will and never do, and the ones w
 - The safety layer. Secret redaction, relative-path-only requests so an agent cannot be pointed at another host, request timeouts, and input validation on every call.
 - Coverage that does not rot. Three generic tools reach every endpoint, so it keeps working when Hetzner adds a new one, and every endpoint is validated live, 39 of 39.
 
-Prefer infrastructure as code? Use Terraform or the hcloud CLI, they are excellent for that. This is for the other case, when your AI assistant should do the work in plain language, safely, without you writing or maintaining the glue. It is MIT, so if you would rather build on it than from zero, fork it.
+Prefer infrastructure as code? Use Terraform or the hcloud CLI, they are excellent for that. This is for the other case, when your AI assistant should do the work in plain language, safely, without you writing or maintaining the glue. It is free at and below a real revenue threshold under the OpenRoots ORA 2.3 license, so if you would rather build on it than from zero, fork it.
 
 Common questions, technical and non technical, are answered in [docs/FAQ.md](docs/FAQ.md).
 
@@ -268,7 +266,7 @@ Sourced from real community writeups. See [docs/COMMUNITY-PAINPOINTS.md](docs/CO
 
 ## License
 
-Dual licensed and free to use, including commercially. Attribution is required. Code under MIT, content under CC BY 4.0. Keep the notice and link back to this repository. See [LICENSE](LICENSE).
+OpenRoots Agent License 2.3. Free and unconditional at or below USD 20,000,000 annual revenue, and for any individual, nonprofit, school, or government body at any size. Above that threshold, a small self-reported royalty applies, capped per year. AI training on this code is not granted by either tier and needs a separate Compute license; human reading and search indexing are unaffected. The canonical text lives at [openroots.org/licenses/ora/2.3](https://openroots.org/licenses/ora/2.3). See [LICENSE](LICENSE).
 
 ## Disclaimer
 
