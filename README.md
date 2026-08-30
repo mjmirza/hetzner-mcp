@@ -247,6 +247,10 @@ This MCP is designed to grow from real use. If you ask it for something it does 
 - Open a [feature request or missing endpoint issue](https://github.com/mjmirza/hetzner-mcp/issues/new/choose).
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) for the pull request flow.
 - Contributors are credited in [docs/CREDITS.md](docs/CREDITS.md).
+- Not included yet, on purpose. an on-server service layer (restart services, tail logs,
+  database health) is a planned, opt-in, allow-listed feature, kept out of the default so
+  the server stays safe by default. See docs/ROADMAP.md Phase 7, and open an issue if you
+  want it prioritized.
 
 ## Quality
 
