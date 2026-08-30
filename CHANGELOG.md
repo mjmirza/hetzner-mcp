@@ -3,6 +3,16 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.3.2] - 2026-08-30
+
+### Changed
+- Friendlier onboarding. The `setup` and `doctor` commands now speak plain
+  language for a first-time user, with numbered next steps, a clear success
+  screen, and the technical backup note demoted to a reassuring footer.
+- Added dependency-free terminal color to `setup` and `doctor`. It renders in a
+  real terminal and goes fully plain when output is piped or NO_COLOR is set, so
+  logs and CI stay clean. No new runtime dependency.
+
 ## [0.3.1] - 2026-08-30
 
 ### Security
