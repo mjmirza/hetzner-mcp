@@ -14,6 +14,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+      - name: Offline tests (unit + API-shape hallucination check)
+        run: npm run test:offline
       - name: Hygiene gate (fallow, new dead code only)
         run: npm run hygiene
         continue-on-error: true

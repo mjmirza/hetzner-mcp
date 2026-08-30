@@ -14,6 +14,7 @@ import { loadConfig, availableSurfaces } from "./config.js";
 import { registerGenericTools } from "./tools/generic.js";
 import { registerReadTools } from "./tools/resources.js";
 import { registerWriteTools } from "./tools/write.js";
+import { registerCloudWriteTools } from "./tools/write-cloud.js";
 import { registerContributeTool } from "./tools/contribute.js";
 import { runSetup } from "./setup/wizard.js";
 import { runDoctor } from "./setup/doctor.js";
@@ -49,6 +50,7 @@ async function runServer(): Promise<void> {
   registerGenericTools(server, cfg);
   registerReadTools(server, cfg);
   registerWriteTools(server, cfg);
+  registerCloudWriteTools(server, cfg);
   registerContributeTool(server);
 
   // Diagnostics go to stderr so they never corrupt the stdio protocol on stdout.
