@@ -18,6 +18,7 @@ import {
   type ServerEntryEnv,
 } from "./clients.js";
 import { validateCloudToken } from "./validate.js";
+import { bold, dim, green, red, cyan } from "./style.js";
 
 interface Flags {
   token?: string;
@@ -132,8 +133,8 @@ export async function runSetup(argv: string[]): Promise<number> {
   }
 
   out("");
-  out("  hetzner-mcp setup");
-  out("  Connect any MCP client to your Hetzner account in under a minute.");
+  out("  " + bold(cyan("hetzner-mcp setup")));
+  out("  " + dim("Connect any MCP client to your Hetzner account in under a minute."));
   out("");
 
   const interactive = stdin.isTTY && !flags.yes;
@@ -177,9 +178,9 @@ export async function runSetup(argv: string[]): Promise<number> {
           verified = true;
           break;
         }
-        out("  Verifying...");
+        out(dim("  Verifying with Hetzner..."));
         const check = await validateCloudToken(token); // BESTPRACTICE_OK: verify must follow the prompt in this retry loop
-        out(`  ${check.ok ? "OK" : "x "} ${check.message}`);
+        out(`  ${check.ok ? green("OK") : red("x ")} ${check.message}`);
         if (check.ok) {
           verified = true;
           break;
@@ -200,7 +201,7 @@ export async function runSetup(argv: string[]): Promise<number> {
       }
     } else if (token && !flags.noVerify) {
       const check = await validateCloudToken(token);
-      out(`  ${check.ok ? "OK" : "x "} ${check.message}`);
+      out(`  ${check.ok ? green("OK") : red("x ")} ${check.message}`);
       if (!check.ok) {
         stderr.write("  Setup stopped. The provided token did not verify (use --no-verify to skip).\n");
         return 1;
@@ -263,7 +264,7 @@ export async function runSetup(argv: string[]): Promise<number> {
     for (const t of chosen) {
       try {
         written.push(writeClientConfig(t, creds));
-        out(`  OK wrote ${t.name} (${tilde(t.configPath)})`);
+        out(`  ${green("OK")} wrote ${bold(t.name)} ${dim(`(${tilde(t.configPath)})`)}`);
       } catch (err) {
         stderr.write(`  x  ${t.name}: ${err instanceof Error ? err.message : String(err)}\n`);
       }
@@ -276,23 +277,23 @@ export async function runSetup(argv: string[]): Promise<number> {
     const robotNote = creds.HETZNER_ROBOT_USER ? " Your Robot credentials were saved too." : "";
     const appWord = written.length === 1 ? "app" : "apps";
     out("");
-    out("  Success. Your Hetzner account is now connected." + robotNote);
+    out("  " + green(bold("Success. Your Hetzner account is now connected.")) + robotNote);
     out("");
-    out("  Two small steps and you are ready:");
+    out("  " + bold("Two small steps and you are ready:"));
     out("");
-    out(`  1. Restart the ${appWord} below so the new connection loads.`);
-    for (const w of written) out(`       ${w.target.name}. ${w.target.restartHint}`);
+    out(`  ${bold("1.")} Restart the ${appWord} below so the new connection loads.`);
+    for (const w of written) out(`       ${bold(w.target.name + ".")} ${w.target.restartHint}`);
     out("");
-    out("  2. Open a chat and ask, in plain words:");
-    out('       "List my Hetzner servers and show this month cost."');
-    out("       No commands to learn. The answer comes straight from your account.");
+    out(`  ${bold("2.")} Open a chat and ask, in plain words:`);
+    out('       ' + cyan('"List my Hetzner servers and show this month cost."'));
+    out("       " + dim("No commands to learn. The answer comes straight from your account."));
     out("");
-    out("  Not sure it worked? Run this any time and it will tell you in plain English:");
-    out("       npx hetzner-mcp doctor");
+    out("  " + dim("Not sure it worked? Run this any time and it will tell you in plain English:"));
+    out("       " + cyan("npx hetzner-mcp doctor"));
     out("");
-    out("  Good to know, your token " + mask(token) + " was saved only inside the");
-    out(`  ${appWord === "app" ? "app's" : "apps'"} own config on this computer, never anywhere else, and any file that was`);
-    out("  already there was copied to a .bak backup first, so nothing was lost.");
+    out(dim("  Good to know, your token " + mask(token) + " was saved only inside the"));
+    out(dim(`  ${appWord === "app" ? "app's" : "apps'"} own config on this computer, never anywhere else, and any file that was`));
+    out(dim("  already there was copied to a .bak backup first, so nothing was lost."));
     out("");
     return 0;
   } catch (err) {
