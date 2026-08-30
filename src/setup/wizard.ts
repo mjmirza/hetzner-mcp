@@ -18,6 +18,7 @@ import {
   type ServerEntryEnv,
 } from "./clients.js";
 import { validateCloudToken } from "./validate.js";
+import { bold, dim, green, red, cyan } from "./style.js";
 
 interface Flags {
   token?: string;
@@ -132,8 +133,8 @@ export async function runSetup(argv: string[]): Promise<number> {
   }
 
   out("");
-  out("  hetzner-mcp setup");
-  out("  Connect any MCP client to your Hetzner account in under a minute.");
+  out("  " + bold(cyan("hetzner-mcp setup")));
+  out("  " + dim("Connect any MCP client to your Hetzner account in under a minute."));
   out("");
 
   const interactive = stdin.isTTY && !flags.yes;
@@ -177,9 +178,9 @@ export async function runSetup(argv: string[]): Promise<number> {
           verified = true;
           break;
         }
-        out("  Verifying...");
+        out(dim("  Verifying with Hetzner..."));
         const check = await validateCloudToken(token); // BESTPRACTICE_OK: verify must follow the prompt in this retry loop
-        out(`  ${check.ok ? "OK" : "x "} ${check.message}`);
+        out(`  ${check.ok ? green("OK") : red("x ")} ${check.message}`);
         if (check.ok) {
           verified = true;
           break;
@@ -200,7 +201,7 @@ export async function runSetup(argv: string[]): Promise<number> {
       }
     } else if (token && !flags.noVerify) {
       const check = await validateCloudToken(token);
-      out(`  ${check.ok ? "OK" : "x "} ${check.message}`);
+      out(`  ${check.ok ? green("OK") : red("x ")} ${check.message}`);
       if (!check.ok) {
         stderr.write("  Setup stopped. The provided token did not verify (use --no-verify to skip).\n");
         return 1;
@@ -250,9 +251,11 @@ export async function runSetup(argv: string[]): Promise<number> {
 
     if (!chosen.length) {
       out("");
-      out("  No clients selected. Nothing was changed.");
-      out("  Re-run with --client claude-desktop (or claude-code, cursor, windsurf, vscode),");
-      out("  or use --print to copy the config block manually.");
+      out("  No app was selected, so nothing on your computer was changed.");
+      out("  Run setup again and pick at least one, for example:");
+      out("       npx hetzner-mcp setup --client claude-desktop");
+      out("  (other ids. claude-code, cursor, windsurf, vscode)");
+      out("  Or copy the config yourself with:  npx hetzner-mcp setup --print");
       return 0;
     }
 
@@ -261,7 +264,7 @@ export async function runSetup(argv: string[]): Promise<number> {
     for (const t of chosen) {
       try {
         written.push(writeClientConfig(t, creds));
-        out(`  OK wrote ${t.name} (${tilde(t.configPath)})`);
+        out(`  ${green("OK")} wrote ${bold(t.name)} ${dim(`(${tilde(t.configPath)})`)}`);
       } catch (err) {
         stderr.write(`  x  ${t.name}: ${err instanceof Error ? err.message : String(err)}\n`);
       }
@@ -269,18 +272,28 @@ export async function runSetup(argv: string[]): Promise<number> {
 
     if (!written.length) return 1;
 
-    // 5. Next steps.
+    // 5. Next steps. Warm, numbered, plain language so a first-timer knows exactly
+    // what to do. The technical backup note is demoted to a reassuring footer.
+    const robotNote = creds.HETZNER_ROBOT_USER ? " Your Robot credentials were saved too." : "";
+    const appWord = written.length === 1 ? "app" : "apps";
     out("");
-    out("  Done. Token wired as " + mask(token) + (creds.HETZNER_ROBOT_USER ? " with Robot credentials." : "."));
-    out("  Backups of any existing config were saved alongside with a .bak suffix.");
+    out("  " + green(bold("Success. Your Hetzner account is now connected.")) + robotNote);
     out("");
-    out("  Next:");
-    for (const w of written) out(`    - ${w.target.name}: ${w.target.restartHint}`);
+    out("  " + bold("Two small steps and you are ready:"));
     out("");
-    out("  Then ask your assistant:");
-    out('    "List my Hetzner servers and show this month cost."');
+    out(`  ${bold("1.")} Restart the ${appWord} below so the new connection loads.`);
+    for (const w of written) out(`       ${bold(w.target.name + ".")} ${w.target.restartHint}`);
     out("");
-    out("  Verify anytime with:  npx hetzner-mcp doctor");
+    out(`  ${bold("2.")} Open a chat and ask, in plain words:`);
+    out('       ' + cyan('"List my Hetzner servers and show this month cost."'));
+    out("       " + dim("No commands to learn. The answer comes straight from your account."));
+    out("");
+    out("  " + dim("Not sure it worked? Run this any time and it will tell you in plain English:"));
+    out("       " + cyan("npx hetzner-mcp doctor"));
+    out("");
+    out(dim("  Good to know, your token " + mask(token) + " was saved only inside the"));
+    out(dim(`  ${appWord === "app" ? "app's" : "apps'"} own config on this computer, never anywhere else, and any file that was`));
+    out(dim("  already there was copied to a .bak backup first, so nothing was lost."));
     out("");
     return 0;
   } catch (err) {
