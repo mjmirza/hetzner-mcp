@@ -59,6 +59,16 @@ Nothing ships as done until it actually works and is documented.
   community comparison (what other Hetzner MCPs expose vs this one).
 - CHANGELOG.md. Test gauntlet. Publish to npm and register in MCP directories.
 
+### Phase 7. On-server service layer (demand-gated, opt-in, NOT started)
+- Not built, and never built speculatively. The gate is real user demand, not a guess.
+- If demand appears, ship it the safe way only. a curated, allow-listed, read-mostly set
+  of service tools (service status, tail logs, config test, database health) behind an
+  explicit opt-in flag, never an arbitrary shell-exec tool by default. This preserves the
+  safe-by-default guarantee that separates this server from the ungated community ones.
+- Requires server login credentials, a larger blast radius than the API token, so it stays
+  off unless the operator turns it on.
+- Open an issue if you want it. that is how this phase gets prioritized.
+
 ## Credentials needed from you (only when its phase starts)
 
 | Phase | Needs | Where to find it |
