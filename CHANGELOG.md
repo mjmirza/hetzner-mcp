@@ -3,6 +3,22 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.4.0] - 2026-08-30
+
+### Added
+- 24 curated, guarded write tools for the common cloud resources. create, delete,
+  attach, detach, and assign for volumes, networks, firewalls, load balancers,
+  floating and primary IPs, SSH keys, and placement groups. Every billed create
+  needs confirm, every delete needs confirm, and DELETE is auto-treated as
+  destructive so no tool can forget the guard.
+- test/api-shape.ts, a hallucination check that pins every write-tool request
+  field to the official Hetzner OpenAPI spec, wired into CI.
+- Also publish to GitHub Packages as the scoped mirror @mjmirza/hetzner-mcp.
+
+### Fixed
+- primary IP create now uses the official location field, not the removed
+  datacenter field, caught by validating against the official spec.
+
 ## [0.3.2] - 2026-08-30
 
 ### Changed
