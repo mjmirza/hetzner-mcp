@@ -3,21 +3,46 @@ name: Publish
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
+  packages: write
 
 jobs:
-  publish:
+  publish-npm:
+    # Public npmjs release. Runs only on a real release, never on manual dispatch,
+    # so it can never try to republish an existing version.
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 BESTPRACTICE_OK pinned to full commit SHA
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 BESTPRACTICE_OK pinned to full commit SHA
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-github:
+    # GitHub Packages mirror, scoped to the owner as GitHub requires. Runs on a release
+    # and on manual dispatch, so an existing version can be mirrored at any time.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 BESTPRACTICE_OK pinned to full commit SHA
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 BESTPRACTICE_OK pinned to full commit SHA
+        with:
+          node-version: "24"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@mjmirza"
+      - run: npm ci
+      - run: npm run build
+      # GitHub Packages needs an owner-scoped name, so mirror under @mjmirza in the
+      # runner only. The public npmjs name (hetzner-mcp) is never changed on disk.
+      - run: npm pkg set name=@mjmirza/hetzner-mcp
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
