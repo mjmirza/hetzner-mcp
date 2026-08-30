@@ -3,13 +3,13 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
-## [Unreleased]
+## [0.3.1] - 2026-08-30
 
 ### Security
-- normalizePath now decodes a path once and rejects `..` and backslash in the
-  decoded form, so a percent-encoded traversal like `%2e%2e` cannot slip past the
-  literal checks. Defense in depth. the surface base URL fixes the host, so this
-  hardens caller intent rather than closing a live exploit.
+- normalizePath now unescapes a path once and rejects `..` and backslash in the
+  unescaped form, so a percent-encoded traversal like `%2e%2e` cannot slip past
+  the literal checks. Defense in depth. the surface base URL fixes the host, so
+  this hardens caller intent rather than closing a live exploit.
 - Patched transitive dependency advisories via npm audit fix. npm audit is back
   to 0 vulnerabilities in both the production and full trees. No production
   dependency changed (the tree is only the MCP SDK and zod).
@@ -20,6 +20,11 @@ Changelog, and this project follows semantic versioning.
   delta since the 2026-06-07 sweep (Data Center endpoint sunset after Oct 1,
   reverse-DNS dns_ptr and RRSet TTL now required, unassign-before-delete for
   assigned IPs). All are caller-side or additive, no curated tool is affected.
+
+### Fixed
+- README license badge and two prose spots corrected from a stale MIT plus
+  CC BY 4.0 description to the OpenRoots ORA 2.3 license the repository
+  actually carries in LICENSE.
 
 ## [0.3.0] - 2026-06-08
 
