@@ -108,7 +108,9 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
             }
             if (args.confirm !== true) {
               let note = "";
-              if (surface === "cloud" && /^\/servers\/?$/i.test(args.path)) {
+              const cleanPath = (args.path.split(/[?#]/)[0] || "").trim();
+              const normPath = cleanPath.startsWith("/") ? cleanPath : "/" + cleanPath;
+              if (surface === "cloud" && /^\/servers\/?$/i.test(normPath)) {
                 const body = bodyVal as { server_type?: string } | undefined;
                 const priced = await cloudServerPriceNote(cfg, body?.server_type);
                 if (priced) note = " " + priced;
