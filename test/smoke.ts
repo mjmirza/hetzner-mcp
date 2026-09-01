@@ -80,6 +80,9 @@ async function main(): Promise<void> {
     assert("cost: volume resize is billed", classifyCost("cloud", "POST", "/volumes/9/actions/resize").billed),
     assert("cost: poweron is free", !classifyCost("cloud", "POST", "/servers/9/actions/poweron").billed),
     assert("cost: list is free", !classifyCost("cloud", "GET", "/servers").billed),
+    assert("cost: query param path is billed", classifyCost("cloud", "POST", "/servers?foo=bar").billed),
+    assert("cost: hash fragment path is billed", classifyCost("cloud", "POST", "/servers#hash").billed),
+    assert("cost: missing leading slash is billed", classifyCost("cloud", "POST", "servers").billed),
   ];
 
   // Live free reads across all three surfaces.
