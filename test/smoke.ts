@@ -75,6 +75,8 @@ async function main(): Promise<void> {
   // free actions and reads must not be. create_image is the snapshot action from issue #2.
   const costChecks = [
     assert("cost: server create is billed", classifyCost("cloud", "POST", "/servers").billed),
+    assert("cost: server create with query is billed", classifyCost("cloud", "POST", "/servers?foo=bar").billed),
+    assert("cost: server create without leading slash is billed", classifyCost("cloud", "POST", "servers").billed),
     assert("cost: create_image is billed", classifyCost("cloud", "POST", "/servers/9/actions/create_image").billed),
     assert("cost: change_type is billed", classifyCost("cloud", "POST", "/servers/9/actions/change_type").billed),
     assert("cost: volume resize is billed", classifyCost("cloud", "POST", "/volumes/9/actions/resize").billed),
