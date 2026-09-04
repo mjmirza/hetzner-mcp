@@ -11,6 +11,7 @@ import {
 } from "../src/setup/clients.js";
 import { parseSetupFlags } from "../src/setup/wizard.js";
 import { validateCloudToken } from "../src/setup/validate.js";
+import { classifyCost } from "../src/cost.js";
 
 let passed = 0;
 let total = 0;
@@ -117,6 +118,12 @@ async function main(): Promise<void> {
   assert("timeout not ok and explained", timedOut.ok === false && timedOut.message.includes("timed out"));
   const netErr = await validateCloudToken("tok", stubFetchThrow("TypeError"));
   assert("network error not ok", netErr.ok === false && netErr.message.includes("Could not reach"));
+
+  // Cost guard path normalization tests.
+  assert("cost guard handles query parameters", classifyCost("cloud", "POST", "/servers?foo=bar").billed);
+  assert("cost guard handles hash fragments", classifyCost("cloud", "POST", "/servers#section").billed);
+  assert("cost guard handles missing leading slash", classifyCost("cloud", "POST", "servers").billed);
+  assert("cost guard handles action with query params", classifyCost("cloud", "POST", "/servers/1/actions/create_image?param=1").billed);
 
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;
