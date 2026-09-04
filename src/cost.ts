@@ -37,11 +37,15 @@ export interface CostDecision {
 export function classifyCost(surface: SurfaceName, method: string, path: string): CostDecision {
   const m = method.toUpperCase();
   if (m !== "POST" && m !== "PUT") return { billed: false };
-  for (const re of BILLED_CREATE[surface] ?? []) {
-    if (re.test(path)) return { billed: true, reason: `${m} ${path} creates a billed ${surface} resource` };
+  let normalized = (path || "").trim().split("?")[0].split("#")[0];
+  if (!normalized.startsWith("/")) {
+    normalized = "/" + normalized;
   }
-  if (surface === "cloud" && BILLED_ACTIONS.test(path)) {
-    return { billed: true, reason: `${m} ${path} is an action that can increase your bill` };
+  for (const re of BILLED_CREATE[surface] ?? []) {
+    if (re.test(normalized)) return { billed: true, reason: `${m} ${normalized} creates a billed ${surface} resource` };
+  }
+  if (surface === "cloud" && BILLED_ACTIONS.test(normalized)) {
+    return { billed: true, reason: `${m} ${normalized} is an action that can increase your bill` };
   }
   return { billed: false };
 }
