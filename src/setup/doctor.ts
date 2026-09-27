@@ -46,7 +46,7 @@ export async function runDoctor(argv: string[]): Promise<number> {
   out("");
   out(`  ${dim("Surfaces in this shell.")} ${surfaces.length ? surfaces.join(", ") : "none"}`);
   out(`  ${dim("Write mode.")} ${cfg.readOnly ? "read-only (HETZNER_MCP_READONLY=1)" : "read and write"}`);
-  out(`  ${dim("Billed creates.")} ${cfg.allowBilled ? "allowed with confirm" : "blocked (HETZNER_MCP_ALLOW_BILLED=0)"}`);
+  out(`  ${dim("Billed creates.")} ${cfg.allowBilled ? "allowed with confirm (HETZNER_MCP_ALLOW_BILLED=1)" : "blocked (set HETZNER_MCP_ALLOW_BILLED=1 to enable)"}`);
 
   // Which known clients have hetzner wired.
   out("");
