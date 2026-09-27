@@ -25,25 +25,67 @@ const BILLED_CREATE: Record<SurfaceName, RegExp[]> = {
  * snapshot image, upgrading a server type, enabling backups, and resizing a volume up all
  * raise the bill, so the guard requires confirm for them. attach_iso and request_console
  * are free but kept here as a cautious extra confirm.
+ *
+ * Hetzner Cloud uses enable_backup (singular). enable_backups is kept as a defensive
+ * alternate so a pluralized caller still hits the guard.
  */
 const BILLED_ACTIONS =
-  /\/(actions)\/(create_image|change_type|enable_backups|resize|attach_iso|request_console)\/?$/i;
+  /\/(actions)\/(create_image|change_type|enable_backups?|resize|attach_iso|request_console)\/?$/i;
+
+/**
+ * Free actions that still need an explicit confirm because they interrupt service or
+ * rotate credentials. DELETE is always treated as destructive by callers.
+ */
+const DESTRUCTIVE_FREE_ACTIONS =
+  /\/(actions)\/(poweroff|shutdown|reboot|reset|rebuild|reset_password|enable_rescue)\/?$/i;
 
 export interface CostDecision {
   billed: boolean;
   reason?: string;
 }
 
+export interface DestructiveDecision {
+  destructive: boolean;
+  reason?: string;
+}
+
+/** Strip query/hash and ensure a leading slash so guard regexes stay reliable. */
+export function normalizeCostPath(path: string): string {
+  let clean = (path || "").split("?")[0].split("#")[0].trim();
+  if (!clean.startsWith("/")) clean = "/" + clean;
+  return clean;
+}
+
 export function classifyCost(surface: SurfaceName, method: string, path: string): CostDecision {
   const m = method.toUpperCase();
   if (m !== "POST" && m !== "PUT") return { billed: false };
+  const cleanPath = normalizeCostPath(path);
   for (const re of BILLED_CREATE[surface] ?? []) {
-    if (re.test(path)) return { billed: true, reason: `${m} ${path} creates a billed ${surface} resource` };
+    if (re.test(cleanPath)) return { billed: true, reason: `${m} ${path} creates a billed ${surface} resource` };
   }
-  if (surface === "cloud" && BILLED_ACTIONS.test(path)) {
+  if (surface === "cloud" && BILLED_ACTIONS.test(cleanPath)) {
     return { billed: true, reason: `${m} ${path} is an action that can increase your bill` };
   }
   return { billed: false };
+}
+
+/**
+ * True for DELETE and for free Cloud actions that can take a machine down or rotate
+ * root credentials. Billed actions are handled separately by classifyCost.
+ */
+export function classifyDestructive(method: string, path: string): DestructiveDecision {
+  const m = method.toUpperCase();
+  const cleanPath = normalizeCostPath(path);
+  if (m === "DELETE") {
+    return { destructive: true, reason: `${m} ${path} permanently deletes a resource and can cause data loss` };
+  }
+  if (m === "POST" && DESTRUCTIVE_FREE_ACTIONS.test(cleanPath)) {
+    return {
+      destructive: true,
+      reason: `${m} ${path} can interrupt service or rotate credentials`,
+    };
+  }
+  return { destructive: false };
 }
 
 /**
