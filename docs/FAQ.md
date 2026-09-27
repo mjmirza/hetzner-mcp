@@ -99,8 +99,9 @@ read only mode, and a kill switch to hard disable billed creation.
 
 ### Can I forbid it from ever spending money?
 
-Yes. Set HETZNER_MCP_READONLY=1 to refuse all writes, or HETZNER_MCP_ALLOW_BILLED=0 to allow free
-resources but hard block anything billed.
+Yes. Set HETZNER_MCP_READONLY=1 to refuse all writes, or leave HETZNER_MCP_ALLOW_BILLED unset
+(the default) to allow free resources but hard-block anything billed. Set
+HETZNER_MCP_ALLOW_BILLED=1 only when you intentionally want billed creates with per-call confirm.
 
 ### Hetzner rounds billing up to a full hour, will this waste money?
 
