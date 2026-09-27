@@ -3,6 +3,23 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [Unreleased]
+
+### Security
+- Cost guard now matches Hetzner's real `enable_backup` action (singular). The previous
+  `enable_backups` typo let backup enables bypass the spend confirm. Plural form is still
+  matched defensively.
+- `HETZNER_MCP_ALLOW_BILLED` is now opt-in (`=== "1"`). Unset no longer allows billed
+  creates; this matches `.env.example` and blocks unattended spend after install.
+- Destructive guard extended beyond DELETE: `poweroff`, `shutdown`, `reboot`, `reset`,
+  `rebuild`, `reset_password`, and `enable_rescue` require `confirm: true`.
+- Cost/destructive classifiers strip query and hash fragments before matching so
+  `?x=1` cannot bypass a guard regex.
+
+### Added
+- `test/safety-guards.ts` offline regression suite for the above, wired into
+  `npm run test:offline`.
+
 ## [0.4.0] - 2026-08-30
 
 ### Added
