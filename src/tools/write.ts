@@ -37,7 +37,7 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
     },
     async (args) => {
       if (cfg.readOnly) return text("Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1).", true);
-      if (!cfg.allowBilled) return text("Blocked. Billed creation is disabled (HETZNER_MCP_ALLOW_BILLED=0).", true);
+      if (!cfg.allowBilled) return text("Blocked. Billed creation is disabled. Set HETZNER_MCP_ALLOW_BILLED=1 to allow billed creates with confirm.", true);
       if (args.confirm !== true) {
         const priced = await cloudServerPriceNote(cfg, args.server_type);
         return text(
