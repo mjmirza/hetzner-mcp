@@ -54,7 +54,8 @@
     "hygiene": "npx -y fallow@2.88.2 dead-code --baseline .fallow-baseline.json",
     "hygiene:baseline": "npx -y fallow@2.88.2 dead-code --save-baseline .fallow-baseline.json",
     "prepublishOnly": "npm run build",
-    "test:offline": "tsx test/setup.ts && tsx test/api-shape.ts"
+    "test:offline": "tsx test/setup.ts && tsx test/api-shape.ts && tsx test/safety-guards.ts",
+    "test:safety": "tsx test/safety-guards.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
