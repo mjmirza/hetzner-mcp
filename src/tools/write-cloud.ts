@@ -33,7 +33,7 @@ async function guarded(
   if (cfg.readOnly) return text("Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1).", true);
   const cost = classifyCost("cloud", opts.method, opts.path);
   if (cost.billed) {
-    if (!cfg.allowBilled) return text("Blocked. Billed operations are disabled (HETZNER_MCP_ALLOW_BILLED=0).", true);
+    if (!cfg.allowBilled) return text("Blocked. Billed operations are disabled. Set HETZNER_MCP_ALLOW_BILLED=1 to allow billed creates with confirm.", true);
     if (opts.confirm !== true) {
       return text(`COST GUARD. ${opts.label} may cost money (${cost.reason}). Re-run with confirm set to true.`, true);
     }
