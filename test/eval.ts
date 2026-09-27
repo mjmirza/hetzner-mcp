@@ -95,6 +95,7 @@ function unitChecks(): Row[] {
   cost("POST /ssh_keys is free", classifyCost("cloud", "POST", "/ssh_keys").billed, false);
   cost("DELETE /servers/1 is not billed", classifyCost("cloud", "DELETE", "/servers/1").billed, false);
   cost("POST /storage_boxes is billed", classifyCost("storagebox", "POST", "/storage_boxes").billed, true);
+  cost("POST enable_backup is billed", classifyCost("cloud", "POST", "/servers/1/actions/enable_backup").billed, true);
 
   const sample = "token Bearer abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG end";
   const redacted = redactSecrets(sample);
