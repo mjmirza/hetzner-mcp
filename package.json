@@ -60,7 +60,8 @@
     "prepublishOnly": "npm run build",
     "test:offline": "tsx test/setup.ts && tsx test/api-shape.ts && tsx test/safety-guards.ts && tsx test/actions.ts && tsx test/map.ts && tsx test/cli.ts",
     "test:safety": "tsx test/safety-guards.ts",
-    "map": "node dist/index.js map"
+    "map": "node dist/index.js map",
+    "test:layout": "tsx test/layout.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
@@ -77,6 +78,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "hugeicons-react": "^0.4.0",
+    "playwright": "^1.63.0",
     "radix-ui": "^1.6.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

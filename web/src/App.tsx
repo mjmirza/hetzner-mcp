@@ -23,6 +23,7 @@ import {
   PauseCircleIcon,
   PlayCircle02Icon,
   Moon02Icon,
+  MoreHorizontalCircle02Icon,
   Refresh03Icon,
   Search02Icon,
   Sun02Icon,
@@ -188,7 +189,7 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
           pannable
           zoomable
           position="bottom-left"
-          className="!hidden md:!block"
+          className="!hidden [@media(min-width:768px)_and_(min-height:700px)]:!block"
           style={{ width: 168, height: 112 }}
           nodeColor={(n) => ((n.data as CardData).node.flags.some((f) => f.kind === "risk") ? "var(--risk)" : "var(--edge)")}
           nodeBorderRadius={6}
@@ -323,38 +324,38 @@ export function App() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex h-dvh flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4">
+        <header className="flex h-14 shrink-0 items-center gap-2 overflow-hidden px-3 whitespace-nowrap sm:px-4">
           {!desktop && (
             <Button variant="ghost" size="icon-sm" className="rounded-lg" onClick={() => setPanelOpen(true)} aria-label="Projects and insights">
               <Menu02Icon size={18} />
             </Button>
           )}
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className="hidden truncate text-[15px] font-semibold sm:block">Infrastructure</h1>
+          <div className="flex shrink-0 items-center gap-2">
+            <h1 className="hidden text-[15px] font-semibold lg:block">Infrastructure</h1>
             {meta && (
               <Badge variant={meta.mode === "demo" ? "secondary" : "outline"} className="rounded-md">
                 {meta.mode === "demo" ? "Sample" : "Live"}
               </Badge>
             )}
-            {graph && <span className="hidden text-[12px] text-muted-foreground md:inline">Updated {ago(graph.generatedAt)}</span>}
+            {graph && <span className="hidden text-[12px] text-muted-foreground 2xl:inline">Updated {ago(graph.generatedAt)}</span>}
           </div>
 
-          <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)} className="mx-auto">
+          <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)} className="mx-auto shrink-0">
             <TabsList className="rounded-lg">
               <TabsTrigger value="hierarchy" className="rounded-md" aria-label="Hierarchy">
-                <HierarchySquare02Icon size={15} /> <span className="hidden md:inline">Hierarchy</span>
+                <HierarchySquare02Icon size={15} /> <span className="hidden lg:inline">Hierarchy</span>
               </TabsTrigger>
               <TabsTrigger value="connections" className="rounded-md" aria-label="Connections">
-                <ChartRelationshipIcon size={15} /> <span className="hidden md:inline">Connections</span>
+                <ChartRelationshipIcon size={15} /> <span className="hidden lg:inline">Connections</span>
               </TabsTrigger>
               <TabsTrigger value="list" className="rounded-md" aria-label="List">
-                <ListViewIcon size={15} /> <span className="hidden md:inline">List</span>
+                <ListViewIcon size={15} /> <span className="hidden lg:inline">List</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
 
-          <div className="flex items-center gap-1">
-            <form onSubmit={runSearch} className="relative hidden xl:block" role="search">
+          <div className="flex shrink-0 items-center gap-1">
+            <form onSubmit={runSearch} className="relative hidden 2xl:block" role="search">
               <Search02Icon size={15} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
               <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find by name or IP" aria-label="Find a resource" className="h-8 w-48 rounded-lg pl-8" />
             </form>
@@ -365,7 +366,7 @@ export function App() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="rounded-lg"
+                      className="hidden rounded-lg sm:inline-flex"
                       onClick={() => setDirection((d) => (d === "LR" ? "TB" : "LR"))}
                       aria-label={direction === "LR" ? "Lay out top to bottom" : "Lay out left to right"}
                     >
@@ -390,7 +391,7 @@ export function App() {
                   {refreshing ? <Loading03Icon size={17} className="animate-spin" /> : <Refresh03Icon size={17} />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Refresh from Hetzner</TooltipContent>
+              <TooltipContent>{graph ? `Updated ${ago(graph.generatedAt)}. Refresh from Hetzner` : "Refresh from Hetzner"}</TooltipContent>
             </Tooltip>
             {view !== "list" && (
               <Tooltip>
@@ -398,22 +399,47 @@ export function App() {
                   <Button
                     variant={animate ? "secondary" : "ghost"}
                     size="sm"
-                    className="rounded-lg"
+                    className="hidden rounded-lg sm:inline-flex"
                     onClick={() => setFlowOn((v) => !v)}
                     disabled={reduceMotion}
                     aria-pressed={animate}
                     aria-label={animate ? "Stop the flow animation" : "Animate the flow along the lines"}
                   >
                     {animate ? <PauseCircleIcon size={17} /> : <PlayCircle02Icon size={17} />}
-                    <span className="hidden lg:inline">Flow</span>
+                    <span className="hidden xl:inline">Flow</span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{reduceMotion ? "Off because Reduce motion is on in your system" : animate ? "Stop the running dots" : "Run dots along the lines, like a workflow executing"}</TooltipContent>
               </Tooltip>
             )}
-            <Button variant="ghost" size="icon-sm" className="rounded-lg" onClick={() => setDark((d) => !d)} aria-label={dark ? "Use light mode" : "Use dark mode"}>
+            <Button variant="ghost" size="icon-sm" className="hidden rounded-lg sm:inline-flex" onClick={() => setDark((d) => !d)} aria-label={dark ? "Use light mode" : "Use dark mode"}>
               {dark ? <Sun02Icon size={17} /> : <Moon02Icon size={17} />}
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" className="rounded-lg sm:hidden" aria-label="More options">
+                  <MoreHorizontalCircle02Icon size={18} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 rounded-xl">
+                {view !== "list" && (
+                  <>
+                    <DropdownMenuItem className="rounded-lg" onSelect={() => setDirection((d) => (d === "LR" ? "TB" : "LR"))}>
+                      {direction === "LR" ? <ArrowDataTransferVerticalIcon size={16} /> : <ArrowDataTransferHorizontalIcon size={16} />}
+                      {direction === "LR" ? "Lay out top to bottom" : "Lay out left to right"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="rounded-lg" disabled={reduceMotion} onSelect={() => setFlowOn((v) => !v)}>
+                      {animate ? <PauseCircleIcon size={16} /> : <PlayCircle02Icon size={16} />}
+                      {animate ? "Stop the flow animation" : "Animate the flow"}
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuItem className="rounded-lg" onSelect={() => setDark((d) => !d)}>
+                  {dark ? <Sun02Icon size={16} /> : <Moon02Icon size={16} />}
+                  {dark ? "Use light mode" : "Use dark mode"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" className="rounded-lg" disabled={!graph || projects.length === 0}>

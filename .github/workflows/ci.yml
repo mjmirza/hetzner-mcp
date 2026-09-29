@@ -16,6 +16,10 @@ jobs:
       - run: npm run build
       - name: Offline tests (unit + API-shape hallucination check)
         run: npm run test:offline
+      - name: Layout gate (no wrapped header text, no spilled or overlapping cards)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:layout
       - name: Hygiene gate (fallow, new dead code only)
         run: npm run hygiene
         continue-on-error: true
