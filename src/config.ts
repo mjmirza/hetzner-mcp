@@ -53,7 +53,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HetznerConfig 
     allowBilled: env.HETZNER_MCP_ALLOW_BILLED === "1",
     timeoutMs: positiveInt(env.HETZNER_MCP_TIMEOUT_MS, 30000),
     maxPages: positiveInt(env.HETZNER_MCP_MAX_PAGES, 20),
-    actionWaitMs: env.HETZNER_MCP_ACTION_WAIT_MS === "0" ? 0 : positiveInt(env.HETZNER_MCP_ACTION_WAIT_MS, 120000),
+    // Capped at 10 minutes so a stuck action can never hang a tool call.
+    actionWaitMs: env.HETZNER_MCP_ACTION_WAIT_MS === "0" ? 0 : Math.min(positiveInt(env.HETZNER_MCP_ACTION_WAIT_MS, 120000), 600000),
   };
 }
 

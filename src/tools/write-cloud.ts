@@ -4,8 +4,8 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
-import { classifyCost } from "../cost.js";
-import { waitForActions, describeActions, anyActionFailed } from "../actions.js";
+import { classifyCost, classifyDestructive } from "../cost.js";
+import { waitForActions, actionBlocks, anyActionFailed } from "../actions.js";
 
 function text(value: string, isError = false) {
   return { content: [{ type: "text" as const, text: value }], isError };
@@ -40,14 +40,16 @@ async function guarded(
     }
   }
   // A DELETE is always destructive, even if a caller forgets the flag.
-  const destructive = opts.destructive === true || opts.method === "DELETE";
+  const classified = classifyDestructive(opts.method, opts.path, opts.body);
+  const destructive = opts.destructive === true || opts.method === "DELETE" || classified.destructive;
   if (destructive && opts.confirm !== true) {
-    return text(`DESTRUCTIVE GUARD. ${opts.label} is permanent and can cause data loss. Re-run with confirm set to true.`, true);
+    const why = classified.destructive && opts.method !== "DELETE" ? ` It ${classified.reason?.split(" ").slice(2).join(" ")}.` : " It is permanent and can cause data loss.";
+    return text(`DESTRUCTIVE GUARD. ${opts.label}.${why} Re-run with confirm set to true.`, true);
   }
   try {
     const res = await hetznerRequest(cfg, { surface: "cloud", method: opts.method, path: opts.path, body: opts.body });
     const actions = await waitForActions(cfg, res);
-    return text(JSON.stringify(res, null, 2) + describeActions(actions), anyActionFailed(actions));
+    return { content: [{ type: "text" as const, text: JSON.stringify(res, null, 2) }, ...actionBlocks(actions)], isError: anyActionFailed(actions) };
   } catch (err) {
     return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
   }
@@ -98,8 +100,8 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   );
   server.registerTool(
     "cloud_detach_volume",
-    { title: "Detach a volume", description: "Detach a volume from its server.", inputSchema: { id: id.describe("Volume id.") } },
-    async (a) => guarded(cfg, { method: "POST", path: `/volumes/${enc(a.id)}/actions/detach`, label: `Detaching volume ${a.id}` }),
+    { title: "Detach a volume", description: "Detach a volume from its server. Requires confirm true, because a running workload may lose its disk.", inputSchema: { id: id.describe("Volume id."), confirm: z.boolean().optional().describe("Must be true.") } },
+    async (a) => guarded(cfg, { method: "POST", path: `/volumes/${enc(a.id)}/actions/detach`, label: `Detaching volume ${a.id}`, confirm: a.confirm }),
   );
 
   // ---- Networks ----
@@ -212,8 +214,8 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   );
   server.registerTool(
     "cloud_unassign_floating_ip",
-    { title: "Unassign a floating IP", description: "Unassign a floating IP from its server.", inputSchema: { id: id.describe("Floating IP id.") } },
-    async (a) => guarded(cfg, { method: "POST", path: `/floating_ips/${enc(a.id)}/actions/unassign`, label: `Unassigning floating IP ${a.id}` }),
+    { title: "Unassign a floating IP", description: "Unassign a floating IP from its server. Requires confirm true, because traffic to that address stops.", inputSchema: { id: id.describe("Floating IP id."), confirm: z.boolean().optional().describe("Must be true.") } },
+    async (a) => guarded(cfg, { method: "POST", path: `/floating_ips/${enc(a.id)}/actions/unassign`, label: `Unassigning floating IP ${a.id}`, confirm: a.confirm }),
   );
 
   // ---- Primary IPs ----
@@ -253,8 +255,8 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   );
   server.registerTool(
     "cloud_unassign_primary_ip",
-    { title: "Unassign a primary IP", description: "Unassign a primary IP from its server. The server must be off.", inputSchema: { id: id.describe("Primary IP id.") } },
-    async (a) => guarded(cfg, { method: "POST", path: `/primary_ips/${enc(a.id)}/actions/unassign`, label: `Unassigning primary IP ${a.id}` }),
+    { title: "Unassign a primary IP", description: "Unassign a primary IP from its server. The server must be off. Requires confirm true, because the address stops reaching the server.", inputSchema: { id: id.describe("Primary IP id."), confirm: z.boolean().optional().describe("Must be true.") } },
+    async (a) => guarded(cfg, { method: "POST", path: `/primary_ips/${enc(a.id)}/actions/unassign`, label: `Unassigning primary IP ${a.id}`, confirm: a.confirm }),
   );
 
   // ---- SSH keys ----

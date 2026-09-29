@@ -104,4 +104,13 @@ export function describeActions(outcomes: ActionOutcome[]): string {
   return `\nActions:\n${lines.join("\n")}`;
 }
 
+/**
+ * Action status as its own content block, so the first block stays pure JSON for any
+ * client or script that parses it.
+ */
+export function actionBlocks(outcomes: ActionOutcome[]): Array<{ type: "text"; text: string }> {
+  const d = describeActions(outcomes).trim();
+  return d ? [{ type: "text", text: d }] : [];
+}
+
 export const anyActionFailed = (o: ActionOutcome[]) => o.some((x) => x.status === "error");

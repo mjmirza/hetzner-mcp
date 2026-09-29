@@ -99,6 +99,13 @@ export async function startMapServer(
         return;
       }
       if (url.pathname === "/api/graph") {
+        // Only the page itself sends this header. A cross-origin page cannot add a custom
+        // header without a CORS preflight, which this server never answers, so another
+        // site cannot make it call the Hetzner API on your behalf.
+        if (req.headers["x-hzmap"] !== "1") {
+          res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end("Forbidden");
+          return;
+        }
         const graph = await load(url.searchParams.get("refresh") === "1");
         res.writeHead(200, { ...common, "Content-Type": "application/json" });
         res.end(JSON.stringify(graph));

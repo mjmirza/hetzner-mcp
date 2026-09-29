@@ -24,7 +24,6 @@ import { dirname, resolve } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const serverEntry = resolve(here, "..", "dist", "index.js");
 const LOCATION = "fsn1";
-const DATACENTER = "fsn1-dc14";
 
 // A unique ed25519 public key per run, in OpenSSH wire format. Hetzner rejects a
 // duplicate key by material, so generating a fresh one keeps the ssh_key lifecycle
@@ -68,7 +67,10 @@ async function main(): Promise<void> {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [serverEntry],
-    env: { ...process.env, HETZNER_CLOUD_TOKEN: token },
+    // Paid resources are opt-in since 0.5.0. Allow them in the server so the guards answer
+    // with their confirm prompt; nothing is created without confirm. Billed creates below
+    // only run when LIVE_BILLED=1.
+    env: { ...process.env, HETZNER_CLOUD_TOKEN: token, HETZNER_MCP_ALLOW_BILLED: "1" },
   });
   const client = new Client({ name: "live-validate", version: "1.0.0" });
   await client.connect(transport);
@@ -124,7 +126,7 @@ async function main(): Promise<void> {
 
   // ---- 2. COST GUARD. Billed creates must be refused without confirm (no charge). ----
   const billedPaths: Array<{ path: string; body: Record<string, unknown> }> = [
-    { path: "/primary_ips", body: { name: "g", type: "ipv4", datacenter: DATACENTER, assignee_type: "server" } },
+    { path: "/primary_ips", body: { name: "g", type: "ipv4", location: LOCATION, assignee_type: "server" } },
     { path: "/floating_ips", body: { type: "ipv4", home_location: LOCATION } },
     { path: "/volumes", body: { name: "g", size: 10, location: LOCATION, format: "ext4" } },
     { path: "/load_balancers", body: { name: "g", load_balancer_type: "lb11", location: LOCATION } },
@@ -146,7 +148,8 @@ async function main(): Promise<void> {
   // ---- 3 + 4. FREE and BILLED writes: create + delete each, concurrently. ----
   const idFrom = (r: CallResult, key: string): number | undefined => {
     try {
-      return JSON.parse(textOf(r))?.[key]?.id;
+      // The first block is the API payload; later blocks carry action status (issue #84).
+      return JSON.parse(r.content?.[0]?.text ?? "")?.[key]?.id;
     } catch {
       return undefined;
     }
@@ -159,6 +162,10 @@ async function main(): Promise<void> {
     billed: boolean,
   ): Promise<void> => {
     let id: number | undefined;
+    if (billed && process.env.LIVE_BILLED !== "1") {
+      process.stdout.write(`SKIP  billed ${label} lifecycle (set LIVE_BILLED=1 to spend a few cents on it)\n`);
+      return;
+    }
     try {
       const create = await req({ method: "POST", path, body: createBody, confirm: billed, verbose: true });
       const ct = textOf(create);
@@ -172,7 +179,25 @@ async function main(): Promise<void> {
         return;
       }
       record(`${billed ? "billed" : "free"} ${label} create`, true, `id=${id}`);
+      // Issue #84. When Hetzner returns actions, the tool must wait and report them in a
+      // separate block, keeping the first block parseable JSON.
+      const blocks = (create.content ?? []) as Array<{ text?: string }>;
+      if (blocks.length > 1) {
+        const a = blocks[1]?.text ?? "";
+        record(`${label} actions awaited`, /finished/.test(a) && !/FAILED|still running/.test(a), a.slice(0, 90));
+      }
     } finally {
+      // Never leave a resource behind. If the id could not be read, find it by name.
+      if (!id && typeof createBody.name === "string") {
+        const found = await req({ path, query: { name: createBody.name }, verbose: true });
+        try {
+          const list = JSON.parse(found.content?.[0]?.text ?? "{}") as Record<string, Array<{ id: number }>>;
+          id = Object.values(list).find(Array.isArray)?.[0]?.id;
+          if (id) record(`${label} leak recovered by name`, true, `id=${id}`);
+        } catch {
+          // Reported below as a failed create; the account audit catches anything left.
+        }
+      }
       if (id) {
         const del = await req({ method: "DELETE", path: `${path}/${id}`, confirm: true });
         record(`${label} delete`, !del.isError, del.isError ? textOf(del).slice(0, 80) : `id=${id}`);
@@ -203,7 +228,7 @@ async function main(): Promise<void> {
     lifecycle("placement_group", { name: "lvtest-pg", type: "spread" }, "/placement_groups", "placement_group", false),
     lifecycle(
       "primary_ip",
-      { name: "lvtest-pip", type: "ipv4", datacenter: DATACENTER, assignee_type: "server" },
+      { name: "lvtest-pip", type: "ipv4", location: LOCATION, assignee_type: "server" },
       "/primary_ips",
       "primary_ip",
       true,

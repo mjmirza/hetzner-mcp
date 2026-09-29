@@ -191,6 +191,26 @@ claude mcp add hetzner \
   -- npx -y hetzner-mcp
 ```
 
+### Installing from GitHub Packages instead of npm
+
+Most people should use the npm commands above. They need no account.
+
+The copy of this package on GitHub Packages is published as `@mjmirza/hetzner-mcp`. The install command GitHub shows on its package page fails when pasted as is, for two reasons that come from GitHub, not from this package. npm looks for the name on npmjs.com unless told otherwise, and GitHub requires a login to download any npm package, even a public one. These steps work:
+
+1. Create a GitHub token (classic) with the `read:packages` scope at https://github.com/settings/tokens
+2. Tell npm where the `@mjmirza` packages live and give it the token:
+
+```bash
+npm config set @mjmirza:registry https://npm.pkg.github.com
+npm config set //npm.pkg.github.com/:_authToken YOUR_GITHUB_TOKEN
+```
+
+3. Run it:
+
+```bash
+npx @mjmirza/hetzner-mcp setup
+```
+
 ### Install globally with npm
 
 Install once and the hetzner-mcp command is on your PATH.
@@ -211,9 +231,8 @@ claude mcp add hetzner -e HETZNER_CLOUD_TOKEN=your-token -- hetzner-mcp
 git clone https://github.com/mjmirza/hetzner-mcp
 cd hetzner-mcp
 npm install
-cp .env.example .env   # then fill in your token
 npm run build
-npm start
+HETZNER_CLOUD_TOKEN=your-token npm start
 ```
 
 ## Getting your credentials

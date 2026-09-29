@@ -37,7 +37,7 @@ const BILLED_ACTIONS =
  * rotate credentials. DELETE is always treated as destructive by callers.
  */
 const DESTRUCTIVE_FREE_ACTIONS =
-  /\/(actions)\/(poweroff|shutdown|reboot|reset|rebuild|reset_password|enable_rescue|disable_backup|detach_from_network|disable_public_interface|remove_target|delete_service|delete_route|delete_subnet|import_zonefile|set_records|remove_records|change_primary_nameservers|rollback_snapshot|disable_snapshot_plan|reset_subaccount_password|change_home_directory|update_access_settings)\/?$/i;
+  /\/(actions)\/(poweroff|shutdown|reboot|reset|rebuild|reset_password|enable_rescue|disable_backup|detach|unassign|detach_from_network|disable_public_interface|remove_target|delete_service|delete_route|delete_subnet|import_zonefile|set_records|remove_records|change_primary_nameservers|rollback_snapshot|disable_snapshot_plan|reset_subaccount_password|change_home_directory|update_access_settings)\/?$/i;
 
 /** Storage Box actions that change what you pay. change_type moves the box to another plan. */
 const BILLED_STORAGEBOX_ACTIONS = /\/storage_boxes\/[^/]+\/actions\/change_type$/i;
@@ -45,6 +45,8 @@ const BILLED_STORAGEBOX_ACTIONS = /\/storage_boxes\/[^/]+\/actions\/change_type$
 /** Plain-language reason for each destructive action, so the confirm prompt says what is at stake. */
 const DESTRUCTIVE_REASON: Record<string, string> = {
   disable_backup: "deletes all existing automatic backups of this server",
+  detach: "disconnects the volume from its server, which can break a running workload",
+  unassign: "takes the IP address off its server, which cuts traffic to that address",
   rollback_snapshot: "overwrites the current Storage Box contents with the snapshot",
   import_zonefile: "replaces the DNS records of the zone",
   set_records: "replaces the records of this DNS record set",
@@ -80,9 +82,15 @@ export function normalizeCostPath(path: string): string {
       break;
     }
   }
-  clean = clean.replace(/\/+/g, "/").replace(/\/+$/, "");
-  if (!clean.startsWith("/")) clean = "/" + clean;
-  return clean.toLowerCase();
+  // Resolve "." and ".." segments the way the URL parser will before the request is sent,
+  // so the guard classifies the same path Hetzner receives.
+  const out: string[] = [];
+  for (const seg of clean.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") out.pop();
+    else out.push(seg);
+  }
+  return ("/" + out.join("/")).toLowerCase();
 }
 
 export function classifyCost(surface: SurfaceName, method: string, path: string): CostDecision {

@@ -83,7 +83,16 @@ assert("server binds loopback only", handle.url.startsWith("http://127.0.0.1:"))
 assert("page served with a CSP", String((await get("/", okHost)).headers["content-security-policy"]).includes("default-src 'none'"));
 assert("foreign Host header rejected (DNS rebinding)", (await get("/", "evil.example")).status === 421);
 assert("POST refused, read-only", (await get("/api/graph", okHost, "POST")).status === 405);
-const api = await get("/api/graph", okHost);
+assert("graph refused without the page header (cross-origin quota burn)", (await get("/api/graph?refresh=1", okHost)).status === 403);
+const api = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+  const r = request({ host: "127.0.0.1", port: handle.port, path: "/api/graph", headers: { Host: okHost, "X-Hzmap": "1" } }, (res) => {
+    let body = "";
+    res.on("data", (c) => (body += c));
+    res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+  });
+  r.on("error", reject);
+  r.end();
+});
 assert("graph endpoint returns the graph", api.status === 200 && JSON.parse(api.body).source === "sample");
 assert("localhost Host also accepted", (await get("/healthz", `localhost:${handle.port}`)).status === 200);
 const again = await startMapServer(loadConfig({}), { demo: true });
