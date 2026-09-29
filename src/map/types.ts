@@ -1,4 +1,5 @@
 /** The infrastructure graph shared by the collector, the MCP summary, and the web canvas. */
+import type { AuditReport } from "./audit.js";
 
 export type NodeKind =
   | "account"
@@ -42,6 +43,8 @@ export interface MapNode {
  */
 export interface Flag {
   kind: "waste" | "risk" | "info";
+  /** Stable id of the check that raised it, for example "volume_unattached". The audit keys fix steps on it. */
+  code?: string;
   text: string;
   monthly: number | null;
 }
@@ -83,4 +86,6 @@ export interface InfraGraph {
     findings: Finding[];
   };
   caveats: string[];
+  /** Built on every map refresh, so the report is always there without a click. */
+  audit?: AuditReport;
 }

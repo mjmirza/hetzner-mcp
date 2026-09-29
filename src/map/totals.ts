@@ -1,5 +1,6 @@
 /** Rolls node prices up into project, kind, top-driver, and finding totals. */
 import type { InfraGraph, MapEdge, MapNode, NodeKind } from "./types.js";
+import { audit } from "./audit.js";
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
@@ -72,5 +73,6 @@ export function finalize(input: {
     edges,
     totals: { monthly, byProject, byKind, topDrivers, findings },
     caveats,
+    audit: audit({ nodes }),
   };
 }
