@@ -11,6 +11,8 @@ export interface StoredProject {
   account: string;
   token: string;
   addedAt: string;
+  /** Optional group of accounts. Missing means the default workspace. */
+  workspace?: string;
 }
 
 export function storeDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -25,7 +27,8 @@ export function readStored(env: NodeJS.ProcessEnv = process.env): StoredProject[
     const raw = JSON.parse(readFileSync(file(env), "utf8")) as { projects?: unknown };
     if (!Array.isArray(raw.projects)) return [];
     return raw.projects.filter(
-      (p): p is StoredProject => !!p && typeof p.name === "string" && typeof p.account === "string" && typeof p.token === "string" && p.token.length > 0,
+      (p): p is StoredProject =>
+        !!p && typeof p.name === "string" && typeof p.account === "string" && typeof p.token === "string" && p.token.length > 0 && (p.workspace === undefined || typeof p.workspace === "string"),
     );
   } catch {
     return [];
@@ -46,6 +49,15 @@ function write(env: NodeJS.ProcessEnv, projects: StoredProject[]): void {
 export function saveStored(env: NodeJS.ProcessEnv, p: Omit<StoredProject, "addedAt">): void {
   const rest = readStored(env).filter((x) => !(x.name === p.name && x.account === p.account));
   write(env, [...rest, { ...p, addedAt: new Date().toISOString() }]);
+}
+
+/** Adds many projects in one atomic write. Same account and name replaces the old entry. */
+export function saveManyStored(env: NodeJS.ProcessEnv, items: Array<Omit<StoredProject, "addedAt">>): void {
+  if (items.length === 0) return;
+  const key = (x: { account: string; name: string }) => `${x.account}\u0000${x.name}`;
+  const incoming = new Set(items.map(key));
+  const at = new Date().toISOString();
+  write(env, [...readStored(env).filter((x) => !incoming.has(key(x))), ...items.map((p) => ({ ...p, addedAt: at }))]);
 }
 
 export function removeStored(env: NodeJS.ProcessEnv, account: string, name: string): boolean {

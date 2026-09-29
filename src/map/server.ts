@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import { join, extname } from "node:path";
 import type { HetznerConfig } from "../config.js";
 import { collectGraph } from "./collect.js";
+import { defaultWorkspace, discoverProjects, listWorkspaces, type WorkspaceSummary } from "./projects.js";
+import { readStored } from "./store.js";
 import { sampleGraph } from "./sample.js";
 import { ActionError, apply, catalog, connectProject, deleteNode, deletePlan, disconnectProject, meta, plan, projectById, publicCatalog, type ActionEnv } from "./actions.js";
 import type { InfraGraph } from "./types.js";
@@ -17,6 +19,7 @@ export const DEFAULT_MAP_PORT = 43390;
 const HOST = "127.0.0.1";
 const MIN_REFRESH_MS = 10_000;
 const MAX_BODY = 16 * 1024;
+const MAX_CACHED_WORKSPACES = 12;
 const WEB_DIR = fileURLToPath(new URL("../web/", import.meta.url));
 // Running from source (tsx) serves the copy built into dist.
 const WEB_FALLBACK = fileURLToPath(new URL("../../dist/web/", import.meta.url));
@@ -82,23 +85,40 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
 
 export async function startMapServer(
   cfg: HetznerConfig,
-  opts: { port?: number; demo?: boolean; env?: NodeJS.ProcessEnv } = {},
+  opts: { port?: number; demo?: boolean; env?: NodeJS.ProcessEnv; collect?: (workspace: string | undefined) => Promise<InfraGraph> } = {},
 ): Promise<MapServerHandle> {
   if (running) return running;
   const env = opts.env ?? process.env;
   const actx: ActionEnv = { base: cfg, env, demo: opts.demo === true };
-  let cache: { graph: InfraGraph; at: number } | undefined;
-  let inflight: Promise<InfraGraph> | undefined;
+  // One cache slot per workspace, so switching back is instant and 100 clients never load at once.
+  const cache = new Map<string, { graph: InfraGraph; at: number }>();
+  const inflight = new Map<string, Promise<InfraGraph>>();
+  const collect = opts.collect ?? ((workspace: string | undefined) => collectGraph(cfg, env, { workspace }));
 
-  const load = async (force: boolean): Promise<InfraGraph> => {
-    if (opts.demo) return sampleGraph();
-    const fresh = cache && Date.now() - cache.at < (force ? MIN_REFRESH_MS : 60_000);
-    if (fresh) return cache!.graph;
-    inflight ??= collectGraph(cfg, env).finally(() => {
-      inflight = undefined;
-    });
-    const graph = await inflight;
-    cache = { graph, at: Date.now() };
+  const workspaces = (): WorkspaceSummary[] => {
+    if (opts.demo) {
+      const g = sampleGraph();
+      const count = (k: string) => g.nodes.filter((n) => n.kind === k).length;
+      return [{ name: defaultWorkspace(env), accounts: count("account"), projects: count("project") }];
+    }
+    return listWorkspaces(discoverProjects(cfg, env, readStored(env)), env, !!(cfg.robotUser && cfg.robotPassword));
+  };
+
+  const load = async (workspace: string | undefined, force: boolean): Promise<InfraGraph> => {
+    if (opts.demo) return { ...sampleGraph(), workspace };
+    const key = workspace ?? "";
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < (force ? MIN_REFRESH_MS : 60_000)) return hit.graph;
+    let job = inflight.get(key);
+    if (!job) {
+      job = collect(workspace).finally(() => inflight.delete(key));
+      inflight.set(key, job);
+    }
+    const graph = await job;
+    cache.delete(key);
+    cache.set(key, { graph, at: Date.now() });
+    // Keep only the most recently loaded workspaces in memory.
+    while (cache.size > MAX_CACHED_WORKSPACES) cache.delete(cache.keys().next().value!);
     return graph;
   };
 
@@ -164,7 +184,16 @@ export async function startMapServer(
       }
 
       if (method === "GET") {
-        if (url.pathname === "/api/graph") return json(200, await load(url.searchParams.get("refresh") === "1"));
+        if (url.pathname === "/api/workspaces") {
+          const list = workspaces();
+          return json(200, { default: list[0]?.name ?? defaultWorkspace(env), workspaces: list });
+        }
+        if (url.pathname === "/api/graph") {
+          const list = workspaces();
+          const asked = url.searchParams.get("workspace");
+          if (asked !== null && !list.some((w) => w.name === asked)) throw new ActionError(400, "Unknown workspace. GET /api/workspaces lists the valid names.");
+          return json(200, await load(asked ?? list[0]?.name, url.searchParams.get("refresh") === "1"));
+        }
         if (url.pathname === "/api/meta") return json(200, meta(actx));
         if (url.pathname === "/api/catalog") {
           if (opts.demo) throw new ActionError(403, "This is sample data. Start the live map to create real resources.");
@@ -180,7 +209,7 @@ export async function startMapServer(
       const body = await readJson(req);
       if (opts.demo && url.pathname !== "/api/projects") throw new ActionError(403, "This is sample data. Start the live map to change real resources.");
       const done = (message: string) => {
-        cache = undefined;
+        cache.clear();
         json(200, { ok: true, message });
       };
       switch (url.pathname) {

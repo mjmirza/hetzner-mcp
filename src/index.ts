@@ -13,6 +13,7 @@ import { loadConfig, availableSurfaces } from "./config.js";
 import { registerAllTools, isLean } from "./tools/register.js";
 import { runMap } from "./map/cli.js";
 import { runAudit } from "./map/audit-cli.js";
+import { runProjects } from "./map/projects-cli.js";
 import { runSetup } from "./setup/wizard.js";
 import { runDoctor } from "./setup/doctor.js";
 import { VERSION } from "./version.js";
@@ -34,6 +35,8 @@ function printHelp(): void {
       "                Flags. --port N, --open, --demo. Default http://127.0.0.1:43390",
       "    audit       Security, cost and reliability audit with fix steps.",
       "                Flags. --out report.md, --json, --demo, --fail-on critical|high",
+      "    projects    Manage saved project tokens across workspaces (clients).",
+      "                import <file> [--verify], list [--json], remove <workspace>/<account>/<project>",
       "    help        Show this help.",
       "    version     Print the version.",
       "",
@@ -78,6 +81,10 @@ async function main(): Promise<void> {
   }
   if (cmd === "audit") {
     process.exitCode = await runAudit(argv.slice(1));
+    return;
+  }
+  if (cmd === "projects") {
+    process.exitCode = await runProjects(argv.slice(1));
     return;
   }
   if (cmd === "version" || cmd === "--version" || cmd === "-v") {

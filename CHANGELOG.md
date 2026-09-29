@@ -18,6 +18,10 @@ Changelog, and this project follows semantic versioning.
 - Optional Flow mode that animates dots along every line. Off when Reduce motion is on.
 - `HETZNER_MCP_TOOLS=lean` skips the 27 list shortcuts, cutting the tool list from about
   9,400 to 5,900 tokens.
+- Workspaces. Previously every saved project sat in one flat list and the map read all of them at once. Now a project can belong to a workspace (one per client), the map reads only the active workspace, 4 projects at a time, and one bad token only marks its own project unreadable. With no workspace set, everything lands in Personal, so existing setups see no change.
+- `GET /api/workspaces` returns names with account and project counts, never tokens. `GET /api/graph?workspace=<name>` maps one workspace and answers 400 for an unknown name.
+- `hetzner-mcp projects import <file> [--verify]`, `projects list`, `projects remove`. Bulk import from CSV or JSON, one atomic owner-only write, duplicates and bad rows reported by row number, tokens shown only as their last 4 characters.
+- `infra_map` takes an optional `target`, a workspace or `workspace/account/project`, so an assistant can map one client without loading every account.
 
 ### Changed
 - List view is now a flat list grouped by project, most urgent first, with plain status words

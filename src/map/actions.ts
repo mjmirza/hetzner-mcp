@@ -27,9 +27,9 @@ export const CREATE_KINDS = ["server", "volume", "network", "firewall", "load_ba
 type CreateKind = (typeof CREATE_KINDS)[number];
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9.-]{0,62}$/;
-const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
-const ACCOUNT = /^[^/\u0000-\u001f]{1,60}$/;
-const TOKEN = /^[A-Za-z0-9]{20,128}$/;
+export const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
+export const ACCOUNT = /^[^/\u0000-\u001f]{1,60}$/;
+export const TOKEN = /^[A-Za-z0-9]{20,128}$/;
 const ID = /^[0-9]{1,15}$/;
 const CIDR = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
 
@@ -46,7 +46,7 @@ export function meta(a: ActionEnv) {
     mode: a.demo ? "demo" : "live",
     readOnly: a.base.readOnly,
     allowBilled: a.base.allowBilled,
-    projects: projectsOf(a).map((p) => ({ id: `p:${p.account}/${p.name}`, name: p.name, account: p.account, source: p.source })),
+    projects: projectsOf(a).map((p) => ({ id: `p:${p.account}/${p.name}`, name: p.name, account: p.account, workspace: p.workspace, source: p.source })),
   };
 }
 
@@ -323,6 +323,7 @@ export async function connectProject(a: ActionEnv, body: Json): Promise<string> 
   const name = str(body.name, "Project name", PROJECT_NAME);
   const account = typeof body.account === "string" && body.account.trim() ? str(body.account, "Account", ACCOUNT) : a.env.HETZNER_ACCOUNT_NAME?.trim() || "Hetzner account";
   const token = str(body.token, "API token", TOKEN);
+  const workspace = typeof body.workspace === "string" && body.workspace.trim() ? str(body.workspace, "Workspace", ACCOUNT) : undefined;
   const existing = projectsOf(a);
   if (existing.some((p) => p.cfg.cloudToken === token)) throw new ActionError(409, "That token is already connected.");
   if (existing.some((p) => p.name === name && p.account === account && p.source === "env")) throw new ActionError(409, "A project with that name comes from your environment settings.");
@@ -332,7 +333,7 @@ export async function connectProject(a: ActionEnv, body: Json): Promise<string> 
     const status = (err as { status?: number }).status;
     throw new ActionError(400, status === 401 || status === 403 ? "Hetzner rejected this token. Copy it again from the project." : "Could not reach Hetzner to check the token. Try again.");
   }
-  saveStored(a.env, { name, account, token });
+  saveStored(a.env, { name, account, token, ...(workspace ? { workspace } : {}) });
   return `Connected ${name}. The token checked out with Hetzner and is saved only on this computer.`;
 }
 

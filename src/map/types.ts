@@ -86,6 +86,8 @@ export interface InfraGraph {
     findings: Finding[];
   };
   caveats: string[];
+  /** The workspace this graph covers. Absent when every workspace was mapped together. */
+  workspace?: string;
   /** Built on every map refresh, so the report is always there without a click. */
   audit?: AuditReport;
 }
