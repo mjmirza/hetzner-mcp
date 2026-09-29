@@ -123,5 +123,12 @@ assert("primary IP unassign needs confirm", classifyDestructive("POST", "/primar
 assert("volume attach does not need confirm", !classifyDestructive("POST", "/volumes/1/actions/attach").destructive);
 assert("action wait is capped at 10 minutes", loadConfig({ HETZNER_MCP_ACTION_WAIT_MS: "1e308" }).actionWaitMs === 600000);
 
+// Round 2 of the adversarial review: encoded ?, # and % are refused before any request.
+let refusedEncoded = 0;
+for (const p of ["/servers%3Ffoo", "/servers%23foo", "/servers/1/actions/create_image%3Ffoo", "/volumes/1/actions/detach%3ffoo", "/servers/1/actions/%252e/rebuild"]) {
+  try { normalizePath(p); } catch { refusedEncoded++; }
+}
+assert("encoded ?, # and % in a path are refused", refusedEncoded === 5);
+
 process.stdout.write(`\n${passed}/${total} safety-guard checks passed\n`);
 if (passed !== total) process.exitCode = 1;

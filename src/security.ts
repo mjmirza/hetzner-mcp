@@ -30,6 +30,11 @@ export function normalizePath(path: string): string {
   if (raw.includes("..") || decoded.includes("..")) {
     throw new Error("path must not contain '..'");
   }
+  // An encoded ?, # or % has no legitimate use in a Hetzner API path, and it would let the
+  // guard and the sent request read the path differently. Pass query values via `query`.
+  if (/%(3f|23|25)/i.test(raw)) {
+    throw new Error("path must not contain an encoded '?', '#' or '%'. Put query values in the query field");
+  }
   if (/(^|\/)\.(\/|$)/.test(raw) || /(^|\/)\.(\/|$)/.test(decoded)) {
     throw new Error("path must not contain '.' segments");
   }
