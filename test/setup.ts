@@ -122,6 +122,13 @@ async function main(): Promise<void> {
     refused = String(e);
   }
   assert("a symlinked .vscode folder is refused and nothing is written through it", /symbolic link/.test(refused) && readdirSync(elsewhere).length === 0);
+  // A home-level app folder kept as a link by a dotfile manager still gets its config.
+  const home = mkdtempSync(join(tmpdir(), "hz-home-"));
+  const dotfiles = mkdtempSync(join(tmpdir(), "hz-dotfiles-"));
+  symlinkSync(dotfiles, join(home, ".cursor"));
+  const cursorLinked = clientTargets(process.platform, home, project).find((t) => t.id === "cursor")!;
+  writeClientConfig(cursorLinked, { HETZNER_CLOUD_TOKEN: "t" });
+  assert("a symlinked home app folder still gets its config", readdirSync(dotfiles).includes("mcp.json"));
   rmSync(`${real}.bak`);
   writeFileSync(`${real}.bak`, "older backup");
   const res = writeClientConfig(target(real), { HETZNER_CLOUD_TOKEN: "t" });
