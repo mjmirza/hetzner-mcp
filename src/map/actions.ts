@@ -6,7 +6,8 @@ import { classifyCost } from "../cost.js";
 import { waitForActions } from "../actions.js";
 import { capacityRows } from "../tools/capacity.js";
 import { deletionPreview } from "../tools/delete-preview.js";
-import { discoverProjects, type ProjectRef } from "./projects.js";
+import { DEFAULT_WORKSPACE, discoverProjects, type ProjectRef } from "./projects.js";
+import { sampleGraph } from "./sample.js";
 import { readStored, removeStoredAsync, saveStoredAsync } from "./store.js";
 import { normName } from "../text.js";
 
@@ -50,7 +51,10 @@ export function meta(a: ActionEnv) {
     mode: a.demo ? "demo" : "live",
     readOnly: a.base.readOnly,
     allowBilled: a.base.allowBilled,
-    projects: projectsOf(a).map((p) => ({ id: `p:${p.account}/${p.name}`, name: p.name, account: p.account, workspace: p.workspace, source: p.source })),
+    // Sample data must never reveal which real accounts or projects are configured.
+    projects: a.demo
+      ? sampleGraph().nodes.filter((n) => n.kind === "project").map((n) => ({ id: n.id, name: n.label, account: n.account, workspace: DEFAULT_WORKSPACE, source: "env" as const }))
+      : projectsOf(a).map((p) => ({ id: `p:${p.account}/${p.name}`, name: p.name, account: p.account, workspace: p.workspace, source: p.source })),
   };
 }
 

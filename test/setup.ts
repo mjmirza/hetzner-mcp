@@ -7,9 +7,17 @@ import {
   buildServerEntry,
   mergeServerIntoConfig,
   hasHetznerServer,
+  ignoresVscodeMcp,
+  launcherFor,
   tilde,
 } from "../src/setup/clients.js";
-import { parseSetupFlags } from "../src/setup/wizard.js";
+import { parseSetupFlags, projectLocalWarning, writeClientConfig } from "../src/setup/wizard.js";
+import { createPrompter } from "../src/setup/prompt.js";
+import { VERSION } from "../src/version.js";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, win32 } from "node:path";
+import { PassThrough, Writable } from "node:stream";
 import { validateCloudToken } from "../src/setup/validate.js";
 
 let passed = 0;
@@ -55,8 +63,76 @@ async function main(): Promise<void> {
 
   // buildServerEntry shape.
   const e1 = buildServerEntry({ HETZNER_CLOUD_TOKEN: "t" });
-  assert("entry command is npx", e1.command === "npx");
-  assert("entry args use -y package", e1.args.join(" ") === "-y hetzner-mcp");
+  assert("from source the entry falls back to npx", e1.command === "npx");
+  assert("the npx fallback pins this exact version", e1.args.join(" ") === `-y hetzner-mcp@${VERSION}`);
+
+  // An installed copy is launched by absolute path, so a project's node_modules is never run.
+  const installed = launcherFor("/usr/local/lib/node_modules/hetzner-mcp/dist/index.js", "/usr/local/bin/node", "1.2.3");
+  assert("an installed copy is launched by absolute node and entry paths", installed.command === "/usr/local/bin/node" && installed.args.join() === "/usr/local/lib/node_modules/hetzner-mcp/dist/index.js");
+  const cached = launcherFor("/Users/x/.npm/_npx/abc/node_modules/hetzner-mcp/dist/index.js", "/usr/local/bin/node", "1.2.3");
+  assert("a copy in the npx cache pins the exact version instead", cached.command === "npx" && cached.args.join(" ") === "-y hetzner-mcp@1.2.3");
+  const winEntry = win32.join("C:", "Users", "x", "AppData", "Local", "npm-cache", "_npx", "abc", "node_modules", "hetzner-mcp", "dist", "index.js");
+  assert("the npx cache is recognised on Windows paths too", launcherFor(winEntry, "node.exe", "1.2.3").command === "npx");
+  const e3 = buildServerEntry({ HETZNER_CLOUD_TOKEN: "t" }, false, installed);
+  assert("the entry uses the given launcher and never a bare package name", e3.command === "/usr/local/bin/node" && !e3.args.includes("hetzner-mcp"));
+
+  // A VS Code config lives inside the project, so the wizard checks .gitignore before warning.
+  assert(".vscode/ in .gitignore is recognised", ignoresVscodeMcp("node_modules\n.vscode/\n"));
+  assert("the exact file in .gitignore is recognised", ignoresVscodeMcp("/.vscode/mcp.json"));
+  assert("an empty .gitignore does not ignore it", !ignoresVscodeMcp(""));
+  assert("a later negation re-includes it", !ignoresVscodeMcp(".vscode/\n!.vscode/mcp.json\n"));
+  const vsTarget = clientTargets("darwin", "/Users/x", mkdtempSync(join(tmpdir(), "hz-vs-")), {}).find((t) => t.id === "vscode")!;
+  const vsWarn = projectLocalWarning(vsTarget, dirname(dirname(vsTarget.configPath))) ?? "";
+  assert("writing the VS Code config warns and names the file", vsWarn.includes(vsTarget.configPath) && /committed/.test(vsWarn) && /does not ignore/.test(vsWarn));
+  assert("user-level clients get no project warning", projectLocalWarning(clientTargets()[0]!) === undefined);
+
+  // Config writes never follow links, and the backup never overwrites anything.
+  const dir = mkdtempSync(join(tmpdir(), "hz-cfg-"));
+  const victim = join(dir, "victim.json");
+  writeFileSync(victim, '{"secret":"keep"}');
+  const target = (configPath: string) => ({ ...clientTargets()[2]!, configPath });
+  const linked = join(dir, "linked.json");
+  symlinkSync(victim, linked);
+  let refused = "";
+  try {
+    writeClientConfig(target(linked), { HETZNER_CLOUD_TOKEN: "t" });
+  } catch (e) {
+    refused = String(e);
+  }
+  assert("a symlinked client config is refused", /symbolic link/.test(refused) && !existsSync(`${linked}.bak`) && readFileSync(victim, "utf8") === '{"secret":"keep"}');
+  const real = join(dir, "real.json");
+  writeFileSync(real, '{"mcpServers":{}}');
+  symlinkSync(victim, `${real}.bak`);
+  refused = "";
+  try {
+    writeClientConfig(target(real), { HETZNER_CLOUD_TOKEN: "t" });
+  } catch (e) {
+    refused = String(e);
+  }
+  assert("a symlinked backup path is refused and its target is untouched", /symbolic link/.test(refused) && readFileSync(victim, "utf8") === '{"secret":"keep"}' && readFileSync(real, "utf8") === '{"mcpServers":{}}');
+  rmSync(`${real}.bak`);
+  writeFileSync(`${real}.bak`, "older backup");
+  const res = writeClientConfig(target(real), { HETZNER_CLOUD_TOKEN: "t" });
+  const kept = readdirSync(dir).filter((f) => f.startsWith("real.json.bak."));
+  assert("an existing backup is kept under a timestamped name", kept.length === 1 && readFileSync(join(dir, kept[0]!), "utf8") === "older backup");
+  assert("the new backup holds the original and is owner-only", readFileSync(res.backup!, "utf8") === '{"mcpServers":{}}' && (statSync(res.backup!).mode & 0o777) === 0o600);
+  assert("no temp file is left behind", !readdirSync(dir).some((f) => f.includes(".tmp-")));
+
+  // A hidden prompt returns the answer without ever echoing it.
+  const input = new PassThrough();
+  let shown = "";
+  const output = new Writable({ write(c, _e, done) { shown += String(c); done(); } });
+  const pr = createPrompter(input, output, true);
+  const answer = pr.askHidden("Token: ");
+  input.write("s3cretTOKENvalue\r");
+  const got = await answer;
+  pr.close();
+  assert("a hidden prompt returns what was typed", got === "s3cretTOKENvalue");
+  assert("a hidden prompt never echoes the secret", shown.includes("Token: ") && !shown.includes("s3cret"));
+
+  const fs1 = parseSetupFlags(["--token-stdin", "--print-secrets"]);
+  assert("--token-stdin and --print-secrets are parsed", fs1.tokenStdin && fs1.printSecrets && fs1.print && fs1.secretsInArgv.length === 0);
+  assert("secrets given as arguments are noted for a warning", parseSetupFlags(["--token", "abc"]).secretsInArgv.join() === "--token");
   assert("entry omits empty robot creds", !("HETZNER_ROBOT_USER" in e1.env));
   assert("entry omits type by default", e1.type === undefined);
   const e2 = buildServerEntry({ HETZNER_CLOUD_TOKEN: "t", HETZNER_ROBOT_USER: "u", HETZNER_ROBOT_PASSWORD: "p" }, true);

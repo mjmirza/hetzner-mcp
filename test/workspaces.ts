@@ -1,7 +1,8 @@
 /** Offline tests for workspaces: grouping, bounded collection, the API, bulk import. No network. */
 import { request } from "node:http";
-import { mkdtempSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { homedir, hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { collectGraph } from "../src/map/collect.js";
@@ -9,7 +10,7 @@ import { settleWithLimit } from "../src/map/limit.js";
 import { discoverProjects, listWorkspaces, resolveTarget } from "../src/map/projects.js";
 import { importProjects, maskToken, parseImport, runProjects } from "../src/map/projects-cli.js";
 import { startMapServer } from "../src/map/server.js";
-import { readStored, saveStored, storeDir } from "../src/map/store.js";
+import { readStored, saveStored, saveStoredAsync, storeDir } from "../src/map/store.js";
 import { mkdirSync, rmSync, utimesSync } from "node:fs";
 import { sampleGraph } from "../src/map/sample.js";
 import { toMermaid } from "../src/map/summary.js";
@@ -108,7 +109,7 @@ const handle = await startMapServer(loadConfig(senv), { env: senv, port: 43390 +
 const okHost = `127.0.0.1:${handle.port}`;
 const get = (path: string) =>
   new Promise<{ status: number; body: string }>((resolve, reject) => {
-    const r = request({ host: "127.0.0.1", port: handle.port, path, headers: { Host: okHost, "X-Hzmap": "1" } }, (res) => {
+    const r = request({ host: "127.0.0.1", port: handle.port, path, headers: { Host: okHost, "X-Hzmap": handle.token } }, (res) => {
       let body = "";
       res.on("data", (c) => (body += c));
       res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
@@ -221,6 +222,70 @@ assert("a file with bad rows exits 1", (await runProjects(["import", file], ienv
   saveStored(lenv, { name: "x", account: "A", token: tok("x") });
   assert("a stale lock is taken over and the write lands", readStored(lenv).some((p) => p.name === "x"));
 
+  // A relative XDG_CONFIG_HOME never puts the token store in the current directory.
+  assert("a relative XDG_CONFIG_HOME falls back to the home config dir", storeDir({ XDG_CONFIG_HOME: "rel" }) === join(homedir(), ".config", "hetzner-mcp"));
+
+  // A loose store dir we own is tightened, and a link at an old temp name is never followed.
+  const denv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home() };
+  mkdirSync(storeDir(denv), { recursive: true });
+  chmodSync(storeDir(denv), 0o777);
+  const victim = join(home(), "victim.txt");
+  writeFileSync(victim, "keep");
+  symlinkSync(victim, join(storeDir(denv), `projects.json.${process.pid}.tmp`));
+  saveStored(denv, { name: "d", account: "A", token: tok("d") });
+  assert("a world-writable store dir we own is tightened to 0700", (statSync(storeDir(denv)).mode & 0o777) === 0o700);
+  assert("a planted link at the temp name is not followed", readFileSync(victim, "utf8") === "keep" && readStored(denv).length === 1);
+
+  // A store file others can write is ignored, and kept aside instead of being overwritten.
+  const uenv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home() };
+  mkdirSync(storeDir(uenv), { recursive: true, mode: 0o700 });
+  const planted = join(storeDir(uenv), "projects.json");
+  writeFileSync(planted, JSON.stringify({ projects: [{ name: "evil", account: "E", token: tok("e") }] }));
+  chmodSync(planted, 0o666);
+  assert("a group or world writable store file is not trusted", readStored(uenv).length === 0);
+  saveStored(uenv, { name: "u", account: "A", token: tok("u") });
+  assert("the untrusted file is kept aside, not silently replaced", readdirSync(storeDir(uenv)).some((f) => f.startsWith("projects.json.untrusted-")) && readStored(uenv).map((p) => p.name).join() === "u");
+
+  // A broken store file never costs the tokens in it: it is moved aside before the next write.
+  const cenv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home() };
+  saveStored(cenv, { name: "c1", account: "A", token: tok("c") });
+  const cfile = join(storeDir(cenv), "projects.json");
+  const broken = readFileSync(cfile, "utf8").slice(0, -5);
+  writeFileSync(cfile, broken);
+  assert("an unreadable store reads as empty", readStored(cenv).length === 0);
+  saveStored(cenv, { name: "c2", account: "A", token: tok("k") });
+  const aside = readdirSync(storeDir(cenv)).find((f) => f.startsWith("projects.json.corrupt-"));
+  assert("the broken file is kept aside with its tokens before the write", !!aside && readFileSync(join(storeDir(cenv), aside), "utf8") === broken && readStored(cenv).length === 1);
+
+  // A fresh lock whose owner process is gone is taken over at once, in the CLI and the server.
+  const dead = spawnSync(process.execPath, ["-e", "0"]).pid!;
+  const plant = (env: NodeJS.ProcessEnv, owner: object | null) => {
+    const lock = join(storeDir(env), ".lock");
+    mkdirSync(lock, { recursive: true });
+    if (owner) writeFileSync(join(lock, "owner.json"), JSON.stringify(owner));
+  };
+  const oenv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home() };
+  plant(oenv, { pid: dead, hostname: hostname(), created: new Date().toISOString() });
+  let t0 = Date.now();
+  saveStored(oenv, { name: "o", account: "A", token: tok("o") });
+  assert("a lock left by a dead process is taken over without waiting", readStored(oenv).length === 1 && Date.now() - t0 < 2000, `${Date.now() - t0}ms`);
+  plant(oenv, { pid: dead, hostname: hostname(), created: new Date().toISOString() });
+  t0 = Date.now();
+  await saveStoredAsync(oenv, { name: "o2", account: "A", token: tok("p") });
+  assert("the server takes over a dead owner's lock the same way", readStored(oenv).length === 2 && Date.now() - t0 < 2000, `${Date.now() - t0}ms`);
+  plant(oenv, null);
+  saveStored(oenv, { name: "o3", account: "A", token: tok("q") });
+  assert("a fresh lock with no owner cannot block writes", readStored(oenv).length === 3);
+  plant(oenv, { pid: process.pid, hostname: hostname(), created: new Date().toISOString() });
+  let held = false;
+  try {
+    saveStored(oenv, { name: "o4", account: "A", token: tok("r") });
+  } catch {
+    held = true;
+  }
+  rmSync(join(storeDir(oenv), ".lock"), { recursive: true, force: true });
+  assert("a lock held by a live process is respected", held && readStored(oenv).length === 3);
+
   // Names with a pipe or a newline cannot break the Markdown table or the Mermaid diagram.
   const g = sampleGraph();
   const evil = `Evil|Co${NL}flowchart`;
@@ -282,7 +347,7 @@ assert("a file with bad rows exits 1", (await runProjects(["import", file], ienv
   const call = (method: string, path: string, body?: unknown) =>
     new Promise<{ status: number; body: string }>((resolve, reject) => {
       const payload = body === undefined ? undefined : JSON.stringify(body);
-      const headers: Record<string, string> = { Host: `127.0.0.1:${hx.port}`, "X-Hzmap": "1" };
+      const headers: Record<string, string> = { Host: `127.0.0.1:${hx.port}`, "X-Hzmap": hx.token };
       if (payload) Object.assign(headers, { "Content-Type": "application/json", "Content-Length": String(Buffer.byteLength(payload)) });
       const r = request({ host: "127.0.0.1", port: hx.port, path, method, headers }, (res) => {
         let b = "";

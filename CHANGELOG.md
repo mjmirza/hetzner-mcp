@@ -23,6 +23,30 @@ Changelog, and this project follows semantic versioning.
 - `hetzner-mcp projects import <file> [--verify]`, `projects list`, `projects remove`. Bulk import from CSV or JSON, one atomic owner-only write, duplicates and bad rows reported by row number, tokens shown only as their last 4 characters.
 - `infra_map` takes an optional `target`, a workspace or `workspace/account/project`, so an assistant can map one client without loading every account.
 
+### Security
+- The map URL now carries a per-launch key (`http://127.0.0.1:PORT/#k=<key>`). Before, any
+  local process could call the map API by sending a fixed header value. Now every API call
+  needs the key from that launch, compared in constant time. Slow clients are cut off after
+  15 seconds.
+- The sample map (`--demo`) no longer shows the names of your real workspace, accounts, or
+  projects. Before, its project list and workspace name came from your real setup.
+- `setup --print` shows placeholders instead of real credentials. Add `--print-secrets` to
+  include them. New `--token-stdin` for `setup` and `doctor`; `--token` still works but warns
+  that other local users can see it. The token and Robot password prompts no longer echo.
+- Setup writes an absolute launch command (this Node and this copy's `dist/index.js`), so a
+  `node_modules/hetzner-mcp` inside a project can never be started with your token. From an
+  npx cache it writes `npx -y hetzner-mcp@<exact version>`.
+- Setup refuses a client config or `.bak` path that is a symbolic link, keeps an existing
+  backup under a timestamped name, writes the new backup owner-only, and uses an unguessable
+  temp file. Writing the VS Code config warns that it sits in the project and checks
+  `.gitignore`.
+- `map --open` starts the system opener by absolute path, and a missing opener no longer
+  crashes the map.
+- The project store ignores a relative `XDG_CONFIG_HOME`, tightens a loose directory it owns
+  and refuses one owned by someone else, ignores a `projects.json` others can write, moves an
+  unreadable one aside to `projects.json.corrupt-<time>` instead of overwriting its tokens,
+  uses an unguessable temp file, and takes over a lock whose owning process has exited.
+
 ### Changed
 - List view is now a flat list grouped by project, most urgent first, with plain status words
   and filters. Before, it was a nested tree that was hard to scan.
