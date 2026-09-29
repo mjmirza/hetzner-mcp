@@ -127,7 +127,8 @@ export function launcherFor(entryFile: string | undefined, execPath: string = pr
 
 /** The launcher for the copy running now. Run from source (no build), it falls back to npx. */
 function currentLauncher(): Launcher {
-  const entry = fileURLToPath(new URL("../index.js", import.meta.url));
+  // Built as a path, not an import-style URL, so tools do not read it as an import of index.js.
+  const entry = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "index.js");
   return launcherFor(fs.existsSync(entry) ? entry : undefined);
 }
 

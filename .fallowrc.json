@@ -11,6 +11,7 @@
     "test/audit.ts",
     "test/cli.ts",
     "test/eval.ts",
+    "test/first-run.ts",
     "test/fix-verify.ts",
     "test/layout-probe.js",
     "test/layout.ts",
