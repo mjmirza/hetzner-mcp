@@ -5,6 +5,8 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-29
+
 ### Added
 - Automatic audit. Every map build scores the estate out of 100 with findings for security,
   cost, reliability, and hygiene. Each finding has what, why, numbered Hetzner Console steps,
