@@ -292,10 +292,24 @@ export function audit(graph: Pick<InfraGraph, "nodes">, now = new Date()): Audit
     }
   }
 
-  // Checks that need the whole project rather than one resource.
+  // Checks that need the whole project rather than one resource. Nodes are grouped once.
+  const keyOf = (account: string, project?: string) => `${account}|${project ?? ""}`;
   const projects = nodes.filter((n) => n.kind === "project");
+  const serversOf = new Map<string, MapNode[]>();
+  const spreadGroup = new Set<string>();
+  const sizeOf = new Map<string, number>();
+  for (const n of nodes) {
+    const k = keyOf(n.account, n.project);
+    if (n.kind === "server") {
+      const list = serversOf.get(k);
+      if (list) list.push(n);
+      else serversOf.set(k, [n]);
+    }
+    if (n.kind === "placement_group" && n.details.type === "spread" && Number(n.details.servers) >= 2) spreadGroup.add(k);
+    if (!["account", "project", "location"].includes(n.kind)) sizeOf.set(k, (sizeOf.get(k) ?? 0) + 1);
+  }
   for (const p of projects) {
-    const servers = nodes.filter((n) => n.kind === "server" && n.project === p.project && n.account === p.account);
+    const servers = serversOf.get(keyOf(p.account, p.project)) ?? [];
     if (PROD.test(p.label)) {
       for (const s of servers.filter((x) => x.details.backups === false)) {
         out.push(finding("no_backups_prod", s, `${s.label} runs in project ${p.label} with automatic backups switched off.`, null));
@@ -304,7 +318,7 @@ export function audit(graph: Pick<InfraGraph, "nodes">, now = new Date()): Audit
     const locs = new Set(servers.map((s) => s.location).filter(Boolean));
     if (servers.length >= 2 && locs.size === 1) out.push(finding("single_location", p, `All ${servers.length} servers in ${p.label} run in ${[...locs][0]}.`, null));
     // Only a spread group that actually holds two or more servers protects anything.
-    const hasGroup = nodes.some((n) => n.kind === "placement_group" && n.project === p.project && n.account === p.account && n.details.type === "spread" && Number(n.details.servers) >= 2);
+    const hasGroup = spreadGroup.has(keyOf(p.account, p.project));
     if (servers.length >= 2 && !hasGroup) out.push(finding("no_placement_group", p, `${p.label} has ${servers.length} servers and no placement group.`, null));
   }
   for (const lb of nodes.filter((n) => n.kind === "load_balancer" && n.details.targets === 1)) {
@@ -317,20 +331,26 @@ export function audit(graph: Pick<InfraGraph, "nodes">, now = new Date()): Audit
   for (const f of out) counts[f.severity]++;
 
   // One scope per project, plus account-level scopes for dedicated servers and Storage Boxes.
-  const keyOf = (account: string, project?: string) => `${account}|${project ?? ""}`;
   const keys = new Map<string, { account: string; project?: string }>();
   for (const p of projects) keys.set(keyOf(p.account, p.project), { account: p.account, project: p.project });
   for (const f of out) keys.set(keyOf(f.resource.account, f.resource.project), { account: f.resource.account, project: f.resource.project });
+  const byScope = new Map<string, AuditFinding[]>();
+  for (const f of out) {
+    const k = keyOf(f.resource.account, f.resource.project);
+    const list = byScope.get(k);
+    if (list) list.push(f);
+    else byScope.set(k, [f]);
+  }
   const scopes = [...keys.values()]
     .map((sc) => {
-      const mine = out.filter((f) => keyOf(f.resource.account, f.resource.project) === keyOf(sc.account, sc.project));
+      const mine = byScope.get(keyOf(sc.account, sc.project)) ?? [];
       return { ...sc, score: score(mine), findings: mine.length, monthlySaving: round(mine.reduce((s, f) => s + (f.monthlySaving ?? 0), 0)) };
     })
     .sort((a, b) => a.score - b.score);
 
   // Overall score is the resource-weighted mean of the scopes, so one bad project cannot zero a
   // healthy estate, and a big project counts for more than a tiny one.
-  const size = (sc: { account: string; project?: string }) => Math.max(1, nodes.filter((n) => n.account === sc.account && n.project === sc.project && !["account", "project", "location"].includes(n.kind)).length);
+  const size = (sc: { account: string; project?: string }) => Math.max(1, sizeOf.get(keyOf(sc.account, sc.project)) ?? 0);
   const weight = scopes.reduce((s, sc) => s + size(sc), 0);
   const total = scopes.length ? Math.round(scopes.reduce((s, sc) => s + sc.score * size(sc), 0) / weight) : 100;
   return {
@@ -382,7 +402,7 @@ export function findingMarkdown(f: AuditFinding, n: number, currency = "EUR"): s
 }
 
 /** The report as Markdown, for the CLI, the MCP tool and the downloadable file. */
-export function auditMarkdown(r: AuditReport, currency = "EUR", offset = 0): string {
+export function auditMarkdown(r: AuditReport, currency = "EUR", offset = 0, opts: { maxScopes?: number } = {}): string {
   const money = (v: number) => new Intl.NumberFormat("en-IE", { style: "currency", currency }).format(v);
   const lines = [
     "# Hetzner infrastructure audit",
@@ -393,9 +413,11 @@ export function auditMarkdown(r: AuditReport, currency = "EUR", offset = 0): str
     `Generated ${r.generatedAt}.`,
     "",
   ];
-  if (r.scopes.length) {
+  const shown = r.scopes.slice(0, opts.maxScopes ?? r.scopes.length);
+  if (shown.length) {
     lines.push("## By project", "", "| Account | Project | Score | Findings | Saving / month |", "| --- | --- | --- | --- | --- |");
-    for (const s of r.scopes) lines.push(`| ${cell(s.account)} | ${cell(s.project ?? "(account level)")} | ${s.score} | ${s.findings} | ${s.monthlySaving > 0 ? money(s.monthlySaving) : "-"} |`);
+    for (const s of shown) lines.push(`| ${cell(s.account)} | ${cell(s.project ?? "(account level)")} | ${s.score} | ${s.findings} | ${s.monthlySaving > 0 ? money(s.monthlySaving) : "-"} |`);
+    if (r.scopes.length > shown.length) lines.push("", `${r.scopes.length - shown.length} more project(s) not listed, the lowest scores come first.`);
     lines.push("");
   }
   if (!r.findings.length) lines.push("Nothing to fix right now.", "");

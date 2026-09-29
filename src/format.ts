@@ -115,6 +115,11 @@ function dataNote(text: string): string | undefined {
 }
 
 /** Render a value as text for a tool result, compacting and capping unless verbose. */
+/** Cuts text to the shared tool-result cap, saying how to get the rest. */
+export function capText(text: string, hint: string): string {
+  return text.length > MAX_CHARS ? `${text.slice(0, MAX_CHARS)}\n... [truncated at ${MAX_CHARS} characters. ${hint}]` : text;
+}
+
 export function formatResult(value: unknown, verbose: boolean): string {
   const shaped = clean(verbose ? value : compact(value));
   let text = typeof shaped === "string" ? shaped : JSON.stringify(shaped);

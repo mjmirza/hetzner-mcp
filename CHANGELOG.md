@@ -24,6 +24,8 @@ Changelog, and this project follows semantic versioning.
 - `infra_map` takes an optional `target`, a workspace or `workspace/account/project`, so an assistant can map one client without loading every account.
 
 ### Changed
+- Large estates stay responsive. At most 16 Hetzner requests run at once (4 per token), `infra_map` and `infra_audit` reuse one read for a minute (`refresh: true` reads again, any change drops it), and a list cut short by the page limit now says so instead of silently dropping resources. Before, 50 parallel maps put 2,200 requests in flight and every audit page re-read the whole estate.
+- The map opens large estates (over 400 resources) with projects folded, draws only the cards on screen, and lays out big trees in the background, so the first view went from a 12 second freeze to about 0.3 seconds. Live status polls no longer stack up, time out after 30 to 45 seconds with a clear message, and large projects are polled less often and say so.
 - List view is now a flat list grouped by project, most urgent first, with plain status words
   and filters. Before, it was a nested tree that was hard to scan.
 - Compact responses collapse nested objects to their name and drop empty fields, and no JSON

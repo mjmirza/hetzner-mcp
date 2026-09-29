@@ -54,7 +54,8 @@ import { AddProjectDialog } from "@/components/AddProjectDialog";
 import { CreateDialog } from "@/components/CreateDialog";
 import { DeleteDialog } from "@/components/DeleteDialog";
 import { api } from "@/lib/api";
-import { buildFlow, type CardData, type Direction } from "@/lib/layout";
+import { planFlow, type BuildResult, type CardData, type Direction } from "@/lib/layout";
+import { runDagre } from "@/lib/dagre-run";
 import { useLiveStatus, type LiveLookup } from "@/lib/live";
 import { CheckedAgo } from "@/components/LiveStatus";
 import { relationsByNode } from "@/lib/relations";
@@ -63,6 +64,25 @@ import { CREATABLE, KIND_LABEL } from "@/lib/format";
 import type { InfraGraph, MapNode, Meta, NodeKind, WorkspaceSummary } from "@/lib/types";
 
 type ViewMode = "hierarchy" | "connections" | "list" | "audit";
+/** Above this many resources the canvas opens with every project folded, so it stays responsive. */
+const LARGE_ESTATE = 400;
+const isLarge = (g: InfraGraph | null) => (g?.nodes.length ?? 0) > LARGE_ESTATE;
+const initialFold = (g: InfraGraph | null): Set<string> => (isLarge(g) ? new Set(g!.nodes.filter((n) => n.kind === "project").map((n) => n.id)) : new Set());
+/** Layouts with more cards than this run in a Web Worker. */
+const WORKER_LAYOUT_CARDS = 400;
+let layoutWorker: Worker | null | undefined;
+function getLayoutWorker(): Worker | null {
+  if (layoutWorker === undefined) {
+    try {
+      layoutWorker = new Worker(new URL("./lib/dagre.worker.ts", import.meta.url), { type: "module" });
+    } catch {
+      layoutWorker = null;
+    }
+  }
+  return layoutWorker;
+}
+let layoutSeq = 0;
+const EMPTY_BUILD: BuildResult = { nodes: [], edges: [], hostOf: new Map() };
 type Pos = { x: number; y: number };
 const nodeTypes = { card: InfraNode };
 const edgeTypes = { relation: RelationEdge };
@@ -136,10 +156,36 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
   // Cards grow to fit their content. Once the browser measures them, the layout reruns with
   // the real heights, so a long card never spills into the next one.
   const [heights, setHeights] = useState<Map<string, number>>(new Map());
-  const built = useMemo(
-    () => buildFlow(graph, { view, direction, collapsed, focusProject: focus, selected, positions, heights, animate }),
-    [graph, view, direction, collapsed, focus, selected, positions, heights, animate],
+  // Large layouts keep the estimated heights: every pan measures new cards and would relayout.
+  const [large, setLarge] = useState(false);
+  const planned = useMemo(
+    () => planFlow(graph, { view, direction, collapsed, focusProject: focus, selected, positions, heights: large ? undefined : heights, animate }),
+    [graph, view, direction, collapsed, focus, selected, positions, heights, animate, large],
   );
+  const offThread = planned.plan.nodes.length > WORKER_LAYOUT_CARDS;
+  useEffect(() => setLarge(offThread), [offThread]);
+  const onThread = useMemo(() => (offThread ? null : planned.finish(runDagre(planned.plan))), [planned, offThread]);
+  const [fromWorker, setFromWorker] = useState<{ result: BuildResult; fitKey: string; graph: InfraGraph } | null>(null);
+  useEffect(() => {
+    if (!offThread) return;
+    const seq = ++layoutSeq;
+    const worker = getLayoutWorker();
+    const done = (centres: Map<string, { x: number; y: number }>) => setFromWorker({ result: planned.finish(centres), fitKey, graph });
+    if (!worker) {
+      const t = setTimeout(() => done(runDagre(planned.plan)), 0);
+      return () => clearTimeout(t);
+    }
+    const onMessage = (e: MessageEvent<{ seq: number; centres: Array<[string, { x: number; y: number }]> }>) => {
+      if (e.data.seq === seq) done(new Map(e.data.centres));
+    };
+    worker.addEventListener("message", onMessage);
+    worker.postMessage({ seq, plan: planned.plan });
+    return () => worker.removeEventListener("message", onMessage);
+    // fitKey travels with the result so the view refits once the new layout lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planned, offThread]);
+  // A layout from another workspace never shows, even for the moment before the new one lands.
+  const built = onThread ?? (fromWorker?.graph === graph ? fromWorker.result : EMPTY_BUILD);
   const [nodes, setNodes] = useState<Node<CardData>[]>(built.nodes);
   useEffect(() => setNodes(built.nodes), [built]);
 
@@ -147,6 +193,13 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
     const t = setTimeout(() => fitReadable(280), 30);
     return () => clearTimeout(t);
   }, [fitKey, fitReadable]);
+  const fittedWorker = useRef("");
+  useEffect(() => {
+    if (!fromWorker || fittedWorker.current === fromWorker.fitKey) return;
+    fittedWorker.current = fromWorker.fitKey;
+    const t = setTimeout(() => fitReadable(280), 30);
+    return () => clearTimeout(t);
+  }, [fromWorker, fitReadable]);
 
   // Bring the selected card and everything connected to it into view.
   const builtRef = useRef(built);
@@ -211,6 +264,7 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
         minZoom={0.15}
         maxZoom={1.8}
         proOptions={{ hideAttribution: true }}
+        onlyRenderVisibleElements
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="var(--stage-dot)" />
         <Controls showInteractive={false} position="bottom-right" />
@@ -278,7 +332,7 @@ export function App() {
       // Private mode: nothing stored, nothing to clear.
     }
     setPositionsState(new Map());
-    setCollapsed(new Set());
+    setCollapsed(initialFold(graph));
     setFocus(null);
     setSelected(null);
     setResets((n) => n + 1);
@@ -286,6 +340,7 @@ export function App() {
   };
 
   const [sequencer] = useState(loadSequencer);
+  const foldedFor = useRef<string | null>(null);
   const skipReload = useRef(false);
   const load = useCallback(async (refresh = false) => {
     const seq = sequencer.begin();
@@ -305,6 +360,11 @@ export function App() {
       // A newer load started (a quick workspace switch), so this older answer must not win.
       if (!sequencer.isCurrent(seq)) return;
       setGraph(g);
+      // A new workspace on a large estate opens folded; a refresh keeps what the person opened.
+      if (foldedFor.current !== (g.workspace ?? "")) {
+        foldedFor.current = g.workspace ?? "";
+        if (isLarge(g)) setCollapsed(initialFold(g));
+      }
       setMeta(m);
       setError(null);
     } catch (err) {
@@ -412,7 +472,7 @@ export function App() {
               setWorkspace(name);
               setFocus(null);
               setSelected(null);
-              setCollapsed(new Set());
+              setCollapsed(initialFold(graph));
               if (!desktop) setPanelOpen(false);
             }}
           />
@@ -618,6 +678,11 @@ export function App() {
                   select(id);
                 }}
               />
+            )}
+            {graph && isLarge(graph) && (view === "hierarchy" || view === "connections") && (
+              <p role="status" className="pointer-events-none absolute top-2 left-1/2 z-10 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full bg-card px-3 py-1 text-[12px] text-muted-foreground shadow-[var(--shadow)]">
+                Large estate, {graph.nodes.length.toLocaleString()} resources. Projects open folded, use + on a project to show it.
+              </p>
             )}
             {graph && (view === "hierarchy" || view === "connections") && (
               <ReactFlowProvider>

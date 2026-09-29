@@ -27,7 +27,11 @@ function sentence(kind: MapEdge["kind"], outgoing: boolean, other: string, other
 export function relationsByNode(graph: InfraGraph): Map<string, Relation[]> {
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   const out = new Map<string, Relation[]>();
-  const add = (id: string, r: Relation) => out.set(id, [...(out.get(id) ?? []), r]);
+  const add = (id: string, r: Relation) => {
+    const list = out.get(id);
+    if (list) list.push(r);
+    else out.set(id, [r]);
+  };
   for (const e of graph.edges) {
     const a = byId.get(e.from);
     const b = byId.get(e.to);

@@ -58,7 +58,7 @@
     "hygiene": "fallow dead-code --baseline .fallow-baseline.json",
     "hygiene:baseline": "fallow dead-code --save-baseline .fallow-baseline.json",
     "prepublishOnly": "npm run build",
-    "test:offline": "tsx test/setup.ts && tsx test/api-shape.ts && tsx test/safety-guards.ts && tsx test/actions.ts && tsx test/map.ts && tsx test/workspaces.ts && tsx test/audit.ts && tsx test/token-budget.ts && tsx test/cli.ts && tsx test/release-tag.ts",
+    "test:offline": "tsx test/setup.ts && tsx test/api-shape.ts && tsx test/safety-guards.ts && tsx test/actions.ts && tsx test/map.ts && tsx test/workspaces.ts && tsx test/audit.ts && tsx test/token-budget.ts && tsx test/load.ts && tsx test/cli.ts && tsx test/release-tag.ts",
     "test:safety": "tsx test/safety-guards.ts",
     "map": "node dist/index.js map",
     "test:layout": "tsx test/layout.ts"

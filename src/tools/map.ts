@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig } from "../config.js";
 import { collectGraph, type CollectOptions } from "../map/collect.js";
+import { cachedGraph } from "../map/graph-cache.js";
 import { discoverProjects, listWorkspaces, resolveTarget } from "../map/projects.js";
 import { readStored } from "../map/store.js";
 import { sampleGraph } from "../map/sample.js";
@@ -22,6 +23,7 @@ export function registerMapTool(server: McpServer, cfg: HetznerConfig): void {
         serve: z.boolean().optional().describe("Start the local map. Default true."),
         mermaid: z.boolean().optional().describe("Add a Mermaid diagram."),
         demo: z.boolean().optional().describe("Use the labelled sample estate."),
+        refresh: z.boolean().optional(),
         target: z
           .string()
           .max(200)
@@ -43,7 +45,9 @@ export function registerMapTool(server: McpServer, cfg: HetznerConfig): void {
             scope = t;
           }
         }
-        const graph = a.demo ? sampleGraph() : await collectGraph(cfg, process.env, scope);
+        const read = a.demo ? sampleGraph() : await cachedGraph(JSON.stringify(scope), () => collectGraph(cfg, process.env, scope), { refresh: a.refresh });
+        // The cached graph is shared, so notes for this answer go on a copy.
+        const graph = { ...read, caveats: [...read.caveats] };
         if (!a.target && workspaceCount > 1) graph.caveats.push(`Mapped all ${workspaceCount} workspaces together. Pass target to map one workspace.`);
         let url: string | undefined;
         if (a.serve !== false) {
