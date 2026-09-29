@@ -5,10 +5,35 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Added
+- `hetzner-mcp map` now works straight after setup. With no token in the terminal it uses the
+  one setup saved for your assistant and says which app it came from. Before, it stopped with
+  "No Hetzner credentials found" because setup saves the token inside the app, not the shell.
+- The map tells a first-time visitor what they are looking at. The sample says it is made up
+  and gives the setup command. When Hetzner cannot read any project, the map says why and how
+  to fix it, instead of a calm EUR 0.00. An empty project points at Create.
+- `doctor` checks the token saved in each connected app with Hetzner (one free read per token)
+  and ends with one line saying what to fix. It exits 1 when a saved token is rejected, so it
+  can gate a script. Before, it said "All good" as soon as an app had any token saved.
+
 ### Changed
 - A map page opened without its access key, or with the key of an earlier run, now asks for the
   key. Paste the link the map printed (or just the key) and the map opens. Before, the page
   showed a message and a Try again button that could not help.
+- Setup lists the exact Console steps for a token (project, Security, API tokens, Read & Write)
+  and explains that Robot credentials are only for dedicated servers and where to create them.
+  Before, it showed one line with an old console address.
+- Setup no longer says "connected" for a token it did not check. With `--no-verify`, or when
+  saved offline, it says the token is not checked yet, and offline it no longer waits 20
+  seconds on a first audit that cannot run. It names a backup only when one was made. Before, it always said an
+  existing file was backed up.
+- Setup no longer counts Claude Code as installed just because the home folder exists, so
+  `setup --yes` on a computer without it no longer creates `~/.claude.json`.
+- Every setup dead end now names the next step: where to make a token, how to pipe it in
+  without it showing, `--no-verify` when offline, and `--print` when a config could not be
+  written. A rejected token (401) now says it may be mistyped, cut short, or deleted, and
+  where to make a new one. Before, it asked for a Read and Write token, which is not the cause.
+- The README opens with what you get and a five-step walk from token to first answer.
 
 ## [0.6.0] - 2026-09-29
 

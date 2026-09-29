@@ -4,7 +4,7 @@
  * No credentials, no network, a throwaway HOME so no real client config is read or written.
  */
 import { spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,10 +39,23 @@ assert("setup --print shows a placeholder, never the given token", !r.out.includ
 assert("a token given as an argument warns that other users can see it", /--token on the command line is visible/.test(r.out), r.out);
 r = run("setup", "--print-secrets", "--no-verify", "--token", "t0k");
 assert("setup --print-secrets includes the given token", r.out.includes('"HETZNER_CLOUD_TOKEN": "t0k"'), r.out);
-const piped = spawnSync(process.execPath, [bin, "setup", "--token-stdin", "--no-verify", "--no-audit", "--client", "cursor"], { env, encoding: "utf8", timeout: 20000, input: "p1pedTOKEN\n" });
-const cursorCfg = readFileSync(join(home, ".cursor", "mcp.json"), "utf8");
+// Setup writes into its own throwaway HOME, so doctor and map below still start from nothing.
+const wiredHome = mkdtempSync(join(tmpdir(), "hzmcp-cli-wired-"));
+const wiredEnv: NodeJS.ProcessEnv = { ...env, HOME: wiredHome, APPDATA: wiredHome };
+const piped = spawnSync(process.execPath, [bin, "setup", "--token-stdin", "--no-verify", "--no-audit", "--client", "cursor"], { env: wiredEnv, encoding: "utf8", timeout: 20000, input: "p1pedTOKEN\n" });
+const cursorCfg = readFileSync(join(wiredHome, ".cursor", "mcp.json"), "utf8");
 assert("setup --token-stdin reads the token from stdin and wires the client", piped.status === 0 && cursorCfg.includes("p1pedTOKEN") && !/visible to other/.test(piped.stderr), piped.stderr);
 assert("the wired entry launches this copy by absolute path", JSON.parse(cursorCfg).mcpServers.hetzner.command === process.execPath);
+assert("an unverified setup says so instead of claiming it is connected", /not been checked/.test(piped.stdout) && !/now connected/.test(piped.stdout), piped.stdout);
+assert("a first setup does not mention a backup that was never made", !/kept at/.test(piped.stdout), piped.stdout);
+assert("setup ends by pointing at the map", piped.stdout.includes("map --open"), piped.stdout);
+const again = spawnSync(process.execPath, [bin, "setup", "--token-stdin", "--no-verify", "--no-audit", "--client", "cursor"], { env: wiredEnv, encoding: "utf8", timeout: 20000, input: "r0tatedTOKEN\n" });
+assert("running setup again replaces the token and names the backup", again.status === 0 && readFileSync(join(wiredHome, ".cursor", "mcp.json"), "utf8").includes("r0tatedTOKEN") && /kept at ~\/\.cursor\/mcp\.json\.bak/.test(again.stdout), again.stdout);
+const emptyHome = mkdtempSync(join(tmpdir(), "hzmcp-cli-empty-"));
+const none = spawnSync(process.execPath, [bin, "setup", "--token-stdin", "--yes", "--no-verify", "--no-audit"], { env: { ...env, HOME: emptyHome, APPDATA: emptyHome }, encoding: "utf8", timeout: 20000, input: "t0k\n", cwd: emptyHome });
+assert("with no app installed, setup writes nothing and says how to pick one", none.status === 0 && /No supported app was found/.test(none.stdout) && !existsSync(join(emptyHome, ".claude.json")), none.stdout);
+r = run("setup", "--yes");
+assert("setup with no token names where to make one", r.code === 1 && r.out.includes("console.hetzner.com") && r.out.includes("--token-stdin"), r.out);
 r = run("setup", "--print", "--client", "cursor");
 assert("setup --print --client cursor targets Cursor", r.code === 0 && /Cursor/i.test(r.out), r.out);
 r = run("doctor");
@@ -51,7 +64,21 @@ assert("doctor suggests --token-stdin, not a token argument", r.out.includes("do
 r = run("doctor", "--token-stdin");
 assert("doctor --token-stdin with nothing piped falls back cleanly", r.code === 0 && /Not set/.test(r.out), r.out);
 r = run("map");
-assert("map without credentials exits 1 with a helpful message", r.code === 1 && r.out.includes("map --demo"), r.out);
+assert("map without credentials exits 1 with a helpful message", r.code === 1 && r.out.includes("map --demo") && r.out.includes("hetzner-mcp setup"), r.out);
+
+// Straight after setup the token lives in the app's config, not the shell. map must still find it.
+const wiredMap = spawn(process.execPath, [bin, "map", "--port", "43412"], { env: wiredEnv, stdio: ["ignore", "pipe", "pipe"] });
+let wiredOut = "";
+wiredMap.stdout.on("data", (d) => (wiredOut += d));
+wiredMap.stderr.on("data", (d) => (wiredOut += d));
+await new Promise<void>((res) => {
+  const t = setTimeout(res, 8000);
+  wiredMap.stdout.on("data", () => wiredOut.includes("#k=") && (clearTimeout(t), res()));
+});
+assert("map uses the token setup saved in an app, and says which app", /Using the token saved in Cursor/.test(wiredOut) && !wiredOut.includes("r0tatedTOKEN"), wiredOut);
+const wiredExit = new Promise((res) => wiredMap.on("exit", res));
+wiredMap.kill("SIGTERM");
+await wiredExit;
 
 // map --demo serves the canvas, then stops on SIGTERM.
 const child = spawn(process.execPath, [bin, "map", "--demo"], { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -70,6 +97,7 @@ const url = await new Promise<string>((res) => {
   });
 });
 assert("map --demo prints a loopback URL with its per-launch key", url.startsWith("http://127.0.0.1:") && key.length === 64, out);
+assert("map --demo says the data is made up and how to see your own", out.includes("made-up data") && out.includes("hetzner-mcp setup"), out);
 if (url) {
   const html = await fetch(url).then((x) => x.text()).catch(() => "");
   assert("map --demo serves the page", html.includes("Hetzner infrastructure map"));

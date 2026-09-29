@@ -13,13 +13,14 @@ import {
   clientTargets,
   buildServerEntry,
   ignoresVscodeMcp,
+  isLikelyInstalled,
   mergeServerIntoConfig,
   tilde,
   type ClientTarget,
   type ServerEntryEnv,
 } from "./clients.js";
 import { createPrompter, readStdinLine, warnVisibleSecrets } from "./prompt.js";
-import { validateCloudToken } from "./validate.js";
+import { validateCloudToken, TOKEN_STEPS, CONSOLE_URL } from "./validate.js";
 import { loadConfig } from "../config.js";
 import { collectGraph } from "../map/collect.js";
 import { auditSummary } from "../map/audit-cli.js";
@@ -44,8 +45,8 @@ interface Flags {
   allowBilled?: boolean;
 }
 
-const CONSOLE_URL =
-  "https://console.hetzner.cloud/ -> select a project -> Security -> API Tokens -> Generate (Read and Write)";
+/** Where Robot webservice credentials come from. They are not the Robot login. */
+const ROBOT_URL = "https://robot.hetzner.com/preferences/index";
 
 // Long-option names. The Robot secret flag is held as a constant so the literal
 // "<name>=" never appears in source and trips a credential scanner false positive.
@@ -102,12 +103,6 @@ function out(s: string): void {
 function mask(token: string): string {
   const t = token.trim();
   return t.length <= 8 ? "********" : `${t.slice(0, 4)}...${t.slice(-4)}`;
-}
-
-/** A client is likely installed if its config file or its parent directory already exists. */
-function isLikelyInstalled(target: ClientTarget): boolean {
-  if (fs.existsSync(target.configPath)) return true;
-  return fs.existsSync(path.dirname(target.configPath));
 }
 
 interface WriteResult {
@@ -230,10 +225,13 @@ export async function runSetup(argv: string[]): Promise<number> {
 
     // 1. Token. Prompt and verify, or take it from stdin, a flag, or the environment.
     let token = flags.tokenStdin ? await readStdinLine(stdin) : (flags.token?.trim() ?? "");
+    // True only when Hetzner itself accepted the token, so the closing message never overclaims.
+    let verifiedLive = false;
     if (!token && !interactive) token = process.env.HETZNER_CLOUD_TOKEN?.trim() ?? "";
     if (!token && rl) {
-      out(`  Get a token here:`);
-      out(`    ${CONSOLE_URL}`);
+      out("  " + bold("First, a Hetzner Cloud API token.") + " No token yet? It takes a minute:");
+      TOKEN_STEPS.forEach((step, i) => out(`    ${i + 1}. ${step}`));
+      out(dim("  One token covers one Cloud project and your Storage Boxes."));
       out("");
       let verified = false;
       for (let attempt = 0; attempt < 3 && !verified; attempt++) {
@@ -251,7 +249,7 @@ export async function runSetup(argv: string[]): Promise<number> {
         const check = await validateCloudToken(token); // verify must follow the prompt in this retry loop
         out(`  ${check.ok ? green("OK") : red("x ")} ${check.message}`);
         if (check.ok) {
-          verified = true;
+          verified = verifiedLive = true;
           break;
         }
         if (check.status === undefined) {
@@ -265,18 +263,24 @@ export async function runSetup(argv: string[]): Promise<number> {
         token = "";
       }
       if (!verified || !token) {
-        stderr.write("  Setup stopped. No usable token was provided.\n");
+        stderr.write(`  Setup stopped. Nothing was changed. Make a token at ${CONSOLE_URL} (your project, Security, API tokens), then run: npx hetzner-mcp setup\n`);
         return 1;
       }
     } else if (token && !flags.noVerify) {
       const check = await validateCloudToken(token);
       out(`  ${check.ok ? green("OK") : red("x ")} ${check.message}`);
       if (!check.ok) {
-        stderr.write("  Setup stopped. The provided token did not verify (use --no-verify to skip).\n");
+        const offline = check.status === undefined ? " To save it anyway and check later, add --no-verify." : "";
+        stderr.write(`  Setup stopped. Nothing was changed.${offline}\n`);
         return 1;
       }
+      verifiedLive = true;
     } else if (!token) {
-      stderr.write("  No token provided. Pipe it with --token-stdin, set HETZNER_CLOUD_TOKEN, or run in an interactive terminal.\n");
+      stderr.write(
+        "  No token found, so nothing was changed. Run setup in a normal terminal to be asked for it,\n" +
+          "  or pass it without it showing on screen: printf %s \"$TOKEN\" | npx hetzner-mcp setup --token-stdin --yes\n" +
+          `  No token yet? Make one at ${CONSOLE_URL} under your project, Security, API tokens.\n`,
+      );
       return 1;
     }
 
@@ -284,8 +288,12 @@ export async function runSetup(argv: string[]): Promise<number> {
     let robotUser = flags.robotUser?.trim();
     let robotPassword = flags.robotPassword ?? (interactive ? undefined : process.env.HETZNER_ROBOT_PASSWORD || undefined);
     if (rl && robotUser === undefined && robotPassword === undefined) {
+      out("");
+      out(dim("  Dedicated (bare metal) servers use separate Robot webservice credentials. Cloud servers and"));
+      out(dim("  Storage Boxes do not need them. Skip this if you only use Hetzner Cloud."));
       const ans = (await rl.ask("  Also manage dedicated (Robot) servers? [y/N]: ")).trim().toLowerCase();
       if (ans === "y" || ans === "yes") {
+        out(dim(`  Create them at ${ROBOT_URL} under Webservice and app settings. They are not your Robot login.`));
         robotUser = (await rl.ask("  Robot webservice user: ")).trim();
         robotPassword = (await rl.askHidden("  Robot webservice password (hidden): ")).trim();
       }
@@ -313,11 +321,11 @@ export async function runSetup(argv: string[]): Promise<number> {
       const unknown = flags.clients.filter((id) => !all.some((t) => t.id === id));
       if (unknown.length) stderr.write(`  Unknown client id(s): ${unknown.join(", ")}\n`);
     } else if (!interactive) {
-      chosen = all.filter(isLikelyInstalled);
+      chosen = all.filter((t) => isLikelyInstalled(t));
     } else {
       chosen = [];
       out("");
-      out("  Which clients should I wire?");
+      out("  Which apps should I connect? Press Enter to accept the suggestion in capitals.");
       for (const t of all) {
         const detected = isLikelyInstalled(t) ? " (detected)" : "";
         const def = isLikelyInstalled(t) ? "Y/n" : "y/N";
@@ -329,8 +337,12 @@ export async function runSetup(argv: string[]): Promise<number> {
 
     if (!chosen.length) {
       out("");
-      out("  No app was selected, so nothing on your computer was changed.");
-      out("  Run setup again and pick at least one, for example:");
+      out(
+        interactive
+          ? "  No app was selected, so nothing on your computer was changed."
+          : "  No supported app was found on this computer, so nothing was changed.",
+      );
+      out("  Run setup again and name one, for example:");
       out("       npx hetzner-mcp setup --client claude-desktop");
       out("  (other ids. claude-code, cursor, windsurf, vscode)");
       out("  Or copy the config yourself with:  npx hetzner-mcp setup --print");
@@ -350,14 +362,22 @@ export async function runSetup(argv: string[]): Promise<number> {
       }
     }
 
-    if (!written.length) return 1;
+    if (!written.length) {
+      stderr.write("  Nothing was saved. To add it by hand instead, print the block to paste: npx hetzner-mcp setup --print\n");
+      return 1;
+    }
 
     // 5. Next steps. Warm, numbered, plain language so a first-timer knows exactly
     // what to do. The technical backup note is demoted to a reassuring footer.
     const robotNote = creds.HETZNER_ROBOT_USER ? " Your Robot credentials were saved too." : "";
     const appWord = written.length === 1 ? "app" : "apps";
     out("");
-    out("  " + green(bold("Success. Your Hetzner account is now connected.")) + robotNote);
+    out(
+      verifiedLive
+        ? "  " + green(bold("Success. Your Hetzner account is now connected.")) + robotNote
+        : "  " + bold("Saved. Your token has not been checked with Hetzner yet.") + robotNote,
+    );
+    if (!verifiedLive) out("  " + dim("Check it once you are online:") + " " + cyan("npx hetzner-mcp doctor"));
     out("");
     out("  " + bold("Two small steps and you are ready:"));
     out("");
@@ -368,15 +388,16 @@ export async function runSetup(argv: string[]): Promise<number> {
     out('       ' + cyan('"List my Hetzner servers and show this month cost."'));
     out("       " + dim("No commands to learn. The answer comes straight from your account."));
     out("");
-    out("  " + dim("Not sure it worked? Run this any time and it will tell you in plain English:"));
-    out("       " + cyan("npx hetzner-mcp doctor"));
+    out("  " + dim("Want to see everything at once? Open the map:") + " " + cyan("npx hetzner-mcp map --open"));
+    out("  " + dim("Not sure it worked? Run this any time:") + " " + cyan("npx hetzner-mcp doctor"));
     out("");
     out(dim("  Good to know, your token " + mask(token) + " was saved only inside the"));
-    out(dim(`  ${appWord === "app" ? "app's" : "apps'"} own config on this computer, never anywhere else, and any file that was`));
-    out(dim("  already there was copied to a .bak backup first, so nothing was lost."));
+    out(dim(`  ${appWord === "app" ? "app's" : "apps'"} own config on this computer, never anywhere else.`));
+    for (const w of written) if (w.backup) out(dim(`  The previous ${w.target.name} config was kept at ${tilde(w.backup)}.`));
+    out(dim("  To replace the token later, run setup again."));
     out("");
     // A first audit right away, so the value shows before anyone asks. Never fails setup.
-    if (!argv.includes("--no-audit") && !flags.noVerify) await firstAudit(token, out);
+    if (!argv.includes("--no-audit") && verifiedLive) await firstAudit(token, out);
     return 0;
   } catch (err) {
     // A closed stdin (Ctrl+D) or interrupt lands here. Nothing was written yet at the
@@ -401,6 +422,8 @@ function printSetupHelp(): void {
   out("    npx hetzner-mcp setup                  Interactive. Prompts, verifies, wires clients.");
   out("    npx hetzner-mcp setup --print          Print the config block to copy by hand.");
   out("    npx hetzner-mcp setup --token-stdin --yes < token.txt   Non-interactive. Wire all detected clients.");
+  out("");
+  out("  No token yet? " + CONSOLE_URL + " , then your project, Security, API tokens, Generate (Read & Write).");
   out("");
   out("  Flags:");
   out("    --token-stdin          Read the Cloud API token from stdin (else HETZNER_CLOUD_TOKEN, else a prompt).");
