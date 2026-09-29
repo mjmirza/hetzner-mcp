@@ -55,6 +55,8 @@ import { CreateDialog } from "@/components/CreateDialog";
 import { DeleteDialog } from "@/components/DeleteDialog";
 import { AccessKeyError, api } from "@/lib/api";
 import { KeyEntry } from "@/components/KeyEntry";
+import { FirstRunNotice } from "@/components/FirstRunNotice";
+import { firstRunNotice } from "@/lib/first-run";
 import { planFlow, type BuildResult, type CardData, type Direction } from "@/lib/layout";
 import { runDagre } from "@/lib/dagre-run";
 import { useLiveStatus, type LiveLookup } from "@/lib/live";
@@ -437,6 +439,7 @@ export function App() {
   const targetProject = focus ?? (selectedNode ? projects.find((p) => p.label === selectedNode.project && p.account === selectedNode.account)?.id : undefined) ?? projects[0]?.id ?? null;
   const targetLabel = projects.find((p) => p.id === targetProject)?.label ?? "";
   const canWrite = meta?.mode === "live" && !meta.readOnly;
+  const notice = graph ? firstRunNotice(graph) : null;
   const partsOf = (n: MapNode) => graph!.nodes.filter((x) => x.parent === n.id && (x.kind === "volume" || x.kind === "primary_ip"));
 
   const runSearch = (e: React.FormEvent) => {
@@ -693,6 +696,9 @@ export function App() {
                   select(id);
                 }}
               />
+            )}
+            {notice && view !== "audit" && (
+              <FirstRunNotice key={notice.id} notice={notice} placement={view === "list" ? "bottom" : "top"} />
             )}
             {graph && isLarge(graph) && (view === "hierarchy" || view === "connections") && (
               <p role="status" className="pointer-events-none absolute top-2 left-1/2 z-10 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full bg-card px-3 py-1 text-[12px] text-muted-foreground shadow-[var(--shadow)]">
