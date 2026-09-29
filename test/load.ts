@@ -192,9 +192,11 @@ const baseEnv = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({ XDG_CON
 }
 
 // 7 and 9. The map server: one status poll until it ends, deadlines, most-recently-used cache.
+// The per-launch key of the server under test.
+let mapKey = "";
 function get(port: number, path: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
-    const r = request({ host: "127.0.0.1", port, path, headers: { "X-Hzmap": "1", Host: `127.0.0.1:${port}` } }, (res) => {
+    const r = request({ host: "127.0.0.1", port, path, headers: { "X-Hzmap": mapKey, Host: `127.0.0.1:${port}` } }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (c: Buffer) => chunks.push(c));
       res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString() }));
@@ -225,6 +227,7 @@ const emptyGraph = (workspace?: string): InfraGraph => ({ source: "live", genera
       return new Promise<StatusSnapshot>((r) => (release = r));
     },
   });
+  mapKey = h.token;
   try {
     // Loads run in this order on purpose: ws-0 is used after every other workspace.
     const order = ["ws-0", ...Array.from({ length: 11 }, (_, i) => [`ws-${i + 1}`, "ws-0"]).flat(), "ws-12", "ws-0"];

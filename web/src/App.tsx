@@ -264,7 +264,8 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
         minZoom={0.15}
         maxZoom={1.8}
         proOptions={{ hideAttribution: true }}
-        onlyRenderVisibleElements
+        // Only very large estates skip drawing off-screen cards; small ones draw everything.
+        onlyRenderVisibleElements={large}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="var(--stage-dot)" />
         <Controls showInteractive={false} position="bottom-right" />
