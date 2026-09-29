@@ -10,6 +10,7 @@ import { registerContributeTool } from "./contribute.js";
 import { registerMapTool } from "./map.js";
 import { registerAuditTool } from "./audit.js";
 import { registerCapacityTool } from "./capacity.js";
+import { registerSpendTool } from "./spend.js";
 
 export function isLean(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.HETZNER_MCP_TOOLS === "lean";
@@ -24,4 +25,5 @@ export function registerAllTools(server: McpServer, cfg: HetznerConfig, env: Nod
   registerMapTool(server, cfg);
   registerAuditTool(server, cfg);
   registerCapacityTool(server, cfg);
+  registerSpendTool(server, cfg);
 }

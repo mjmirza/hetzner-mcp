@@ -35,9 +35,10 @@ if (process.env.BUDGET_DETAIL) for (const t of [...tools].sort((x, y) => JSON.st
 process.stdout.write(`tools=${tools.length} list=${listChars} chars (about ${Math.round(listChars / 4)} tokens)\n`);
 process.stdout.write(`lean: tools=${lean.length} list=${leanChars} chars (about ${Math.round(leanChars / 4)} tokens)\n`);
 // Budgets sit just above the measured size, so any growth fails here first. Lower them, never raise casually.
-assert("full tool list stays under 38000 chars", listChars < 38000);
-assert("lean tool list stays under 24000 chars", leanChars < 24000);
-assert("lean keeps the request, write, map and audit tools", ["cloud_request", "cloud_create_server", "infra_map", "infra_audit"].every((n) => lean.some((t) => t.name === n)));
+// Raised by the size of spend_history (about 530 chars) when it was added.
+assert("full tool list stays under 38400 chars", listChars < 38400);
+assert("lean tool list stays under 24600 chars", leanChars < 24600);
+assert("lean keeps the request, write, map, audit and spend tools", ["cloud_request", "cloud_create_server", "infra_map", "infra_audit", "spend_history"].every((n) => lean.some((t) => t.name === n)));
 assert("lean drops the list shortcuts", !lean.some((t) => t.name === "cloud_list_servers"));
 assert("no tool repeats its name as its title", tools.every((t) => t.title !== t.name));
 assert("every tool still has a description", tools.every((t) => (t.description ?? "").length > 10));
@@ -68,6 +69,7 @@ assert("verbose still returns everything", formatResult(fake, true).includes("pr
   const one = await call("infra_audit", { demo: true, finding: 1 });
   const map = await call("infra_map", { demo: true, serve: false });
   const mermaid = await call("infra_map", { demo: true, serve: false, mermaid: true });
+  const spend = await call("spend_history", { demo: true });
   process.stdout.write(`sizes: audit=${summary.length} full-page=${page1.length} finding=${one.length} map=${map.length} map+mermaid=${mermaid.length}\n`);
   assert("audit summary under 1200 chars", summary.length < 1200);
   assert("one audit finding under 1500 chars", one.length < 1500);
@@ -76,6 +78,8 @@ assert("verbose still returns everything", formatResult(fake, true).includes("pr
   assert("full audit page under 9000 chars", page1.length < 9000);
   assert("map summary under 3500 chars", map.length < 3500);
   assert("map with mermaid under 7000 chars", mermaid.length < 7000);
+  assert("spend history under 3000 chars", spend.length < 3000);
+  assert("spend history labels estimates and shows the invoice checks", spend.includes("Estimates, net of VAT") && spend.includes("Validation."));
   await client.close();
 }
 const big = { ...sampleGraph(), nodes: Array.from({ length: 400 }, (_, i) => ({ id: `n${i}`, kind: "server" as const, label: `s${i}`, account: "A", monthly: 1, flags: [], details: {} })), edges: [] };
