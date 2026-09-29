@@ -227,9 +227,9 @@ const de = (over: Partial<Record<"num" | "date" | "sum" | "item2" | "sub", strin
 // ---- Rebuilding lines from positioned PDF text ----
 {
   const it = (str: string, x: number, y: number, page = 1, width = str.length * 5): TextItem => ({ str, x, y, width, height: 10, page });
-  const lines = linesFromItems([it("Summe", 50, 700), it("36,04 €", 300, 700.6), it("Rechnungsnummer:", 50, 720), it("12345", 135, 720), it("next page", 50, 720, 2)]);
+  const lines = linesFromItems([it("Summe", 50, 700), it("48,17 €", 300, 700.6), it("Rechnungsnummer:", 50, 720), it("12345", 135, 720), it("next page", 50, 720, 2)]);
   assert("items on one baseline form one line, top to bottom", lines[0] === "Rechnungsnummer: 12345" && lines[1]!.startsWith("Summe"));
-  assert("a wide gap is kept as two spaces", lines[1] === "Summe  36,04 €");
+  assert("a wide gap is kept as two spaces", lines[1] === "Summe  48,17 €");
   assert("pages never merge into one line", lines[2] === "next page" && lines.length === 3);
   assert("empty text runs are ignored", linesFromItems([it("", 1, 1)]).length === 0);
 }
