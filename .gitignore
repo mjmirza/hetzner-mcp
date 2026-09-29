@@ -13,7 +13,6 @@ secrets/
 # Local test artifacts
 test/.live/
 coverage/
-.fallow-baseline.json
 .fallow/
 
 # OS

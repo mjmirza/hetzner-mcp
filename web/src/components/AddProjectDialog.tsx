@@ -13,12 +13,14 @@ const CONSOLE = "https://console.hetzner.com/projects";
  * Hetzner has no API to create a project, so "add a project" is a guided connect.
  * The person creates it in the Console, pastes a token, and we verify it live before saving.
  */
-export function AddProjectDialog({ open, onOpenChange, accounts, demo, onAdded }: {
+export function AddProjectDialog({ open, onOpenChange, accounts, demo, onAdded, workspace }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   accounts: string[];
   demo: boolean;
   onAdded: () => void;
+  /** The workspace being viewed; the new project joins it. */
+  workspace?: string;
 }) {
   const [name, setName] = useState("");
   const [account, setAccount] = useState(accounts[0] ?? "");
@@ -37,7 +39,7 @@ export function AddProjectDialog({ open, onOpenChange, accounts, demo, onAdded }
     setBusy(true);
     setError(null);
     try {
-      const res = await api.addProject({ name: name.trim(), account: account.trim(), token: token.trim() });
+      const res = await api.addProject({ name: name.trim(), account: account.trim(), token: token.trim(), ...(workspace ? { workspace } : {}) });
       toast.success(res.message);
       reset();
       onOpenChange(false);

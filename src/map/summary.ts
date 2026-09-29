@@ -1,5 +1,11 @@
 /** Plain-text and Mermaid views of the graph, for MCP clients that cannot open a browser. */
 import type { InfraGraph } from "./types.js";
+import { DATA_FENCE, oneLine } from "../text.js";
+import { capText } from "../format.js";
+
+/** Projects and notes listed by name. The rest are counted, the map shows every one. */
+export const SUMMARY_PROJECTS = 20;
+const SUMMARY_CAVEATS = 12;
 
 const fmt = (v: number | null, cur: string) =>
   v == null ? "not priced" : new Intl.NumberFormat("en-DE", { style: "currency", currency: cur }).format(v);
@@ -10,30 +16,36 @@ export function summarize(g: InfraGraph, url?: string): string {
   if (g.source === "sample") lines.push("SAMPLE DATA, not your account.");
   lines.push(`Estimated monthly cost ${fmt(g.totals.monthly, cur)} across ${g.totals.byProject.length} project(s). ${g.vatNote}`);
   if (url) lines.push(`Interactive map. ${url}`);
-  lines.push("", "By project");
-  for (const p of g.totals.byProject) lines.push(`  ${p.project} (${p.account}). ${fmt(p.monthly, cur)}, ${p.resources} resources${p.error ? `, unreadable. ${p.error}` : ""}`);
+  lines.push("", DATA_FENCE, "", "By project");
+  for (const p of g.totals.byProject.slice(0, SUMMARY_PROJECTS)) lines.push(`  ${oneLine(p.project)} (${oneLine(p.account)}). ${fmt(p.monthly, cur)}, ${p.resources} resources${p.error ? `, unreadable. ${oneLine(p.error, 200)}` : ""}`);
+  const more = g.totals.byProject.length - SUMMARY_PROJECTS;
+  if (more > 0) lines.push(`  and ${more} more project(s), see the map or pass target for one workspace`);
   if (g.totals.topDrivers.length) {
     lines.push("", "Top cost drivers");
-    for (const d of g.totals.topDrivers.slice(0, 5)) lines.push(`  ${d.label} (${d.kind}, ${d.project ?? "account"}). ${fmt(d.monthly, cur)}`);
+    for (const d of g.totals.topDrivers.slice(0, 5)) lines.push(`  ${oneLine(d.label)} (${d.kind}, ${oneLine(d.project ?? "account")}). ${fmt(d.monthly, cur)}`);
   }
   const group = (kind: "risk" | "waste" | "info", title: string) => {
     const items = g.totals.findings.filter((f) => f.kind === kind);
     if (!items.length) return;
     const sum = items.reduce((a, f) => a + (f.monthly ?? 0), 0);
     lines.push("", kind === "waste" ? `${title}, about ${fmt(sum, cur)} a month` : title);
-    for (const f of items.slice(0, 8)) lines.push(`  ${f.title}${f.monthly ? ` ${fmt(f.monthly, cur)}` : ""}`);
+    for (const f of items.slice(0, 8)) lines.push(`  ${oneLine(f.title, 200)}${f.monthly ? ` ${fmt(f.monthly, cur)}` : ""}`);
     if (items.length > 8) lines.push(`  and ${items.length - 8} more, see the map`);
   };
   group("risk", "Risks to fix");
   group("waste", "Money you can save");
   group("info", "Good to know");
-  lines.push("", ...g.caveats);
-  return lines.join("\n");
+  lines.push("");
+  for (const c of g.caveats.slice(0, SUMMARY_CAVEATS)) lines.push(oneLine(c, 300));
+  if (g.caveats.length > SUMMARY_CAVEATS) lines.push(`and ${g.caveats.length - SUMMARY_CAVEATS} more notes, see the map`);
+  return capText(lines.join("\n"), "Pass target to map one workspace or project.");
 }
 
-const safe = (s: string) => s.replace(/["[\]{}()<>|#;`]/g, " ").slice(0, 40);
+// eslint-disable-next-line no-control-regex
+const safe = (s: string) => s.replace(/[\u0000-\u001f\u007f"[\]{}()<>|#;`]/g, " ").slice(0, 40);
 
-export function toMermaid(g: InfraGraph): string {
+/** Bounded so a big estate cannot flood the model. The canvas has everything; this is a sketch. */
+export function toMermaid(g: InfraGraph, maxNodes = 150): string {
   const idOf = new Map<string, string>();
   g.nodes.forEach((n, i) => idOf.set(n.id, `n${i}`));
   const byParent = new Map<string, string[]>();
@@ -43,7 +55,10 @@ export function toMermaid(g: InfraGraph): string {
   }
   const byId = new Map(g.nodes.map((n) => [n.id, n]));
   const out = ["flowchart LR"];
+  const shown = new Set<string>();
   const walk = (id: string, depth: number) => {
+    if (shown.size >= maxNodes) return;
+    shown.add(id);
     const n = byId.get(id)!;
     const pad = "  ".repeat(depth);
     const kids = byParent.get(id) ?? [];
@@ -59,6 +74,7 @@ export function toMermaid(g: InfraGraph): string {
   };
   (byParent.get("") ?? []).forEach((id) => walk(id, 1));
   const ref = (id: string) => ((byParent.get(id)?.length && !["account", "project", "location", "network"].includes(byId.get(id)!.kind)) ? `${idOf.get(id)}_self` : idOf.get(id));
-  for (const e of g.edges) out.push(`  ${ref(e.from)} -->|${e.kind}| ${ref(e.to)}`);
+  for (const e of g.edges) if (shown.has(e.from) && shown.has(e.to)) out.push(`  ${ref(e.from)} -->|${e.kind}| ${ref(e.to)}`);
+  if (g.nodes.length > shown.size) out.push(`  %% ${g.nodes.length - shown.size} more resources not drawn. Open the map for all of them.`);
   return out.join("\n");
 }

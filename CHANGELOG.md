@@ -3,6 +3,95 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [Unreleased]
+
+## [0.6.0] - 2026-09-29
+
+### Added
+- Automatic audit. Every map build scores the estate out of 100 with findings for security,
+  cost, reliability, and hygiene. Each finding has what, why, numbered Hetzner Console steps,
+  the sentence to ask your AI, and the monthly saving. Before, the map listed flags with a
+  one-line note and no steps. Available as the Audit tab, `hetzner-mcp audit` (with `--out`,
+  `--json`, `--fail-on`), the `infra_audit` tool, and a first audit at the end of setup.
+- Plain names for codes. Locations read "Falkenstein, Germany" instead of "fsn1", server
+  cards show vCPU, RAM and disk, and the side panel explains every code.
+- One Reset that puts every card back, shows hidden items, clears focus and selection, and
+  refits the map. Before, Tidy up only undid drags and stayed greyed out until you dragged.
+- Optional Flow mode that animates dots along every line. Off when Reduce motion is on.
+- `HETZNER_MCP_TOOLS=lean` skips the 27 list shortcuts, cutting the tool list from about
+  9,400 to 5,900 tokens.
+- Workspaces. Previously every saved project sat in one flat list and the map read all of them at once. Now a project can belong to a workspace (one per client), the map reads only the active workspace, 4 projects at a time, and one bad token only marks its own project unreadable. With no workspace set, everything lands in Personal, so existing setups see no change.
+- `GET /api/workspaces` returns names with account and project counts, never tokens. `GET /api/graph?workspace=<name>` maps one workspace and answers 400 for an unknown name.
+- `hetzner-mcp projects import <file> [--verify]`, `projects list`, `projects remove`. Bulk import from CSV or JSON, one atomic owner-only write, duplicates and bad rows reported by row number, tokens shown only as their last 4 characters.
+- `infra_map` takes an optional `target`, a workspace or `workspace/account/project`, so an assistant can map one client without loading every account.
+
+### Security
+- The map URL now carries a per-launch key (`http://127.0.0.1:PORT/#k=<key>`). Before, any
+  local process could call the map API by sending a fixed header value. Now every API call
+  needs the key from that launch, compared in constant time. Slow clients are cut off after
+  15 seconds.
+- The sample map (`--demo`) no longer shows the names of your real workspace, accounts, or
+  projects. Before, its project list and workspace name came from your real setup.
+- `setup --print` shows placeholders instead of real credentials. Add `--print-secrets` to
+  include them. New `--token-stdin` for `setup` and `doctor`; `--token` still works but warns
+  that other local users can see it. The token and Robot password prompts no longer echo.
+- Setup writes an absolute launch command (this Node and this copy's `dist/index.js`), so a
+  `node_modules/hetzner-mcp` inside a project can never be started with your token. From an
+  npx cache it writes `npx -y hetzner-mcp@<exact version>`.
+- Setup refuses a client config or `.bak` path that is a symbolic link, keeps an existing
+  backup under a timestamped name, writes the new backup owner-only, and uses an unguessable
+  temp file. Writing the VS Code config warns that it sits in the project and checks
+  `.gitignore`.
+- `map --open` starts the system opener by absolute path, and a missing opener no longer
+  crashes the map.
+- The project store ignores a relative `XDG_CONFIG_HOME`, tightens a loose directory it owns
+  and refuses one owned by someone else, ignores a `projects.json` others can write, moves an
+  unreadable one aside to `projects.json.corrupt-<time>` instead of overwriting its tokens,
+  uses an unguessable temp file, and takes over a lock whose owning process has exited.
+- A `projects.json` that other users can read is now made owner-only (0600) the moment it is
+  read, with a one-time note. Before, a readable file was used as is.
+- Setup refuses to write a client config through a linked folder, such as a `.vscode` link in
+  a cloned project. Before, the config and its token landed wherever the link pointed.
+
+### Changed
+- Large estates stay responsive. At most 16 Hetzner requests run at once (4 per token), `infra_map` and `infra_audit` reuse one read for a minute (`refresh: true` reads again, any change drops it), and a list cut short by the page limit now says so instead of silently dropping resources. Before, 50 parallel maps put 2,200 requests in flight and every audit page re-read the whole estate.
+- The map opens large estates (over 400 resources) with projects folded, draws only the cards on screen, and lays out big trees in the background, so the first view went from a 12 second freeze to about 0.3 seconds. Live status polls no longer stack up, time out after 30 to 45 seconds with a clear message, and large projects are polled less often and say so.
+- List view is now a flat list grouped by project, most urgent first, with plain status words
+  and filters. Before, it was a nested tree that was hard to scan.
+- Compact responses collapse nested objects to their name and drop empty fields, and no JSON
+  is indented. Measured live: server types 49% smaller, locations 47%, images 40%.
+- Read tools use shorter descriptions, and the Mermaid diagram and full audit are bounded.
+- Cards grow to fit their content and the layout uses their real height, so text never spills
+  and cards never overlap. Line labels that sat on top of cards are gone; the card text says it.
+- On phones, layout, Flow, Refresh, Reset and dark mode sit in a More menu so the header never
+  runs off screen.
+
+### Fixed
+- With many clients, prices now load from the first working token instead of giving up after
+  three, so revoked tokens at the top of the list no longer mark every project unreadable.
+- Adding a project from the map saves it into the workspace you are viewing, not the default.
+- A slow map read that finished after a change no longer puts old data back into the cache.
+- Two imports at the same time can no longer drop each other's projects (a lock around the store).
+- Short or malformed saved tokens are fully hidden in `projects list`.
+- Names with a pipe or a line break can no longer break the report table or the Mermaid diagram.
+- Malformed CSV quoting is rejected with its row number instead of being merged silently.
+- IPv6-only servers without a firewall, and firewall rules on port "any", are now flagged.
+- Header text such as "Updated 10 min ago" wrapped onto three lines at medium widths.
+- The location card showed its code twice.
+- A change made with an MCP tool now shows on an open map straight away. Before, the map kept
+  showing the old graph for up to a minute, and a large project's live status for up to 15.
+- The project store lock is never taken from a process on this computer that is still running,
+  and finishing a write never removes a lock someone else now holds.
+- An answer too large to read is closed at once instead of leaving its connection open.
+- When the browser blocks storage, the map link keeps its key, so a reload still works.
+
+### Tests
+- `test/layout.ts`, a browser gate in CI across 12 screen sizes and every view, that fails on
+  wrapped header text, content spilling out of a card, overlapping cards, and a Reset that
+  does not restore the layout.
+- `test/audit.ts` and `test/token-budget.ts`, the latter failing when the tool list or the
+  common answers grow past their budget.
+
 ## [0.5.0] - 2026-09-29
 
 Thanks to Kevin Laurier (@caoimhin07) for the independent safety audit in #91, whose fixes

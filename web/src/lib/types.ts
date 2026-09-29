@@ -28,3 +28,9 @@ export interface Catalog {
   volumePerGb: number | null;
   currency: string;
 }
+
+export interface WorkspaceSummary {
+  name: string;
+  accounts: number;
+  projects: number;
+}

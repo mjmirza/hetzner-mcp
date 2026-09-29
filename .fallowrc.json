@@ -1,12 +1,32 @@
 {
   "entry": [
     "src/index.ts",
-    "test/smoke.ts",
-    "test/setup.ts",
-    "test/fix-verify.ts",
-    "test/live-validate.ts",
+    "web/src/main.tsx",
+    "web/vite.config.ts",
+    "scripts/check-release-tag.mjs",
     "scripts/deploy-demo.ts",
-    "scripts/teardown-demo.ts"
+    "scripts/teardown-demo.ts",
+    "test/actions.ts",
+    "test/api-shape.ts",
+    "test/audit.ts",
+    "test/cli.ts",
+    "test/eval.ts",
+    "test/fix-verify.ts",
+    "test/layout-probe.js",
+    "test/layout.ts",
+    "test/live-validate.ts",
+    "test/load.ts",
+    "test/map.ts",
+    "test/release-tag.ts",
+    "test/safety-guards.ts",
+    "test/setup.ts",
+    "test/smoke.ts",
+    "test/token-budget.ts",
+    "test/workspaces.ts"
   ],
-  "ignorePatterns": ["dist/**", "node_modules/**", "assets/**"]
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    "assets/**"
+  ]
 }

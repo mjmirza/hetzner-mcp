@@ -13,7 +13,7 @@ function text(value: string, isError = false) {
 
 // Hetzner resource ids are positive integers. Accept a numeric string too, but reject anything
 // that is not all digits so a stray value never reaches a path.
-const id = z.union([z.number().int().positive(), z.string().regex(/^[0-9]+$/, "id must be a positive integer")]);
+export const id = z.union([z.number().int().positive(), z.string().regex(/^[0-9]+$/, "id must be a positive integer")]);
 const enc = (v: string | number) => encodeURIComponent(String(v));
 
 /**
@@ -49,7 +49,7 @@ async function guarded(
   try {
     const res = await hetznerRequest(cfg, { surface: "cloud", method: opts.method, path: opts.path, body: opts.body });
     const actions = await waitForActions(cfg, res);
-    return { content: [{ type: "text" as const, text: JSON.stringify(res, null, 2) }, ...actionBlocks(actions)], isError: anyActionFailed(actions) };
+    return { content: [{ type: "text" as const, text: JSON.stringify(res) }, ...actionBlocks(actions)], isError: anyActionFailed(actions) };
   } catch (err) {
     return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
   }

@@ -1,8 +1,8 @@
-import dagre from "@dagrejs/dagre";
 import type { Edge, Node } from "@xyflow/react";
 import type { InfraGraph, MapNode } from "./types";
 import { SHELF_KINDS } from "./format";
 import { relationsByNode } from "./relations";
+import type { LayoutPlan } from "./dagre-run";
 
 export type Direction = "LR" | "TB";
 export type View = "hierarchy" | "connections";
@@ -44,14 +44,22 @@ export interface BuildResult {
   hostOf: Map<string, string>;
 }
 
-/**
- * Turns the infra graph into a tidy tree. Only parent-child links are drawn, so no line ever
- * crosses a card. Relations (firewall protects, load balancer routes) appear on selection.
- */
-export function buildFlow(
-  graph: InfraGraph,
-  opts: { view: View; direction: Direction; collapsed: Set<string>; focusProject: string | null; selected: string | null; positions: Map<string, { x: number; y: number }> },
-): BuildResult {
+export interface FlowOptions {
+  view: View;
+  direction: Direction;
+  collapsed: Set<string>;
+  focusProject: string | null;
+  selected: string | null;
+  positions: Map<string, { x: number; y: number }>;
+  /** Real card heights measured in the browser. They replace the estimate so nothing overlaps. */
+  heights?: Map<string, number>;
+  /** Run the dots along every line, like a workflow executing. */
+  animate?: boolean;
+}
+
+// A tidy tree of parent-child links, so no line crosses a card; relations show on selection.
+// Returns the plan to lay out, and the step that turns laid-out centres into cards.
+export function planFlow(graph: InfraGraph, opts: FlowOptions): { plan: LayoutPlan; finish: (centres: Map<string, { x: number; y: number }>) => BuildResult } {
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   const hostOf = new Map<string, string>();
   const rows = new Map<string, MapNode[]>();
@@ -59,11 +67,16 @@ export function buildFlow(
 
   // Fold attachments into their server, and project-wide items into one shelf per project.
   const shelves = new Map<string, MapNode>();
+  const addRow = (host: string, n: MapNode) => {
+    const list = rows.get(host);
+    if (list) list.push(n);
+    else rows.set(host, [n]);
+  };
   for (const n of graph.nodes) {
     const parent = n.parent ? byId.get(n.parent) : undefined;
     if (FOLD_INTO_SERVER.has(n.kind) && parent?.kind === "server") {
       hostOf.set(n.id, parent.id);
-      rows.set(parent.id, [...(rows.get(parent.id) ?? []), n]);
+      addRow(parent.id, n);
       continue;
     }
     if (SHELF_KINDS.has(n.kind) && parent?.kind === "project") {
@@ -76,7 +89,7 @@ export function buildFlow(
       const shelf = shelves.get(shelfId)!;
       shelf.monthly = (shelf.monthly ?? 0) + (n.monthly ?? 0);
       hostOf.set(n.id, shelfId);
-      rows.set(shelfId, [...(rows.get(shelfId) ?? []), n]);
+      addRow(shelfId, n);
       continue;
     }
     hostOf.set(n.id, n.id);
@@ -84,15 +97,30 @@ export function buildFlow(
   }
 
   const rel = relationsByNode(graph);
-  const linksOf = (id: string) => [...new Set((rel.get(id) ?? []).filter((r) => hostOf.get(r.otherId) !== id).map((r) => r.text))].slice(0, 3);
+  const links = new Map<string, string[]>();
+  const linksOf = (id: string) => {
+    let l = links.get(id);
+    if (!l) links.set(id, (l = [...new Set((rel.get(id) ?? []).filter((r) => hostOf.get(r.otherId) !== id).map((r) => r.text))].slice(0, 3)));
+    return l;
+  };
 
   const children = new Map<string, string[]>();
-  for (const c of cards) if (c.parent) children.set(c.parent, [...(children.get(c.parent) ?? []), c.id]);
+  for (const c of cards) {
+    if (!c.parent) continue;
+    const list = children.get(c.parent);
+    if (list) list.push(c.id);
+    else children.set(c.parent, [c.id]);
+  }
 
   // Project focus keeps the account and that one project subtree.
   const cardById = new Map(cards.map((c) => [c.id, c]));
   const visible = new Set<string>();
-  const descendants = (id: string): number => (children.get(id) ?? []).reduce((s, c) => s + 1 + descendants(c), 0);
+  const counted = new Map<string, number>();
+  const descendants = (id: string): number => {
+    let n = counted.get(id);
+    if (n === undefined) counted.set(id, (n = (children.get(id) ?? []).reduce((s, c) => s + 1 + descendants(c), 0)));
+    return n;
+  };
   const walk = (id: string) => {
     visible.add(id);
     if (opts.collapsed.has(id)) return;
@@ -140,64 +168,60 @@ export function buildFlow(
         target: b,
         type: "relation",
         className: touches ? "relation hot" : "relation",
-        label: e.kind.replace("_", " "),
-        labelBgPadding: [6, 3],
-        labelBgBorderRadius: 6,
         zIndex: 10,
+        animated: opts.animate === true,
       });
     });
     if (selectedHost) relatedCards.add(selectedHost);
   }
 
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: opts.direction, nodesep: opts.direction === "LR" ? 28 : 36, ranksep: opts.direction === "LR" ? 88 : 72, marginx: 24, marginy: 24 });
-  g.setDefaultEdgeLabel(() => ({}));
+  const plan: LayoutPlan = { direction: opts.direction, nodes: [], edges: [] };
   const size = new Map<string, { w: number; h: number }>();
   for (const id of visible) {
     const c = cardById.get(id)!;
-    const s = { w: widthOf(c), h: heightOf(c, rows.get(id)?.length ?? 0, c.id.endsWith("#shelf") || c.kind === "account" || c.kind === "project" || c.kind === "location" || c.kind === "network" ? 0 : linksOf(id).length) };
+    const estimate = heightOf(c, rows.get(id)?.length ?? 0, c.id.endsWith("#shelf") || c.kind === "account" || c.kind === "project" || c.kind === "location" || c.kind === "network" ? 0 : linksOf(id).length);
+    const s = { w: widthOf(c), h: opts.heights?.get(id) ?? estimate };
     size.set(id, s);
-    g.setNode(id, { width: s.w, height: s.h });
+    plan.nodes.push({ id, w: s.w, h: s.h });
   }
   const treeEdges: Edge[] = [];
   for (const id of visible) {
     const c = cardById.get(id)!;
     if (c.parent && visible.has(c.parent)) {
-      g.setEdge(c.parent, id);
-      treeEdges.push({ id: `t-${c.parent}->${id}`, source: c.parent, target: id, type: "smoothstep", className: "tree", selectable: false });
+      plan.edges.push({ source: c.parent, target: id });
+      treeEdges.push({ id: `t-${c.parent}->${id}`, source: c.parent, target: id, type: "smoothstep", className: "tree", selectable: false, animated: opts.animate === true });
     }
   }
   // In the connections view the layout also weighs the relations, so linked cards sit close
   // together and the lines stay short instead of cutting across the canvas.
-  if (opts.view === "connections") {
-    for (const e of relEdges) if (!g.hasEdge(e.source, e.target) && !g.hasEdge(e.target, e.source)) g.setEdge(e.source, e.target, { weight: 1, minlen: 1 });
-  }
-  dagre.layout(g);
+  if (opts.view === "connections") for (const e of relEdges) plan.edges.push({ source: e.source, target: e.target, weight: 1 });
 
-  const nodes: Node<CardData>[] = [];
-  for (const id of visible) {
-    const c = cardById.get(id)!;
-    const p = g.node(id);
-    const s = size.get(id)!;
-    const manual = opts.positions.get(id);
-    nodes.push({
-      id,
-      type: "card",
-      position: manual ?? { x: p.x - s.w / 2, y: p.y - s.h / 2 },
-      width: s.w,
-      height: s.h,
-      data: {
-        node: c,
-        rows: rows.get(id) ?? [],
-        childCount: descendants(id),
-        collapsed: opts.collapsed.has(id),
-        direction: opts.direction,
-        dim: selectedHost != null && !relatedCards.has(id),
-        related: selectedHost != null && relatedCards.has(id) && id !== selectedHost,
-        links: linksOf(id),
-      },
-      selected: id === selectedHost,
-    });
-  }
-  return { nodes, edges: [...treeEdges, ...relEdges], hostOf };
+  const finish = (centres: Map<string, { x: number; y: number }>): BuildResult => {
+    const nodes: Node<CardData>[] = [];
+    for (const id of visible) {
+      const c = cardById.get(id)!;
+      const p = centres.get(id) ?? { x: 0, y: 0 };
+      const s = size.get(id)!;
+      const manual = opts.positions.get(id);
+      nodes.push({
+        id,
+        type: "card",
+        position: manual ?? { x: p.x - s.w / 2, y: p.y - s.h / 2 },
+        width: s.w,
+        data: {
+          node: c,
+          rows: rows.get(id) ?? [],
+          childCount: descendants(id),
+          collapsed: opts.collapsed.has(id),
+          direction: opts.direction,
+          dim: selectedHost != null && !relatedCards.has(id),
+          related: selectedHost != null && relatedCards.has(id) && id !== selectedHost,
+          links: linksOf(id),
+        },
+        selected: id === selectedHost,
+      });
+    }
+    return { nodes, edges: [...treeEdges, ...relEdges], hostOf };
+  };
+  return { plan, finish };
 }

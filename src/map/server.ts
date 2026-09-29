@@ -1,14 +1,20 @@
 /**
  * Local web server for the infrastructure map. Loopback only, strict Host and Origin checks,
- * a custom header on every API call, a strict CSP, and no token ever sent to the browser.
+ * a per-launch secret on every API call, a strict CSP, and no Hetzner token ever sent to the browser.
  */
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join, extname } from "node:path";
 import type { HetznerConfig } from "../config.js";
 import { collectGraph } from "./collect.js";
+import { DEFAULT_WORKSPACE, defaultWorkspace, discoverProjects, listWorkspaces, type WorkspaceSummary } from "./projects.js";
+import { readStored } from "./store.js";
 import { sampleGraph } from "./sample.js";
+import { collectStatuses, sampleStatuses } from "./live.js";
+import { invalidateGraphs, onInvalidate } from "./graph-cache.js";
+import type { StatusSnapshot } from "./status.js";
 import { ActionError, apply, catalog, connectProject, deleteNode, deletePlan, disconnectProject, meta, plan, projectById, publicCatalog, type ActionEnv } from "./actions.js";
 import type { InfraGraph } from "./types.js";
 
@@ -17,6 +23,9 @@ export const DEFAULT_MAP_PORT = 43390;
 const HOST = "127.0.0.1";
 const MIN_REFRESH_MS = 10_000;
 const MAX_BODY = 16 * 1024;
+const MAX_CACHED_WORKSPACES = 12;
+/** A request waits this long for a map or status read, then gets a clear error while the read goes on. */
+const JOB_DEADLINE_MS = 45_000;
 const WEB_DIR = fileURLToPath(new URL("../web/", import.meta.url));
 // Running from source (tsx) serves the copy built into dist.
 const WEB_FALLBACK = fileURLToPath(new URL("../../dist/web/", import.meta.url));
@@ -25,7 +34,10 @@ const TYPES: Record<string, string> = { ".js": "text/javascript; charset=utf-8",
 export const CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 export interface MapServerHandle {
+  /** Opens the map. Carries the per-launch key in the fragment, which is never sent to the server. */
   url: string;
+  /** The per-launch key every /api call must send as X-Hzmap. */
+  token: string;
   port: number;
   close: () => Promise<void>;
 }
@@ -82,28 +94,84 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
 
 export async function startMapServer(
   cfg: HetznerConfig,
-  opts: { port?: number; demo?: boolean; env?: NodeJS.ProcessEnv } = {},
+  opts: { port?: number; demo?: boolean; env?: NodeJS.ProcessEnv; collect?: (workspace: string | undefined) => Promise<InfraGraph>;
+    statuses?: (workspace: string | undefined) => Promise<StatusSnapshot>;
+    deadlineMs?: number;
+  } = {},
 ): Promise<MapServerHandle> {
   if (running) return running;
   const env = opts.env ?? process.env;
   const actx: ActionEnv = { base: cfg, env, demo: opts.demo === true };
-  let cache: { graph: InfraGraph; at: number } | undefined;
-  let inflight: Promise<InfraGraph> | undefined;
-
-  const load = async (force: boolean): Promise<InfraGraph> => {
-    if (opts.demo) return sampleGraph();
-    const fresh = cache && Date.now() - cache.at < (force ? MIN_REFRESH_MS : 60_000);
-    if (fresh) return cache!.graph;
-    inflight ??= collectGraph(cfg, env).finally(() => {
-      inflight = undefined;
+  // One cache slot per workspace, so switching back is instant and 100 clients never load at once.
+  const cache = new Map<string, { graph: InfraGraph; at: number }>();
+  const inflight = new Map<string, Promise<InfraGraph>>();
+  const collect = opts.collect ?? ((workspace: string | undefined) => collectGraph(cfg, env, { workspace }));
+  const deadline = opts.deadlineMs ?? JOB_DEADLINE_MS;
+  const withinDeadline = <T>(job: Promise<T>, what: string): Promise<T> => {
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new ActionError(504, `Reading ${what} from Hetzner is taking longer than ${Math.round(deadline / 1000)} seconds. It carries on in the background, try again shortly.`)), deadline);
     });
-    const graph = await inflight;
-    cache = { graph, at: Date.now() };
-    return graph;
+    return Promise.race([job, late]).finally(() => clearTimeout(timer));
+  };
+
+  const workspaces = (): WorkspaceSummary[] => {
+    if (opts.demo) {
+      const g = sampleGraph();
+      const count = (k: string) => g.nodes.filter((n) => n.kind === k).length;
+      return [{ name: DEFAULT_WORKSPACE, accounts: count("account"), projects: count("project") }];
+    }
+    return listWorkspaces(discoverProjects(cfg, env, readStored(env)), env, !!(cfg.robotUser && cfg.robotPassword));
+  };
+
+  let generation = 0;
+  const load = async (workspace: string | undefined, force: boolean): Promise<InfraGraph> => {
+    if (opts.demo) return { ...sampleGraph(), workspace };
+    const key = workspace ?? "";
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < (force ? MIN_REFRESH_MS : 60_000)) {
+      // Most recently used goes last, so eviction drops the workspace unused the longest.
+      cache.delete(key);
+      cache.set(key, hit);
+      return hit.graph;
+    }
+    let job = inflight.get(key);
+    if (!job) {
+      const startedAt = generation;
+      // Cached when the read ends, even if the request that started it already gave up waiting.
+      const mine: Promise<InfraGraph> = collect(workspace)
+        .then((graph) => {
+          // A change landed while this graph was being read, so it is stale. Serve it once, never cache it.
+          if (startedAt === generation) {
+            cache.delete(key);
+            cache.set(key, { graph, at: Date.now() });
+            // Keep only the most recently loaded workspaces in memory.
+            while (cache.size > MAX_CACHED_WORKSPACES) cache.delete(cache.keys().next().value!);
+          }
+          return graph;
+        })
+        .finally(() => {
+          // Only remove our own entry; after a clear, a newer request for this key may own it.
+          if (inflight.get(key) === mine) inflight.delete(key);
+        });
+      job = mine;
+      inflight.set(key, job);
+    }
+    return withinDeadline(job, "the map");
+  };
+
+  // A fresh secret each launch, so another local user or a page cannot call the API.
+  const token = randomBytes(32).toString("hex");
+  const expected = Buffer.from(token);
+  const authorized = (v: unknown): boolean => {
+    if (typeof v !== "string") return false;
+    const got = Buffer.from(v);
+    return got.length === expected.length && timingSafeEqual(got, expected);
   };
 
   let boundPort = 0;
-  const server = createServer(async (req, res) => {
+  // A slow client cannot hold a connection open for long; timeouts are checked every second.
+  const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000, connectionsCheckingInterval: 1_000 }, async (req, res) => {
     const origins = [`${HOST}:${boundPort}`, `localhost:${boundPort}`];
     if (!origins.includes(String(req.headers.host ?? ""))) {
       res.writeHead(421, { "Content-Type": "text/plain" }).end("Misdirected request");
@@ -140,7 +208,7 @@ export async function startMapServer(
         }
         let body: Buffer | undefined;
         for (const dir of [WEB_DIR, WEB_FALLBACK]) {
-          body = await readFile(join(dir, file)).catch(() => undefined); // BESTPRACTICE_OK: first existing dir wins, order matters
+          body = await readFile(join(dir, file)).catch(() => undefined); // first existing dir wins, order matters
           if (body) break;
         }
         if (!body) {
@@ -152,9 +220,14 @@ export async function startMapServer(
         return;
       }
 
-      // A cross-site page cannot add this header without a preflight, which is never answered.
-      if (req.headers["x-hzmap"] !== "1") {
-        res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end("Forbidden");
+      // A cross-site page cannot add this header without a preflight, and cannot know the secret.
+      if (!authorized(req.headers["x-hzmap"])) {
+        // No key means the page was opened without the full link; a wrong key means the map restarted.
+        const sent = req.headers["x-hzmap"];
+        const why = !sent || sent === "1"
+          ? "This page was opened without its access key. Open the full link the map printed when it started (it ends in #k=...)."
+          : "This map link is out of date because the map restarted. Open the new link it printed.";
+        res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end(why);
         return;
       }
       const origin = req.headers.origin;
@@ -164,7 +237,22 @@ export async function startMapServer(
       }
 
       if (method === "GET") {
-        if (url.pathname === "/api/graph") return json(200, await load(url.searchParams.get("refresh") === "1"));
+        if (url.pathname === "/api/workspaces") {
+          const list = workspaces();
+          return json(200, { default: list[0]?.name ?? (opts.demo ? DEFAULT_WORKSPACE : defaultWorkspace(env)), workspaces: list });
+        }
+        if (url.pathname === "/api/graph") {
+          const list = workspaces();
+          const asked = url.searchParams.get("workspace");
+          if (asked !== null && !list.some((w) => w.name === asked)) throw new ActionError(400, "Unknown workspace. GET /api/workspaces lists the valid names.");
+          return json(200, await load(asked ?? list[0]?.name, url.searchParams.get("refresh") === "1"));
+        }
+        if (url.pathname === "/api/status") {
+          const list = workspaces();
+          const asked = url.searchParams.get("workspace");
+          if (asked !== null && !list.some((w) => w.name === asked)) throw new ActionError(400, "Unknown workspace. GET /api/workspaces lists the valid names.");
+          return json(200, await liveStatus(asked ?? list[0]?.name));
+        }
         if (url.pathname === "/api/meta") return json(200, meta(actx));
         if (url.pathname === "/api/catalog") {
           if (opts.demo) throw new ActionError(403, "This is sample data. Start the live map to create real resources.");
@@ -180,14 +268,14 @@ export async function startMapServer(
       const body = await readJson(req);
       if (opts.demo && url.pathname !== "/api/projects") throw new ActionError(403, "This is sample data. Start the live map to change real resources.");
       const done = (message: string) => {
-        cache = undefined;
+        invalidateGraphs();
         json(200, { ok: true, message });
       };
       switch (url.pathname) {
         case "/api/projects":
           return done(await connectProject(actx, body));
         case "/api/projects/remove":
-          return done(disconnectProject(actx, body.id));
+          return done(await disconnectProject(actx, body.id));
         case "/api/plan": {
           if (opts.demo) throw new ActionError(403, "This is sample data. Start the live map to create real resources.");
           const p = await plan(actx, projectById(actx, String(body.project ?? "")), body.kind, (body.params ?? {}) as Record<string, unknown>);
@@ -208,19 +296,51 @@ export async function startMapServer(
     }
   });
 
+  // Several open tabs share one poll, so the rate limit never pays per tab.
+  // A running poll is shared until it ends, then its answer is reused for 20 seconds.
+  const statusCache = new Map<string, { at: number; job: Promise<StatusSnapshot>; done: boolean }>();
+  const liveStatus = (workspace: string | undefined): Promise<StatusSnapshot> => {
+    if (opts.demo) return Promise.resolve(sampleStatuses(workspace));
+    const key = workspace ?? "";
+    const hit = statusCache.get(key);
+    if (hit && (!hit.done || Date.now() - hit.at < MIN_REFRESH_MS * 2)) return withinDeadline(hit.job, "live status");
+    const job = opts.statuses ? opts.statuses(workspace) : collectStatuses(cfg, env, { workspace });
+    const entry = { at: Date.now(), job, done: false };
+    job.then(
+      () => {
+        entry.done = true;
+        entry.at = Date.now();
+      },
+      () => {
+        if (statusCache.get(key) === entry) statusCache.delete(key);
+      },
+    );
+    statusCache.set(key, entry);
+    return withinDeadline(job, "live status");
+  };
+
+  // Any change, from this server or from a tool in the same process, drops this server's copies too.
+  const stopListening = onInvalidate(() => {
+    generation++;
+    inflight.clear();
+    cache.clear();
+    statusCache.clear();
+  });
+
   // Try the chosen port, then the next nine, so a busy port never blocks the map.
   const first = opts.port ?? mapPortFromEnv(env);
   let lastErr: unknown;
   for (let p = first; p < first + 10; p++) {
     try {
-      boundPort = await listen(server, p); // BESTPRACTICE_OK: ports are tried in order, each depends on the previous failing
-      const url = `http://${HOST}:${boundPort}/`;
+      boundPort = await listen(server, p); // ports are tried in order, each depends on the previous failing
       running = {
-        url,
+        url: `http://${HOST}:${boundPort}/#k=${token}`,
+        token,
         port: boundPort,
         close: () =>
           new Promise<void>((resolve) => {
             running = undefined;
+            stopListening();
             server.close(() => resolve());
           }),
       };
@@ -230,5 +350,6 @@ export async function startMapServer(
       if ((err as NodeJS.ErrnoException).code !== "EADDRINUSE") break;
     }
   }
+  stopListening();
   throw new Error(`Could not start the map server near port ${first}. ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
 }

@@ -6,8 +6,10 @@ import { classifyCost } from "../cost.js";
 import { waitForActions } from "../actions.js";
 import { capacityRows } from "../tools/capacity.js";
 import { deletionPreview } from "../tools/delete-preview.js";
-import { discoverProjects, type ProjectRef } from "./projects.js";
-import { readStored, removeStored, saveStored } from "./store.js";
+import { DEFAULT_WORKSPACE, discoverProjects, type ProjectRef } from "./projects.js";
+import { sampleGraph } from "./sample.js";
+import { readStored, removeStoredAsync, saveStoredAsync } from "./store.js";
+import { normName } from "../text.js";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -27,9 +29,12 @@ export const CREATE_KINDS = ["server", "volume", "network", "firewall", "load_ba
 type CreateKind = (typeof CREATE_KINDS)[number];
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9.-]{0,62}$/;
-const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
-const ACCOUNT = /^[^/\u0000-\u001f]{1,60}$/;
-const TOKEN = /^[A-Za-z0-9]{20,128}$/;
+export const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
+// No slash (it splits targets), control, format or bidi characters, so names cannot spoof.
+export const ACCOUNT = /^[^/\p{Cc}\p{Cf}\u2028\u2029]{1,60}$/u;
+/** Shortest API token accepted. The CLI masks anything shorter completely. */
+export const TOKEN_MIN_LENGTH = 20;
+export const TOKEN = new RegExp(`^[A-Za-z0-9]{${TOKEN_MIN_LENGTH},128}$`);
 const ID = /^[0-9]{1,15}$/;
 const CIDR = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
 
@@ -46,13 +51,17 @@ export function meta(a: ActionEnv) {
     mode: a.demo ? "demo" : "live",
     readOnly: a.base.readOnly,
     allowBilled: a.base.allowBilled,
-    projects: projectsOf(a).map((p) => ({ id: `p:${p.account}/${p.name}`, name: p.name, account: p.account, source: p.source })),
+    // Sample data must never reveal which real accounts or projects are configured.
+    projects: a.demo
+      ? sampleGraph().nodes.filter((n) => n.kind === "project").map((n) => ({ id: n.id, name: n.label, account: n.account, workspace: DEFAULT_WORKSPACE, source: "env" as const }))
+      : projectsOf(a).map((p) => ({ id: `p:${p.account}/${p.name}`, name: p.name, account: p.account, workspace: p.workspace, source: p.source })),
   };
 }
 
 function str(v: unknown, field: string, re: RegExp): string {
-  if (typeof v !== "string" || !re.test(v.trim())) throw new ActionError(400, `${field} is not valid.`);
-  return v.trim();
+  const t = typeof v === "string" ? normName(v) : "";
+  if (!re.test(t)) throw new ActionError(400, `${field} is not valid.`);
+  return t;
 }
 const optId = (v: unknown, field: string) => (v === undefined || v === null || v === "" ? undefined : Number(str(String(v), field, ID)));
 
@@ -323,6 +332,7 @@ export async function connectProject(a: ActionEnv, body: Json): Promise<string> 
   const name = str(body.name, "Project name", PROJECT_NAME);
   const account = typeof body.account === "string" && body.account.trim() ? str(body.account, "Account", ACCOUNT) : a.env.HETZNER_ACCOUNT_NAME?.trim() || "Hetzner account";
   const token = str(body.token, "API token", TOKEN);
+  const workspace = typeof body.workspace === "string" && body.workspace.trim() ? str(body.workspace, "Workspace", ACCOUNT) : undefined;
   const existing = projectsOf(a);
   if (existing.some((p) => p.cfg.cloudToken === token)) throw new ActionError(409, "That token is already connected.");
   if (existing.some((p) => p.name === name && p.account === account && p.source === "env")) throw new ActionError(409, "A project with that name comes from your environment settings.");
@@ -332,13 +342,13 @@ export async function connectProject(a: ActionEnv, body: Json): Promise<string> 
     const status = (err as { status?: number }).status;
     throw new ActionError(400, status === 401 || status === 403 ? "Hetzner rejected this token. Copy it again from the project." : "Could not reach Hetzner to check the token. Try again.");
   }
-  saveStored(a.env, { name, account, token });
+  await saveStoredAsync(a.env, { name, account, token, ...(workspace ? { workspace } : {}) });
   return `Connected ${name}. The token checked out with Hetzner and is saved only on this computer.`;
 }
 
-export function disconnectProject(a: ActionEnv, projectNodeId: unknown): string {
+export async function disconnectProject(a: ActionEnv, projectNodeId: unknown): Promise<string> {
   const ref = projectById(a, String(projectNodeId));
   if (ref.source !== "local") throw new ActionError(400, "This project comes from your environment settings. Remove it there.");
-  removeStored(a.env, ref.account, ref.name);
+  await removeStoredAsync(a.env, ref.account, ref.name);
   return `Disconnected ${ref.name}. Nothing at Hetzner changed.`;
 }

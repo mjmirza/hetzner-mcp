@@ -10,14 +10,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig, availableSurfaces } from "./config.js";
-import { registerGenericTools } from "./tools/generic.js";
-import { registerReadTools } from "./tools/resources.js";
-import { registerWriteTools } from "./tools/write.js";
-import { registerCloudWriteTools } from "./tools/write-cloud.js";
-import { registerContributeTool } from "./tools/contribute.js";
-import { registerMapTool } from "./tools/map.js";
-import { registerCapacityTool } from "./tools/capacity.js";
+import { registerAllTools, isLean } from "./tools/register.js";
 import { runMap } from "./map/cli.js";
+import { runAudit } from "./map/audit-cli.js";
+import { runProjects } from "./map/projects-cli.js";
 import { runSetup } from "./setup/wizard.js";
 import { runDoctor } from "./setup/doctor.js";
 import { VERSION } from "./version.js";
@@ -37,6 +33,10 @@ function printHelp(): void {
       "    doctor      Read-only status check. Token health, surfaces, which clients are wired.",
       "    map         Interactive map of every project, resource, and its monthly cost.",
       "                Flags. --port N, --open, --demo. Default http://127.0.0.1:43390",
+      "    audit       Security, cost and reliability audit with fix steps.",
+      "                Flags. --out report.md, --json, --demo, --fail-on critical|high",
+      "    projects    Manage saved project tokens across workspaces (clients).",
+      "                import <file> [--verify], list [--json], remove <workspace>/<account>/<project>",
       "    help        Show this help.",
       "    version     Print the version.",
       "",
@@ -51,20 +51,14 @@ async function runServer(): Promise<void> {
   const cfg = loadConfig();
   const server = new McpServer({ name: "hetzner-mcp", version: pkg.version });
 
-  registerGenericTools(server, cfg);
-  registerReadTools(server, cfg);
-  registerWriteTools(server, cfg);
-  registerCloudWriteTools(server, cfg);
-  registerContributeTool(server);
-  registerMapTool(server, cfg);
-  registerCapacityTool(server, cfg);
+  registerAllTools(server, cfg);
 
   // Diagnostics go to stderr so they never corrupt the stdio protocol on stdout.
   const surfaces = availableSurfaces(cfg);
   process.stderr.write(
     `hetzner-mcp ${pkg.version} ready. Surfaces available: ` +
       `${surfaces.length ? surfaces.join(", ") : "none. Run: npx hetzner-mcp setup"}.` +
-      `${cfg.readOnly ? " Read-only mode." : ""}\n`,
+      `${cfg.readOnly ? " Read-only mode." : ""}${isLean() ? " Lean tool set." : ""}\n`,
   );
 
   const transport = new StdioServerTransport();
@@ -83,6 +77,14 @@ async function main(): Promise<void> {
   }
   if (cmd === "map" || cmd === "--map") {
     process.exitCode = await runMap(argv.slice(1));
+    return;
+  }
+  if (cmd === "audit") {
+    process.exitCode = await runAudit(argv.slice(1));
+    return;
+  }
+  if (cmd === "projects") {
+    process.exitCode = await runProjects(argv.slice(1));
     return;
   }
   if (cmd === "version" || cmd === "--version" || cmd === "-v") {

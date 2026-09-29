@@ -20,7 +20,11 @@ import {
   ServerStack03Icon,
 } from "hugeicons-react";
 import { cn } from "@/lib/utils";
-import { KIND_LABEL, money } from "@/lib/format";
+import { STATE_LABEL } from "../../../src/map/status";
+import { StatusDot } from "@/components/LiveStatus";
+import type { LiveLookup } from "@/lib/live";
+import { KIND_LABEL, money, visible } from "@/lib/format";
+import { cityName, explainLocation, explainType, placeName } from "@/lib/glossary";
 import type { CardData } from "@/lib/layout";
 import type { MapNode, NodeKind } from "@/lib/types";
 
@@ -49,16 +53,41 @@ interface CardActions {
   select: (id: string) => void;
   toggle: (id: string) => void;
   currency: string;
+  live: LiveLookup;
 }
 
-export const CardContext = createContext<CardActions>({ select: () => {}, toggle: () => {}, currency: "EUR" });
+const NO_LIVE: LiveLookup = { view: () => undefined, rollup: () => undefined, checkedAt: "", failed: false };
+export const CardContext = createContext<CardActions>({ select: () => {}, toggle: () => {}, currency: "EUR", live: NO_LIVE });
+const LIVE_KINDS = new Set<NodeKind>(["server", "load_balancer", "robot_server"]);
 
 function subtitle(n: MapNode): string {
   const d = n.details;
-  const bits = [d.type, n.location, n.status].filter((x) => x != null && x !== "");
+  if (n.kind === "location") return `Data center ${n.label}`;
+  const where = n.location ? cityName(n.location) ?? n.location : null;
+  // Live kinds show their status as a dot instead, so it is never printed twice.
+  const bits = [d.type, where, LIVE_KINDS.has(n.kind) ? null : n.status].filter((x) => x != null && x !== "" && x !== n.label);
   if (n.kind === "network" && d.ip_range) return String(d.ip_range);
   if (n.kind === "project") return `${n.account}`;
   return bits.join(" · ");
+}
+
+/** The card title. Locations read as a place, not a code. */
+function title(n: MapNode): string {
+  return n.kind === "location" ? placeName(n.label) ?? n.label : visible(n.label);
+}
+
+/** Hover text that spells out every short code on the card. */
+function explain(n: MapNode): string | undefined {
+  const lines = [n.kind === "server" ? explainType(n) : null, explainLocation(n.location ?? (n.kind === "location" ? n.label : null))].filter(Boolean);
+  return lines.length ? lines.join("\n") : undefined;
+}
+
+/** Short enough to always fit a card: "4 vCPU · 8 GB · 160 GB disk". The full story is in the panel. */
+function specs(n: MapNode): string | null {
+  if (n.kind !== "server") return null;
+  const d = n.details;
+  const bits = [typeof d.cores === "number" ? `${d.cores} vCPU` : null, typeof d.memory_gb === "number" ? `${d.memory_gb} GB` : null, typeof d.disk_gb === "number" ? `${d.disk_gb} GB disk` : null];
+  return bits.filter(Boolean).join(" · ") || null;
 }
 
 function Row({ n }: { n: MapNode }) {
@@ -80,7 +109,7 @@ function Row({ n }: { n: MapNode }) {
       <Icon size={14} className="shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate">
         <span className="text-muted-foreground">{KIND_LABEL[n.kind]} </span>
-        {n.label}
+        {visible(n.label)}
       </span>
       {risky && <Alert02Icon size={13} className="shrink-0 text-risk" aria-label="Needs attention" />}
       <span className="shrink-0 tabular-nums text-muted-foreground">{money(n.monthly, currency)}</span>
@@ -88,34 +117,42 @@ function Row({ n }: { n: MapNode }) {
   );
 }
 
+function clock(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "unknown time" : d.toLocaleTimeString("en-GB");
+}
+
 function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
-  const { toggle, currency } = useContext(CardContext);
+  const { toggle, currency, live } = useContext(CardContext);
   const n = data.node;
   const shelf = n.id.endsWith("#shelf");
+  const lv = shelf ? undefined : live.view(n);
+  const roll = n.kind === "project" ? live.rollup(n.id) : undefined;
+  const checked = n.kind === "robot_server" ? "as of the last map refresh" : `checked ${clock(live.checkedAt)}`;
+  const sub = shelf ? "" : subtitle(n);
   const Icon = shelf ? FirewallIcon : KIND_ICON[n.kind];
   const risk = n.flags.filter((f) => f.kind === "risk").length;
   const waste = n.flags.filter((f) => f.kind === "waste").length;
   const container = n.kind === "account" || n.kind === "project" || n.kind === "location" || n.kind === "network";
   const lr = data.direction === "LR";
   const own = n.monthly ?? 0;
-  const total = own + data.rows.reduce((s, r) => s + (shelf ? 0 : r.monthly ?? 0), 0);
 
   return (
     <div
       className={cn(
-        "group relative h-full w-full rounded-[14px] border bg-card text-card-foreground shadow-[var(--shadow)] transition-[opacity,box-shadow,border-color] duration-200",
+        "group relative flex w-full flex-col gap-2 rounded-[14px] border bg-card p-3 text-card-foreground shadow-[var(--shadow)] transition-[opacity,box-shadow,border-color] duration-200",
         container && "bg-secondary/70",
         n.kind === "account" && "bg-foreground text-background",
         selected && "border-primary ring-4 ring-primary/15",
         data.related && "border-primary/60",
         risk > 0 && !selected && "border-risk/50",
-        data.dim && "opacity-35",
+        data.dim && "opacity-60",
       )}
     >
       <Handle type="target" position={lr ? Position.Left : Position.Top} className="!opacity-0" isConnectable={false} />
       <Handle type="source" position={lr ? Position.Right : Position.Bottom} className="!opacity-0" isConnectable={false} />
 
-      <div className={cn("flex items-start gap-3 p-3", container && "items-center")}>
+      <div className={cn("flex items-start gap-3", container && "items-center")}>
         <div
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-secondary text-foreground",
@@ -128,15 +165,33 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
         <div className="min-w-0 flex-1">
           <div className={cn("flex items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase", n.kind === "account" && "text-background/70")}>
             <span className="truncate">{shelf ? "Project-wide" : KIND_LABEL[n.kind]}</span>
-            {!container && n.monthly != null && <span className="ml-auto shrink-0 text-[12px] font-semibold tracking-normal text-foreground normal-case tabular-nums">{money(total, currency)}</span>}
+            {!container && n.monthly != null && <span className="ml-auto shrink-0 text-[12px] font-semibold tracking-normal text-foreground normal-case tabular-nums">{money(own, currency)}</span>}
           </div>
-          <div className="truncate text-[15px] leading-5 font-semibold">{shelf ? `${data.rows.length} shared resources` : n.label}</div>
-          {!shelf && subtitle(n) && <div className={cn("truncate text-[12px] text-muted-foreground", n.kind === "account" && "text-background/70")}>{subtitle(n)}</div>}
+          <div className="truncate text-[15px] leading-5 font-semibold" title={shelf ? undefined : title(n)}>{shelf ? `${data.rows.length} shared resources` : title(n)}</div>
+          {(lv || sub) && (
+            <div className={cn("flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground", n.kind === "account" && "text-background/70")}>
+              {lv && (
+                <StatusDot
+                  className="shrink-0"
+                  state={lv.state}
+                  label={lv.stale ? `Last known: ${STATE_LABEL[lv.known]}` : undefined}
+                  title={`${lv.stale ? `Last check failed. Last known: ${STATE_LABEL[lv.known]}` : STATE_LABEL[lv.state]}. Hetzner ${lv.raw}, ${checked}.`}
+                />
+              )}
+              {sub && <span className="truncate" title={explain(n)}>{sub}</span>}
+            </div>
+          )}
+          {roll && <StatusDot className="max-w-full" state={roll.tone} label={roll.text} title={`${roll.title}. Checked ${clock(live.checkedAt)}.`} />}
+          {specs(n) && (
+            <div className="truncate text-[12px] text-muted-foreground" title={explain(n)}>
+              {specs(n)}
+            </div>
+          )}
         </div>
       </div>
 
       {!container && !shelf && data.links.length > 0 && (
-        <ul className="-mt-1 flex flex-col gap-0.5 px-3 pb-2 text-[12px] text-muted-foreground" aria-label="Connections">
+        <ul className="flex flex-col gap-0.5 text-[12px] text-muted-foreground" aria-label="Connections">
           {data.links.map((l) => (
             <li key={l} className="flex h-[20px] items-center gap-1.5 truncate">
               <span aria-hidden className="size-1 shrink-0 rounded-full bg-edge" />
@@ -147,7 +202,7 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
       )}
 
       {(risk > 0 || waste > 0) && !container && (
-        <div className="-mt-1 flex gap-1.5 px-3 pb-2">
+        <div className="flex flex-wrap gap-1.5">
           {risk > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-risk-soft px-2 py-0.5 text-[11px] font-medium text-risk">
               <Alert02Icon size={12} /> {risk} risk{risk > 1 ? "s" : ""}
@@ -162,7 +217,7 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
       )}
 
       {data.rows.length > 0 && (
-        <div className="flex flex-col gap-1 px-3 pb-3">
+        <div className="flex flex-col gap-1">
           {data.rows.map((r) => (
             <Row key={r.id} n={r} />
           ))}

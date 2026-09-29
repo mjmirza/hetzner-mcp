@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/hetzner-cloud-logo.png" alt="Hetzner" height="56" />
+<img src="https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/hetzner-cloud-logo.png" alt="Hetzner" height="56" />
 
 Manage your entire Hetzner platform from any AI assistant. Cloud servers, networks, volumes, firewalls, load balancers, IPs and DNS, plus Storage Boxes and Robot dedicated servers. One Model Context Protocol server, every surface, tested live, with a hard cost guard so you never get a surprise bill.
 
@@ -79,7 +79,7 @@ Your token goes nowhere except Hetzner. The wizard saves it locally, inside your
 | Claude Code | `~/.claude.json` |
 | Cursor | `~/.cursor/mcp.json` |
 | Windsurf | the Windsurf `mcp_config.json` |
-| VS Code | `.vscode/mcp.json` in your project |
+| VS Code | `.vscode/mcp.json` in your project (setup warns you, since this file sits in the project and could be committed) |
 
 ### Using a different assistant?
 
@@ -88,6 +88,8 @@ hetzner-mcp is a standard MCP server, so it works with any MCP client. For an as
 ```
 npx hetzner-mcp setup --print
 ```
+
+The block shows placeholders, so it is safe to share or screenshot. Add `--print-secrets` to include the credentials you pass in. For scripts, pipe the token in with `--token-stdin` (or set `HETZNER_CLOUD_TOKEN`) rather than `--token`, which other users on the same computer can see in the process list. The interactive prompts never echo the token or the Robot password.
 
 A note on ChatGPT. OpenAI's MCP support is built around remote connectors rather than a local config file, so the desktop assistants above are the most direct fit for a local server like this. Any client that speaks MCP over stdio needs only the printed block.
 
@@ -140,15 +142,43 @@ npx hetzner-mcp map --open        # your account, at http://127.0.0.1:43390
 npx hetzner-mcp map --demo --open # a labelled sample estate, nothing needed
 ```
 
+The address it prints ends in a one-time key (`#k=...`) made fresh at every launch. Only a page opened with that key can call the map's API, so other users on the same computer and other web pages cannot. The key stays in the tab after you open it, so reloading works.
+
 What you get:
 - Where the money goes. Monthly cost per account, per project, per resource type, and the top cost drivers.
 - Risks to fix. Server types Hetzner is retiring, servers with no firewall, SSH or database ports open to the whole internet, and certificates about to expire.
 - What you are paying for and not using. Powered off servers, unattached volumes, unassigned IPs, and snapshots of deleted servers, each with the monthly amount tied to it. One click takes you to it on the canvas.
-- A layout that stays readable. Cards are laid out automatically, left to right or top to bottom with one click, and no line ever runs through a card. Drag cards where you want them, the map remembers, and Tidy up puts everything back.
-- Three ways to look. Hierarchy shows what sits inside what. Connections also places linked resources next to each other, so you can see which firewall protects which server and which load balancer sends traffic where. List is a plain outline that works well on a phone. Every card also says its links in words, for example "Protected by web-fw".
+- A layout that stays readable. Cards are laid out automatically, left to right or top to bottom with one click, cards grow to fit their content, and no card ever overlaps another. Drag cards where you want them, the map remembers, and Reset puts every card back, shows everything again, and centers the map. Turn on Flow to watch dots run along the lines like a workflow executing.
+- Plain names instead of codes. A location reads "Falkenstein, Germany", not "fsn1", and a server shows "4 vCPU · 8 GB · 160 GB disk" under its type. Select anything and the side panel explains every code, for example "cpx31 is x86 CPU, shared, regular".
+- Three ways to look. Hierarchy shows what sits inside what. Connections also places linked resources next to each other, so you can see which firewall protects which server and which load balancer sends traffic where. List is a calm, flat list grouped by project, most urgent first, with filters for Needs attention, Can save money, and Costs money, and it works well on a phone. Every card also says its links in words, for example "Protected by web-fw".
 - How many projects you have, and what each costs. The side panel lists every account and project with its resource count and monthly total. Click one to show only that project.
 - Create from the map. Pick Create, choose what you want, and you see the real Hetzner price before anything happens. Billed creates stay off until you start the map with `HETZNER_MCP_ALLOW_BILLED=1`, and even then you tick a box that states the monthly amount. Deleting asks you to type the exact name and tells you what else is affected.
 - Add a project from the map. Hetzner has no API to create projects, so the map walks you to the Console, you paste the project's token, it is checked against Hetzner, then saved on this computer only (owner-only file permissions) and never sent back to the page. Tokens from environment variables work too, for example `HETZNER_CLOUD_TOKEN_STAGING`, grouped with `HETZNER_ACCOUNT_STAGING=Acme GmbH`.
+
+### Many clients and accounts with workspaces
+
+A workspace groups the accounts of one client. If you only run your own projects, nothing changes, everything sits in one workspace called Personal. When you manage many clients, the map loads one workspace at a time, so 100 accounts never load at once, and one broken token only marks that project as unreadable.
+
+Import every client token in one go, from a CSV with the columns `workspace,account,project,token` or a JSON array of the same fields.
+
+```bash
+npx hetzner-mcp projects import clients.csv --verify   # checks each token with one read call
+npx hetzner-mcp projects list                          # tokens shown as ****abcd only
+npx hetzner-mcp projects remove "Client A/Client A GmbH/prod"
+```
+
+Tokens are saved on this computer only, owner-only file, never printed. Account labels must be unique across workspaces. Environment tokens can join a workspace with `HETZNER_WORKSPACE_STAGING=Client A`, and `HETZNER_WORKSPACE_NAME` renames the default one. Ask your assistant to map one client by passing the workspace name as the `target` of `infra_map`, or one project as `Client A/Client A GmbH/prod`. Every other tool still acts on the `HETZNER_CLOUD_TOKEN` project only.
+
+In the map, a workspace switcher sits at the top of the side panel as soon as there is more than one workspace. It searches by client name, loads only the one you pick, and remembers it next time.
+
+| Your situation | What to set up | What you see |
+|---|---|---|
+| One account, one project | `HETZNER_CLOUD_TOKEN` | Everything, no switcher |
+| One account, several projects | One `HETZNER_CLOUD_TOKEN_<NAME>` per project, or Add project in the map | All projects in one workspace |
+| Your own account plus a few clients | `HETZNER_WORKSPACE_<NAME>=Client A` next to each client token | A switcher, one workspace per client |
+| An agency with 100+ client accounts | `npx hetzner-mcp projects import clients.csv --verify` | A searchable switcher; only the active client loads |
+| One token stops working | Nothing, the rest keep loading | That project is marked unreadable and the audit lists it |
+| Dedicated (Robot) servers | `HETZNER_ROBOT_USER` and `HETZNER_ROBOT_PASSWORD` | Listed in the default workspace |
 
 Before you create a server, ask "where can I get a 4 core server right now". The `find_capacity` tool lists what Hetzner can actually sell you today, by location and price, so a create does not fail with resource unavailable.
 
@@ -156,8 +186,31 @@ Your assistant can open it too. Ask it to "map my Hetzner infrastructure" and th
 
 It is local and guarded. It listens on 127.0.0.1 only, refuses requests addressed to any other host name or sent from another website, and never sends your token to the page. Every create and delete goes through the same cost, read-only (`HETZNER_MCP_READONLY=1`), and destructive guards as the MCP tools, and the sample map cannot change anything. Port 43390 is unassigned in the IANA registry; set `HETZNER_MCP_MAP_PORT` to change it, and it moves to the next free port if that one is busy. Costs are estimates from Hetzner list prices, not your invoice, because Hetzner has no Cloud billing API.
 
-![Infra map, light](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/map/infra-map-light.png)
-![Infra map, dark](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/map/infra-map-dark.png)
+### An audit that runs by itself
+
+Every time the map loads, it audits your estate. Nobody has to press a button, and the first audit also runs at the end of `npx hetzner-mcp setup`, so you see what is worth fixing before you ask.
+
+- A score out of 100 and a grade, per project and overall.
+- Every finding says what is wrong, why it matters, numbered steps in the Hetzner Console, and the exact sentence to ask your AI, with the monthly saving where there is one.
+- Checks include open SSH and database ports, public servers with no firewall, retiring server types, expiring certificates, powered-off servers still billed, unattached volumes and IPs, load balancers with no or one target, production servers without backups, and projects running everything in one location.
+- It says out loud what it cannot see, such as settings inside the operating system, so silence never reads as all clear.
+
+```bash
+npx hetzner-mcp audit                     # short summary
+npx hetzner-mcp audit --out audit.md      # full report with fix steps
+npx hetzner-mcp audit --fail-on high      # exit 1 in CI when a high or critical finding appears
+```
+
+In the map, open the Audit tab. From your AI, the `infra_audit` tool returns the summary first and one finding's steps on request (`finding: 3`), which keeps the conversation short.
+
+![Infra map, light](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/map/infra-map-light.png)
+![Infra map, dark](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/map/infra-map-dark.png)
+
+## Small on tokens, by design
+
+Every answer is shaped to cost your AI as few tokens as possible. Lists come back as a compact view where nested objects collapse to their name (a server type reads `cx23`, not its full price table), empty fields are dropped, and JSON is not indented. Pass `verbose: true` whenever you need everything. Measured on a live account, this cut server type lists by 49%, locations by 47%, and images by 40%.
+
+The tool list itself costs tokens in every conversation. Set `HETZNER_MCP_TOOLS=lean` to skip the 27 list shortcuts; `cloud_request` with GET reads the same data, and the tool list drops from about 9,400 to 5,900 tokens. A test in CI fails if the tool list or the common answers grow past their budget.
 
 ## Cost safety, the part you actually worry about
 
@@ -249,17 +302,17 @@ Full, beginner friendly, step by step instructions, including the German console
 
 Open the Cloud Console, then your project.
 
-![Open the Hetzner Cloud Console](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/01-cloud-open-console.png)
-![Select your project](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/02-cloud-select-project.png)
+![Open the Hetzner Cloud Console](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/01-cloud-open-console.png)
+![Select your project](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/02-cloud-select-project.png)
 
 Open Security, then the API Tokens tab, and generate the token.
 
-![Open Security](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/03-cloud-open-security.png)
-![API Tokens tab and generate](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/04-cloud-api-tokens.png)
+![Open Security](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/03-cloud-open-security.png)
+![API Tokens tab and generate](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/04-cloud-api-tokens.png)
 
 For dedicated servers, create a Robot webservice user.
 
-![Robot web service and app settings](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/05-robot-webservice-settings.png)
+![Robot web service and app settings](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/05-robot-webservice-settings.png)
 
 ## What is tested, and how this compares
 

@@ -11,6 +11,7 @@ import { hetznerRequest } from "../http.js";
 import { cloudServerPriceNote } from "../cost.js";
 import { waitForActions, describeActions, actionBlocks, anyActionFailed } from "../actions.js";
 import { deletionPreview } from "./delete-preview.js";
+import { id } from "./write-cloud.js";
 
 function text(value: string, isError = false) {
   return { content: [{ type: "text" as const, text: value }], isError };
@@ -76,7 +77,7 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
           note: "Server is billed while it exists. Delete it with cloud_delete_server when done. A root password is returned only when no SSH key was attached.",
         };
         const actions = await waitForActions(cfg, res);
-        return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }, ...actionBlocks(actions)], isError: anyActionFailed(actions) };
+        return { content: [{ type: "text" as const, text: JSON.stringify(summary) }, ...actionBlocks(actions)], isError: anyActionFailed(actions) };
       } catch (err) {
         return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
       }
@@ -90,8 +91,8 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
       description:
         "Delete a Hetzner Cloud server. Deleting is free and stops billing, but it destroys the server, so it requires confirm true. Auto-created primary IPs are released by Hetzner shortly after.",
       inputSchema: {
-        id: z.union([z.string(), z.number()]).describe("Server id."),
-        confirm: z.boolean().optional().describe("Must be true. This permanently deletes the server."),
+        id: id.describe("Server id."),
+        confirm: z.boolean().optional().describe("Must be true. Deletes the server for good."),
       },
     },
     async (args) => {

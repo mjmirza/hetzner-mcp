@@ -7,14 +7,16 @@
  */
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
-import { discoverProjects, type ProjectRef } from "./projects.js";
+import { defaultAccount, defaultWorkspace, discoverProjects, type ProjectRef } from "./projects.js";
+import { settleWithLimit } from "./limit.js";
 import { readStored } from "./store.js";
 import { finalize } from "./totals.js";
+import { targetHealth } from "./status.js";
 import type { Flag, InfraGraph, MapEdge, MapNode } from "./types.js";
 
-const waste = (text: string, monthly: number | null): Flag => ({ kind: "waste", text, monthly });
-const risk = (text: string): Flag => ({ kind: "risk", text, monthly: null });
-const info = (text: string, monthly: number | null = null): Flag => ({ kind: "info", text, monthly });
+const waste = (code: string, text: string, monthly: number | null): Flag => ({ kind: "waste", code, text, monthly });
+const risk = (code: string, text: string): Flag => ({ kind: "risk", code, text, monthly: null });
+const info = (code: string, text: string, monthly: number | null = null): Flag => ({ kind: "info", code, text, monthly });
 
 /** Inbound ports that should almost never be open to the whole internet. */
 const SENSITIVE_PORTS: Record<string, string> = {
@@ -25,8 +27,9 @@ const WORLD = new Set(["0.0.0.0/0", "::/0"]);
 
 /** True when a rule's port spec (single, range, or "any") includes the port. */
 function portCovers(spec: string | null | undefined, port: number): boolean {
-  if (!spec) return true;
+  if (!spec || spec.trim().toLowerCase() === "any") return true;
   const [a, b] = spec.split("-").map(Number);
+  if (!Number.isFinite(a)) return false;
   return b ? port >= a! && port <= b : port === a;
 }
 
@@ -34,18 +37,39 @@ const DAY_MS = 86_400_000;
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-async function listAll(cfg: HetznerConfig, surface: "cloud" | "storagebox", path: string, key: string): Promise<Json[]> {
+const PER_PAGE = 50;
+
+/** How a list was read: pages fetched, and what it covers when Hetzner still had more. */
+export interface ListInfo {
+  pages: number;
+  /** Set when the page limit stopped the read, for example "servers". */
+  truncated?: string;
+}
+const listInfos = new WeakMap<Json[], ListInfo>();
+export const listInfo = (list: Json[]): ListInfo | undefined => listInfos.get(list);
+
+export async function listAll(cfg: HetznerConfig, surface: "cloud" | "storagebox", path: string, key: string): Promise<Json[]> {
   const out: Json[] = [];
   const [bare, qs] = path.split("?");
   const extra = Object.fromEntries(new URLSearchParams(qs ?? ""));
+  const info: ListInfo = { pages: 0 };
   for (let page = 1; page <= cfg.maxPages; page++) {
-    const res = (await hetznerRequest(cfg, { surface, path: bare!, query: { ...extra, page, per_page: 50 } })) as Json;
-    const items = (res[key] as Json[] | undefined) ?? [];
-    out.push(...items);
+    const res = (await hetznerRequest(cfg, { surface, path: bare!, query: { ...extra, page, per_page: PER_PAGE } })) as Json;
+    info.pages = page;
+    const items = res[key];
+    // One push per item: spreading a huge page into push overflows the call stack.
+    if (Array.isArray(items)) for (const item of items as Json[]) out.push(item);
     const next = res.meta?.pagination?.next_page;
     if (!next) break;
+    if (page === cfg.maxPages) info.truncated = key === "images" ? (extra.type === "backup" ? "backups" : "snapshots") : key.replace(/_/g, " ");
   }
+  listInfos.set(out, info);
   return out;
+}
+
+/** The caveat for a list cut off by the page limit. */
+export function truncatedNote(cfg: HetznerConfig, what: string): string {
+  return `Only the first ${(cfg.maxPages * PER_PAGE).toLocaleString("en-US")} ${what} were read; totals are incomplete.`;
 }
 
 const num = (v: unknown): number | null => {
@@ -60,7 +84,7 @@ function priceAt(prices: Json[] | undefined, location: string | undefined): numb
   return num(p?.price_monthly?.gross);
 }
 
-interface Pricing {
+export interface Pricing {
   currency: string;
   vatRate: string;
   serverTypes: Map<string, Json[]>;
@@ -114,10 +138,12 @@ export function buildProject(
   const base = { project: ref.name, account: ref.account };
   nodes.push({ id: P, kind: "project", label: ref.name, parent: `a:${ref.account}`, monthly: null, details: {}, ...base, flags: [] });
 
+  const locs = new Set<string>();
   const locNode = (loc: string | undefined) => {
     const l = loc || "global";
     const id = `${P}/loc:${l}`;
-    if (!nodes.some((n) => n.id === id)) {
+    if (!locs.has(id)) {
+      locs.add(id);
       nodes.push({ id, kind: "location", label: l, parent: P, location: l, monthly: null, details: {}, ...base, flags: [] });
     }
     return id;
@@ -151,14 +177,14 @@ export function buildProject(
       const surcharge = round((base$ * pricing.backupPct) / 100);
       monthly = base$ + surcharge;
       costNote += ` Includes ${pricing.backupPct}% for automatic backups.`;
-      flags.push(info(`Automatic backups add ${surcharge.toFixed(2)} a month. Worth it for production, often not for test boxes.`, surcharge));
+      flags.push(info("backup_surcharge", `Automatic backups add ${surcharge.toFixed(2)} a month. Worth it for production, often not for test boxes.`, surcharge));
     }
-    if (s.status === "off") flags.push(waste("Powered off but still billed in full. Delete it, or snapshot it and delete, to stop the cost.", monthly === null ? null : round(monthly)));
+    if (s.status === "off") flags.push(waste("server_off", "Powered off but still billed in full. Delete it, or snapshot it and delete, to stop the cost.", monthly === null ? null : round(monthly)));
 
     // Retiring server type, per location first (the top-level field is deprecated).
     const dep = (s.server_type?.locations as Json[] | undefined)?.find((l) => l.name === loc)?.deprecation ?? s.server_type?.deprecation;
     if (dep?.unavailable_after) {
-      flags.push(risk(`Server type ${type} is being retired here and stops being available after ${String(dep.unavailable_after).slice(0, 10)}. Plan a move. Changing type switches the server to current pricing.`));
+      flags.push(risk("type_retiring", `Server type ${type} is being retired here and stops being available after ${String(dep.unavailable_after).slice(0, 10)}. Plan a move. Changing type switches the server to current pricing.`));
     }
 
     // Outgoing traffic projected to month end against the included allowance.
@@ -173,9 +199,9 @@ export function buildProject(
       if (projected > incl) {
         const overTb = (projected - incl) / 1e12;
         const cost = perTb === null ? null : round(overTb * perTb);
-        flags.push(waste(`Outgoing traffic is on track to pass the included allowance this month (about ${Math.round((projected / incl) * 100)}%). Expected overage about ${overTb.toFixed(2)} TB.`, cost));
+        flags.push(waste("traffic_overage", `Outgoing traffic is on track to pass the included allowance this month (about ${Math.round((projected / incl) * 100)}%). Expected overage about ${overTb.toFixed(2)} TB.`, cost));
       } else if (out / incl > 0.8) {
-        flags.push(info(`Already used ${Math.round((out / incl) * 100)}% of this month's included outgoing traffic.`));
+        flags.push(info("traffic_high", `Already used ${Math.round((out / incl) * 100)}% of this month's included outgoing traffic.`));
       }
     }
     const firstNet = s.private_net?.[0]?.network as number | undefined;
@@ -208,7 +234,7 @@ export function buildProject(
     const monthly = pricing.volumePerGb === null ? null : round(pricing.volumePerGb * (v.size ?? 0));
     const flags: Flag[] = [];
     const attachedTo = v.server ? serverIds.get(v.server) : undefined;
-    if (!v.server) flags.push(waste("Not attached to any server but still billed per GB.", monthly));
+    if (!v.server) flags.push(waste("volume_unattached", "Not attached to any server but still billed per GB.", monthly));
     const id = `${P}/vol:${v.id}`;
     nodes.push({
       id, kind: "volume", label: v.name, parent: attachedTo ?? locNode(loc), location: loc, status: v.status,
@@ -224,7 +250,7 @@ export function buildProject(
     const id = `${P}/pip:${ip.id}`;
     const target = ip.assignee_type === "server" && ip.assignee_id ? serverIds.get(ip.assignee_id) : undefined;
     const ipPrice = priceAt(pricing.primaryIp.get(ip.type), loc);
-    const flags = ip.assignee_id ? [] : [waste("Unassigned primary IP, still billed. Delete it if you do not need to keep the address.", ipPrice)];
+    const flags = ip.assignee_id ? [] : [waste("ip_unassigned", "Unassigned primary IP, still billed. Delete it if you do not need to keep the address.", ipPrice)];
     nodes.push({
       id, kind: "primary_ip", label: ip.ip ?? ip.name, parent: target ?? locNode(loc), location: loc,
       monthly: ipPrice, costNote: `Primary ${ip.type} address.`, flags,
@@ -239,7 +265,7 @@ export function buildProject(
     const id = `${P}/fip:${ip.id}`;
     const target = ip.server ? serverIds.get(ip.server) : undefined;
     const fipPrice = priceAt(pricing.floatingIp.get(ip.type), loc);
-    const flags = ip.server ? [] : [waste("Floating IP not assigned to a server, still billed.", fipPrice)];
+    const flags = ip.server ? [] : [waste("fip_unassigned", "Floating IP not assigned to a server, still billed.", fipPrice)];
     nodes.push({
       id, kind: "floating_ip", label: ip.ip ?? ip.name, parent: locNode(loc), location: loc,
       monthly: fipPrice, costNote: `Floating ${ip.type} address.`, flags,
@@ -255,11 +281,11 @@ export function buildProject(
     const type = lb.load_balancer_type?.name as string | undefined;
     const targets = (lb.targets ?? []) as Json[];
     const lbPrice = priceAt(pricing.lbTypes.get(type ?? ""), loc);
-    const flags = targets.length ? [] : [waste("Load balancer with no targets, billed while serving nothing.", lbPrice)];
+    const flags = targets.length ? [] : [waste("lb_no_targets", "Load balancer with no targets, billed while serving nothing.", lbPrice)];
     const net = lb.private_net?.[0]?.network as number | undefined;
     nodes.push({
       id, kind: "load_balancer", label: lb.name, parent: net && netIds.has(net) ? netIds.get(net)! : locNode(loc), location: loc,
-      monthly: lbPrice, costNote: `${type ?? "load balancer"} list price.`, flags,
+      monthly: lbPrice, costNote: `${type ?? "load balancer"} list price.`, flags, health: targetHealth(targets),
       details: { type: type ?? null, ipv4: lb.public_net?.ipv4?.ip ?? null, targets: targets.length, services: lb.services?.length ?? 0 },
       ...base,
     });
@@ -273,14 +299,14 @@ export function buildProject(
   for (const fw of data.firewalls) {
     const id = `${P}/fw:${fw.id}`;
     const applied = (fw.applied_to ?? []) as Json[];
-    const fwFlags: Flag[] = applied.length ? [] : [info("Firewall not applied to anything. Free, but it protects nothing.")];
+    const fwFlags: Flag[] = applied.length ? [] : [info("fw_unused", "Firewall not applied to anything. Free, but it protects nothing.")];
     const open = new Set<string>();
     for (const r of (fw.rules ?? []) as Json[]) {
       if (r.direction !== "in" || (r.protocol !== "tcp" && r.protocol !== "udp")) continue;
       if (!((r.source_ips ?? []) as string[]).some((ip) => WORLD.has(ip))) continue;
       for (const [port, name] of Object.entries(SENSITIVE_PORTS)) if (portCovers(r.port, Number(port))) open.add(`${name} (${port})`);
     }
-    if (open.size) fwFlags.push(risk(`Opens ${[...open].join(", ")} to the whole internet. Limit these to your own IP addresses or a private network.`));
+    if (open.size) fwFlags.push(risk("fw_open_ports", `Opens ${[...open].join(", ")} to the whole internet. Limit these to your own IP addresses or a private network.`));
     nodes.push({
       id, kind: "firewall", label: fw.name, parent: P, monthly: 0, costNote: "Firewalls are free.",
       flags: fwFlags,
@@ -349,8 +375,8 @@ export function buildProject(
   for (const n of nodes) {
     const fromServer = n.details.firewalls;
     const unprotected = typeof fromServer === "number" ? fromServer === 0 : !protectedServers.has(n.id);
-    if (n.kind === "server" && n.details.ipv4 && unprotected) {
-      n.flags.push(risk("No Hetzner firewall is attached and it has a public address. One mistake in its own setup exposes it."));
+    if (n.kind === "server" && (n.details.ipv4 || n.details.ipv6) && unprotected) {
+      n.flags.push(risk("no_firewall", "No Hetzner firewall is attached and it has a public address. One mistake in its own setup exposes it."));
     }
   }
   return { nodes, edges };
@@ -358,23 +384,23 @@ export function buildProject(
 
 function snapshotFlags(img: Json, kind: "snapshot" | "backup", hasServer: boolean, cost: number | null): Flag[] {
   if (kind !== "snapshot") return [];
-  if (!hasServer) return [waste("Snapshot of a server that no longer exists. Keep only if you plan to restore it.", cost)];
+  if (!hasServer) return [waste("snapshot_orphan", "Snapshot of a server that no longer exists. Keep only if you plan to restore it.", cost)];
   const created = Date.parse(img.created ?? "");
   const ageDays = Number.isFinite(created) ? Math.floor((Date.now() - created) / DAY_MS) : 0;
-  return ageDays > 90 ? [waste(`Snapshot is ${ageDays} days old. Delete it if a newer one or backups cover you.`, cost)] : [];
+  return ageDays > 90 ? [waste("snapshot_old", `Snapshot is ${ageDays} days old. Delete it if a newer one or backups cover you.`, cost)] : [];
 }
 
 function certFlags(c: Json): Flag[] {
   const end = Date.parse(c.not_valid_after ?? "");
   if (!Number.isFinite(end)) return [];
   const days = Math.floor((end - Date.now()) / DAY_MS);
-  if (days < 0) return [risk(`Certificate expired ${-days} days ago.`)];
+  if (days < 0) return [risk("cert_expired", `Certificate expired ${-days} days ago.`)];
   // Managed certificates renew themselves, so only warn late for those.
   const limit = c.type === "managed" ? 7 : 30;
-  return days <= limit ? [risk(`Certificate expires in ${days} days${c.type === "managed" ? " and has not renewed yet" : ". Upload a renewed one"}.`)] : [];
+  return days <= limit ? [risk("cert_expiring", `Certificate expires in ${days} days${c.type === "managed" ? " and has not renewed yet" : ". Upload a renewed one"}.`)] : [];
 }
 
-async function collectProject(ref: ProjectRef, pricing: Pricing) {
+async function collectProject(ref: ProjectRef, pricing: Pricing): Promise<{ nodes: MapNode[]; edges: MapEdge[]; incomplete?: string[] }> {
   const c = ref.cfg;
   const [servers, volumes, networks, firewalls, loadBalancers, floatingIps, primaryIps, snapshots, backups, certificates, placementGroups] =
     await Promise.all([
@@ -392,7 +418,11 @@ async function collectProject(ref: ProjectRef, pricing: Pricing) {
     ]);
   // Storage Box uses a separate API; a token without that scope must not break the map.
   const storageBoxes = await listAll(c, "storagebox", "/storage_boxes", "storage_boxes").catch(() => []);
-  return buildProject(ref, { servers, volumes, networks, firewalls, loadBalancers, floatingIps, primaryIps, snapshots, backups, certificates, placementGroups, storageBoxes }, pricing);
+  const built = buildProject(ref, { servers, volumes, networks, firewalls, loadBalancers, floatingIps, primaryIps, snapshots, backups, certificates, placementGroups, storageBoxes }, pricing);
+  const cut = [servers, volumes, networks, firewalls, loadBalancers, floatingIps, primaryIps, snapshots, backups, certificates, placementGroups, storageBoxes]
+    .map((l) => listInfo(l)?.truncated)
+    .filter((w): w is string => !!w);
+  return cut.length ? { ...built, incomplete: cut.map((w) => truncatedNote(c, w)) } : built;
 }
 
 async function collectRobot(cfg: HetznerConfig, account: string): Promise<MapNode[]> {
@@ -404,49 +434,93 @@ async function collectRobot(cfg: HetznerConfig, account: string): Promise<MapNod
       id: `a:${account}/robot:${s.server_number}`, kind: "robot_server" as const, label: s.server_name || s.server_ip || `#${s.server_number}`,
       parent: `a:${account}`, account, location: s.dc, status: s.status, monthly: null,
       costNote: "The Robot API does not expose prices. See your Robot invoice.",
-      flags: s.cancelled ? [info("Cancelled, runs until the paid-until date.")] : [],
+      flags: s.cancelled ? [info("robot_cancelled", "Cancelled, runs until the paid-until date.")] : [],
       details: { product: s.product ?? null, ip: s.server_ip ?? null, paid_until: s.paid_until ?? null, traffic: s.traffic ?? null },
     };
   });
 }
 
-export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv = process.env): Promise<InfraGraph> {
-  const projects = discoverProjects(base, env, readStored(env));
+export interface CollectOptions {
+  /** Only this workspace. Undefined maps every configured project, as before. */
+  workspace?: string;
+  /** With workspace, narrows to one project in it. */
+  account?: string;
+  project?: string;
+  /** Projects read at the same time. Each one already makes about a dozen parallel calls. */
+  concurrency?: number;
+  /** Test seams, so the offline suite never touches the network. */
+  collector?: (ref: ProjectRef, pricing: Pricing) => Promise<{ nodes: MapNode[]; edges: MapEdge[]; incomplete?: string[] }>;
+  pricingLoader?: (cfg: HetznerConfig) => Promise<Pricing>;
+}
+
+export const PROJECT_CONCURRENCY = 4;
+export const PRICING_CONCURRENCY = 4;
+
+export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv = process.env, opts: CollectOptions = {}): Promise<InfraGraph> {
+  const all = discoverProjects(base, env, readStored(env));
+  const projects = all.filter(
+    (p) => (opts.workspace === undefined || p.workspace === opts.workspace) && (opts.account === undefined || p.account === opts.account) && (opts.project === undefined || p.name === opts.project),
+  );
+  // Robot servers belong to the default account, which lives in the default workspace.
+  const withRobot = !!base.robotUser && opts.project === undefined && (opts.workspace === undefined || opts.workspace === defaultWorkspace(env));
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
   const errors: Array<{ project: string; account: string; error: string }> = [];
+  const incomplete: string[] = [];
   const accounts = new Set(projects.map((p) => p.account));
-  if (base.robotUser) accounts.add(env.HETZNER_ACCOUNT_NAME?.trim() || "Hetzner account");
+  if (withRobot) accounts.add(defaultAccount(env));
   for (const a of accounts) nodes.push({ id: `a:${a}`, kind: "account", label: a, account: a, monthly: null, flags: [], details: {} });
 
+  // Pricing is the same for every project; probe tokens a few at a time and keep the first that
+  // works, so many revoked tokens cannot stall the map for minutes.
+  const loadP = opts.pricingLoader ?? loadPricing;
   let pricing: Pricing | undefined;
-  let currency = "EUR";
-  let vatRate = "";
-  if (projects[0]) {
-    pricing = await loadPricing(projects[0].cfg);
-    currency = pricing.currency;
-    vatRate = pricing.vatRate;
-  }
-  const results = await Promise.allSettled(projects.map((p) => collectProject(p, pricing!)));
+  let pricingError = "";
+  await settleWithLimit(projects, PRICING_CONCURRENCY, async (p) => {
+    if (pricing) return;
+    try {
+      const got = await loadP(p.cfg);
+      pricing ??= got;
+    } catch (err) {
+      pricingError = err instanceof Error ? err.message : String(err);
+    }
+  });
+  const currency = pricing?.currency ?? "EUR";
+  const vatRate = pricing?.vatRate ?? "";
+  const collect = opts.collector ?? collectProject;
+  const results = pricing
+    ? await settleWithLimit(projects, opts.concurrency ?? PROJECT_CONCURRENCY, (p) => collect(p, pricing!))
+    : projects.map((): PromiseSettledResult<never> => ({ status: "rejected", reason: new Error(pricingError || "Could not load prices.") }));
   results.forEach((r, i) => {
     const ref = projects[i]!;
     if (r.status === "fulfilled") {
-      nodes.push(...r.value.nodes);
-      edges.push(...r.value.edges);
+      for (const n of r.value.nodes) nodes.push(n);
+      for (const e of r.value.edges) edges.push(e);
+      const cut = r.value.incomplete;
+      if (cut?.length) {
+        const projectNode = r.value.nodes.find((n) => n.kind === "project");
+        if (projectNode) {
+          projectNode.details.incomplete = true;
+          for (const text of cut) projectNode.flags.push(info("list_incomplete", text));
+        }
+        for (const text of cut) incomplete.push(`Project ${ref.name}: ${text}`);
+      }
     } else {
       const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
       errors.push({ project: ref.name, account: ref.account, error: msg });
-      nodes.push({ id: `p:${ref.account}/${ref.name}`, kind: "project", label: ref.name, parent: `a:${ref.account}`, project: ref.name, account: ref.account, monthly: null, flags: [risk(`Could not read this project. ${msg}`)], details: {} });
+      nodes.push({ id: `p:${ref.account}/${ref.name}`, kind: "project", label: ref.name, parent: `a:${ref.account}`, project: ref.name, account: ref.account, monthly: null, flags: [risk("project_unreadable", `Could not read this project. ${msg}`)], details: {} });
     }
   });
-  const robotAccount = env.HETZNER_ACCOUNT_NAME?.trim() || "Hetzner account";
-  try {
-    nodes.push(...(await collectRobot(base, robotAccount)));
-  } catch (err) {
-    errors.push({ project: "robot", account: robotAccount, error: err instanceof Error ? err.message : String(err) });
+  const robotAccount = defaultAccount(env);
+  if (withRobot) {
+    try {
+      nodes.push(...(await collectRobot(base, robotAccount)));
+    } catch (err) {
+      errors.push({ project: "robot", account: robotAccount, error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
-  return finalize({
+  const graph = finalize({
     source: "live",
     currency,
     vatNote: vatRate ? `Gross prices, VAT rate ${Number(vatRate)}%.` : "Gross list prices.",
@@ -455,4 +529,7 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
     errors,
     projectCount: projects.length,
   });
+  for (const text of incomplete) graph.caveats.push(text);
+  if (opts.workspace !== undefined) graph.workspace = opts.workspace;
+  return graph;
 }

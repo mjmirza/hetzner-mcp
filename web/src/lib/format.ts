@@ -1,5 +1,8 @@
 import type { NodeKind } from "./types";
 
+// Names drop invisible format and bidi characters before display, so they cannot spoof.
+export { visible } from "../../../src/text";
+
 const eur = new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function money(v: number | null | undefined, currency = "EUR"): string {

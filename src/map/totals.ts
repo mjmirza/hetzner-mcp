@@ -1,5 +1,7 @@
 /** Rolls node prices up into project, kind, top-driver, and finding totals. */
 import type { InfraGraph, MapEdge, MapNode, NodeKind } from "./types.js";
+import { audit } from "./audit.js";
+import { oneLine } from "../text.js";
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
@@ -16,16 +18,29 @@ export function finalize(input: {
   const billable = nodes.filter((n) => typeof n.monthly === "number" && n.monthly > 0);
   const monthly = round(billable.reduce((s, n) => s + (n.monthly as number), 0));
 
+  // Grouped once, so the totals stay linear however many projects there are.
+  const keyOf = (account: string, project?: string) => `${account}\u0000${project ?? ""}`;
+  const inside = new Map<string, { monthly: number; count: number }>();
+  for (const n of nodes) {
+    if (["project", "location", "account"].includes(n.kind)) continue;
+    const k = keyOf(n.account, n.project);
+    const t = inside.get(k) ?? { monthly: 0, count: 0 };
+    t.monthly += n.monthly ?? 0;
+    t.count += 1;
+    inside.set(k, t);
+  }
+  const errorOf = new Map<string, string>();
+  for (const e of input.errors) if (!errorOf.has(keyOf(e.account, e.project))) errorOf.set(keyOf(e.account, e.project), e.error);
   const byProject = nodes
     .filter((n) => n.kind === "project")
     .map((p) => {
-      const inside = nodes.filter((n) => n.project === p.project && n.account === p.account && !["project", "location", "account"].includes(n.kind));
-      const err = input.errors.find((e) => e.project === p.project && e.account === p.account)?.error;
+      const t = inside.get(keyOf(p.account, p.project)) ?? { monthly: 0, count: 0 };
+      const err = errorOf.get(keyOf(p.account, p.project));
       return {
         project: p.label,
         account: p.account,
-        monthly: round(inside.reduce((s, n) => s + (n.monthly ?? 0), 0)),
-        resources: inside.length,
+        monthly: round(t.monthly),
+        resources: t.count,
         ...(err ? { error: err } : {}),
       };
     })
@@ -51,7 +66,7 @@ export function finalize(input: {
 
   const rank = { risk: 0, waste: 1, info: 2 } as const;
   const findings = nodes
-    .flatMap((n) => n.flags.map((f) => ({ nodeId: n.id, project: n.project, kind: f.kind, title: `${n.label}. ${f.text}`, monthly: f.monthly })))
+    .flatMap((n) => n.flags.map((f) => ({ nodeId: n.id, project: n.project, kind: f.kind, title: `${oneLine(n.label)}. ${oneLine(f.text, 160)}`, monthly: f.monthly })))
     .sort((a, b) => rank[a.kind] - rank[b.kind] || (b.monthly ?? 0) - (a.monthly ?? 0));
 
   const caveats = [
@@ -72,5 +87,6 @@ export function finalize(input: {
     edges,
     totals: { monthly, byProject, byKind, topDrivers, findings },
     caveats,
+    audit: audit({ nodes }),
   };
 }

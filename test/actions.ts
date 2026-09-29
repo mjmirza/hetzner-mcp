@@ -13,7 +13,7 @@ function assert(label: string, cond: boolean): void {
   process.stdout.write(`${cond ? "OK  " : "FAIL"} ${label}\n`);
 }
 
-const cfg = { ...loadConfig({ HETZNER_CLOUD_TOKEN: "test-token" }), actionWaitMs: 5000 };
+const cfg = { ...loadConfig({ HETZNER_CLOUD_TOKEN: "testtoken" }), actionWaitMs: 5000 };
 const seenHeaders: Record<string, string>[] = [];
 const polls: Record<number, string[]> = {
   1: ["running", "success"],

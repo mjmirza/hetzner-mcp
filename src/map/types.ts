@@ -1,4 +1,5 @@
 /** The infrastructure graph shared by the collector, the MCP summary, and the web canvas. */
+import type { AuditReport } from "./audit.js";
 
 export type NodeKind =
   | "account"
@@ -28,6 +29,8 @@ export interface MapNode {
   account: string;
   location?: string;
   status?: string;
+  /** Load balancers only: Hetzner target health checks, counted per target and port. */
+  health?: TargetHealth;
   /** Estimated monthly gross price in the pricing currency, null when unknown. */
   monthly: number | null;
   costNote?: string;
@@ -36,12 +39,20 @@ export interface MapNode {
   details: Record<string, string | number | boolean | null>;
 }
 
+export interface TargetHealth {
+  healthy: number;
+  unhealthy: number;
+  unknown: number;
+}
+
 /**
  * waste: money spent on something unused. risk: something that can hurt you.
  * info: worth knowing, not necessarily wrong. monthly is only the money this flag is about.
  */
 export interface Flag {
   kind: "waste" | "risk" | "info";
+  /** Stable id of the check that raised it, for example "volume_unattached". The audit keys fix steps on it. */
+  code?: string;
   text: string;
   monthly: number | null;
 }
@@ -83,4 +94,8 @@ export interface InfraGraph {
     findings: Finding[];
   };
   caveats: string[];
+  /** The workspace this graph covers. Absent when every workspace was mapped together. */
+  workspace?: string;
+  /** Built on every map refresh, so the report is always there without a click. */
+  audit?: AuditReport;
 }

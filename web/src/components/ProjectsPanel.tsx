@@ -1,51 +1,37 @@
-import { Alert02Icon, CoinsEuroIcon, FolderAddIcon, GridViewIcon, InformationCircleIcon } from "hugeicons-react";
+import { Alert02Icon, FolderAddIcon, GridViewIcon, SecurityCheckIcon } from "hugeicons-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { money } from "@/lib/format";
-import type { Finding, InfraGraph } from "@/lib/types";
+import type { InfraGraph } from "@/lib/types";
 
-function FindingList({ items, currency, onSelect, empty }: { items: Finding[]; currency: string; onSelect: (id: string) => void; empty: string }) {
-  if (!items.length) return <p className="px-2 py-3 text-[13px] text-muted-foreground">{empty}</p>;
-  return (
-    <ul className="flex flex-col gap-1">
-      {items.map((f) => (
-        <li key={f.nodeId + f.title}>
-          <Button variant="ghost" size="sm" className="h-auto w-full flex-col items-start gap-0.5 rounded-lg py-2 text-left font-normal whitespace-normal" onClick={() => onSelect(f.nodeId)}>
-            <span className="text-[13px] leading-snug">{f.title}</span>
-            <span className="text-[11px] text-muted-foreground">
-              {f.project ?? "Account"}
-              {f.monthly ? ` · ${money(f.monthly, currency)}/mo` : ""}
-            </span>
-          </Button>
-        </li>
-      ))}
-    </ul>
-  );
-}
+const SEV_WORD = { critical: "Critical", high: "High", medium: "Medium", low: "Low" } as const;
 
-export function ProjectsPanel({ graph, focus, onFocus, onSelect, onAddProject }: {
+export function ProjectsPanel({ graph, focus, onFocus, onAddProject, onOpenAudit, updated, header, liveNote }: {
   graph: InfraGraph;
   focus: string | null;
   onFocus: (projectNodeId: string | null) => void;
-  onSelect: (id: string) => void;
   onAddProject: () => void;
+  /** Opens the Audit tab with this finding (0-based) expanded. */
+  onOpenAudit: (finding: number) => void;
+  updated: string;
+  /** Shown above the totals, for example the workspace switcher. */
+  header?: React.ReactNode;
+  /** When server and load balancer statuses were last checked. */
+  liveNote?: React.ReactNode;
 }) {
   const currency = graph.currency;
   const accounts = graph.nodes.filter((n) => n.kind === "account");
   const projects = graph.nodes.filter((n) => n.kind === "project");
   const resources = graph.nodes.filter((n) => !["account", "project", "location"].includes(n.kind)).length;
   const byName = new Map(graph.totals.byProject.map((p) => [`${p.account}/${p.project}`, p]));
-  const f = graph.totals.findings;
-  const risks = f.filter((x) => x.kind === "risk");
-  const waste = f.filter((x) => x.kind === "waste");
-  const notes = f.filter((x) => x.kind === "info");
+  const audit = graph.audit;
 
   return (
     <ScrollArea className="h-full">
       <div className="flex flex-col gap-4 p-4">
+        {header}
         <div>
           <div className="text-[12px] text-muted-foreground">Estimated monthly, gross</div>
           <div className="text-[28px] leading-9 font-semibold tabular-nums">{money(graph.totals.monthly, currency)}</div>
@@ -54,6 +40,8 @@ export function ProjectsPanel({ graph, focus, onFocus, onSelect, onAddProject }:
             <span>{projects.length} project{projects.length === 1 ? "" : "s"}</span>
             <span>{resources} resources</span>
           </div>
+          <div className="mt-0.5 text-[12px] text-muted-foreground">Updated {updated}</div>
+          {liveNote}
         </div>
 
         <Separator />
@@ -102,34 +90,35 @@ export function ProjectsPanel({ graph, focus, onFocus, onSelect, onAddProject }:
 
         <Separator />
 
-        <Tabs defaultValue={risks.length ? "risk" : "waste"}>
-          <TabsList className="w-full rounded-lg">
-            <TabsTrigger value="risk" className="rounded-md">
-              <Alert02Icon size={14} /> {risks.length}
-              <span className="sr-only"> risks</span>
-            </TabsTrigger>
-            <TabsTrigger value="waste" className="rounded-md">
-              <CoinsEuroIcon size={14} /> {waste.length}
-              <span className="sr-only"> savings</span>
-            </TabsTrigger>
-            <TabsTrigger value="info" className="rounded-md">
-              <InformationCircleIcon size={14} /> {notes.length}
-              <span className="sr-only"> notes</span>
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="risk">
-            <h3 className="px-2 pt-2 text-[12px] font-medium">Risks</h3>
-            <FindingList items={risks} currency={currency} onSelect={onSelect} empty="Nothing risky found." />
-          </TabsContent>
-          <TabsContent value="waste">
-            <h3 className="px-2 pt-2 text-[12px] font-medium">Money you could save</h3>
-            <FindingList items={waste} currency={currency} onSelect={onSelect} empty="No obvious waste." />
-          </TabsContent>
-          <TabsContent value="info">
-            <h3 className="px-2 pt-2 text-[12px] font-medium">Worth knowing</h3>
-            <FindingList items={notes} currency={currency} onSelect={onSelect} empty="Nothing to note." />
-          </TabsContent>
-        </Tabs>
+        {audit && (
+          <section aria-label="Top things to fix" className="flex flex-col gap-1">
+            <div className="flex items-baseline justify-between gap-2 px-2">
+              <h3 className="text-[12px] font-medium">Top things to fix</h3>
+              <span className="text-[12px] text-muted-foreground tabular-nums">
+                Score {audit.score} · {audit.grade}
+              </span>
+            </div>
+            {audit.findings.length === 0 && <p className="px-2 py-2 text-[13px] text-muted-foreground">Nothing to fix right now.</p>}
+            <ul className="flex flex-col gap-0.5">
+              {audit.findings.slice(0, 3).map((x, i) => (
+                <li key={`${x.code}-${x.resource.id}`}>
+                  <Button variant="ghost" size="sm" className="h-auto w-full flex-col items-start gap-0.5 rounded-lg py-2 text-left font-normal whitespace-normal" onClick={() => onOpenAudit(i)}>
+                    <span className="text-[13px] leading-snug">{x.title}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {SEV_WORD[x.severity]} · {x.resource.label}
+                      {x.monthlySaving ? ` · saves ${money(x.monthlySaving, currency)}/mo` : ""}
+                    </span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            {audit.findings.length > 0 && (
+              <Button variant="secondary" size="sm" className="mx-2 rounded-lg" onClick={() => onOpenAudit(0)}>
+                <SecurityCheckIcon size={15} /> See all {audit.findings.length} in Audit
+              </Button>
+            )}
+          </section>
+        )}
 
         <p className="text-[11px] leading-relaxed text-muted-foreground">{graph.vatNote}</p>
       </div>

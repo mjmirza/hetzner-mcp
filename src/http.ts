@@ -2,10 +2,11 @@
  * The HTTP client for all three Hetzner surfaces.
  * This module is the only place that touches credentials or the network.
  */
-import { SURFACES, type SurfaceName, type HetznerConfig } from "./config.js";
+import { SURFACES, isTokenShape, type SurfaceName, type HetznerConfig } from "./config.js";
 import { HetznerApiError, redactSecrets } from "./errors.js";
 import { normalizePath, normalizeMethod } from "./security.js";
 import { USER_AGENT } from "./version.js";
+import { invalidateGraphs } from "./map/graph-cache.js";
 
 export interface RequestOpts {
   surface: SurfaceName;
@@ -33,8 +34,11 @@ function authHeader(surface: SurfaceName, cfg: HetznerConfig): string {
       surface,
       0,
       "missing_credentials",
-      "Cloud token missing. Set HETZNER_CLOUD_TOKEN.",
+      cfg.cloudTokenError ?? "Cloud token missing. Set HETZNER_CLOUD_TOKEN.",
     );
+  }
+  if (!isTokenShape(cfg.cloudToken)) {
+    throw new HetznerApiError(surface, 0, "malformed_credentials", "The Cloud token is malformed. It must be letters and digits only, on one line.");
   }
   return `Bearer ${cfg.cloudToken}`;
 }
@@ -52,6 +56,83 @@ function encodeForm(body: unknown): string {
     }
   }
   return params.toString();
+}
+
+/** Requests in flight at once for the whole process, and for one credential. */
+export const MAX_IN_FLIGHT = 16;
+export const MAX_IN_FLIGHT_PER_TOKEN = 4;
+/** Largest response body read. Bigger answers fail with a clear error instead of filling memory. */
+export const MAX_RESPONSE_BYTES = 20 * 1024 * 1024;
+
+const active = new Map<string, number>();
+let activeTotal = 0;
+const waiting: Array<{ key: string; go: () => void }> = [];
+
+function canRun(key: string): boolean {
+  return activeTotal < MAX_IN_FLIGHT && (active.get(key) ?? 0) < MAX_IN_FLIGHT_PER_TOKEN;
+}
+
+function take(key: string): void {
+  activeTotal++;
+  active.set(key, (active.get(key) ?? 0) + 1);
+}
+
+/** Waits for a free slot. Queued requests start in arrival order once their credential has room. */
+function acquire(key: string): Promise<() => void> {
+  const release = () => {
+    activeTotal--;
+    const left = (active.get(key) ?? 1) - 1;
+    if (left > 0) active.set(key, left);
+    else active.delete(key);
+    for (let i = 0; i < waiting.length && activeTotal < MAX_IN_FLIGHT; ) {
+      const w = waiting[i]!;
+      if (!canRun(w.key)) {
+        i++;
+        continue;
+      }
+      waiting.splice(i, 1);
+      take(w.key);
+      w.go();
+    }
+  };
+  if (canRun(key) && !waiting.some((w) => canRun(w.key))) {
+    take(key);
+    return Promise.resolve(release);
+  }
+  return new Promise((resolve) => waiting.push({ key, go: () => resolve(release) }));
+}
+
+// Cloud and Storage Box share the Cloud token's rate limit; Robot has its own login.
+function limitKey(surface: SurfaceName, cfg: HetznerConfig): string {
+  return SURFACES[surface].auth === "basic" ? `robot:${cfg.robotUser ?? ""}` : `cloud:${cfg.cloudToken ?? ""}`;
+}
+
+async function readCapped(res: Response): Promise<string> {
+  const declared = Number(res.headers?.get("content-length") ?? 0);
+  if (declared > MAX_RESPONSE_BYTES) {
+    // Cancel the unread body so the connection closes now instead of staying open.
+    await res.body?.cancel().catch(() => undefined);
+    throw new Error("too_large");
+  }
+  if (!res.body) {
+    const text = await res.text();
+    if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES) throw new Error("too_large");
+    return text;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read(); // chunks arrive in order, each read depends on the last
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_RESPONSE_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("too_large");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 export async function hetznerRequest(cfg: HetznerConfig, opts: RequestOpts): Promise<unknown> {
@@ -84,23 +165,34 @@ export async function hetznerRequest(cfg: HetznerConfig, opts: RequestOpts): Pro
     }
   }
 
-  const init: RequestInit = {
-    method,
-    headers,
-    body: payload,
-    redirect: "error", // SSRF safety: never follow a redirect to another host
-    signal: AbortSignal.timeout(cfg.timeoutMs), // hard per-request timeout
-  };
-
+  // The timeout starts once a slot is free, so a queued request is never timed out while waiting.
+  const release = await acquire(limitKey(surface, cfg));
   let res: Response;
+  let text: string;
   try {
-    res = await fetch(url, init); // BESTPRACTICE_OK: timeout set via init.signal AbortSignal.timeout
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new HetznerApiError(surface, 0, "network_error", redactSecrets(msg));
+    const init: RequestInit = {
+      method,
+      headers,
+      body: payload,
+      redirect: "error", // SSRF safety: never follow a redirect to another host
+      signal: AbortSignal.timeout(cfg.timeoutMs), // hard per-request timeout
+    };
+    try {
+      res = await fetch(url, init); // timeout set via init.signal AbortSignal.timeout
+      text = await readCapped(res);
+    } catch (err) {
+      if (err instanceof Error && err.message === "too_large") {
+        throw new HetznerApiError(surface, 0, "response_too_large", `Hetzner sent more than ${MAX_RESPONSE_BYTES / 1024 / 1024} MB in one answer. Ask for a smaller page.`);
+      }
+      // Fixed text: fetch's own message can quote a header value, and so a token.
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      throw new HetznerApiError(surface, 0, timedOut ? "timeout" : "network_error", timedOut ? "Hetzner did not answer in time." : "Could not reach Hetzner (network error).");
+    }
+  } finally {
+    release();
+    // Any write may change what the map shows, so cached maps are dropped whatever the outcome.
+    if (method !== "GET" && method !== "HEAD") invalidateGraphs();
   }
-
-  const text = await res.text();
   let json: unknown;
   if (text) {
     try {

@@ -1,10 +1,43 @@
-import type { Catalog, InfraGraph, Meta, Plan } from "./types";
+import type { StatusSnapshot } from "../../../src/map/status";
+import type { Catalog, InfraGraph, Meta, Plan, WorkspaceSummary } from "./types";
 
-/** Every call carries X-Hzmap, which a cross-site page cannot add without a preflight we never answer. */
+const KEY = "hzmap-key";
+
+/** The per-launch key arrives in the URL fragment. It is hidden from the address bar only once
+ * saved for reloads; when storage is blocked the fragment stays, so a reload still has the key. */
+function launchKey(): string {
+  const m = /(?:^#|&)k=([0-9a-f]{64})(?:&|$)/.exec(window.location.hash);
+  if (m) {
+    let saved = false;
+    try {
+      sessionStorage.setItem(KEY, m[1]!);
+      saved = true;
+    } catch {
+      // Storage is blocked; keep the fragment instead.
+    }
+    if (saved) history.replaceState(null, "", window.location.pathname + window.location.search);
+    return m[1]!;
+  }
+  try {
+    return sessionStorage.getItem(KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+let key = launchKey();
+// Pasting a new link into an open tab only changes the fragment, so pick the new key up here.
+window.addEventListener("hashchange", () => {
+  if (/(?:^#|&)k=[0-9a-f]{64}(?:&|$)/.test(window.location.hash)) {
+    key = launchKey();
+    window.location.reload();
+  }
+});
+
+/** Every call carries the key as X-Hzmap, which a cross-site page cannot add or know. */
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
     ...init,
-    headers: { "X-Hzmap": "1", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers ?? {}) },
+    headers: { "X-Hzmap": key, ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers ?? {}) },
   });
   const text = await res.text();
   let body: unknown = null;
@@ -23,10 +56,18 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 const post = <T>(path: string, data: unknown) => call<T>(path, { method: "POST", body: JSON.stringify(data) });
 
 export const api = {
-  graph: (refresh = false) => call<InfraGraph>(`/api/graph${refresh ? "?refresh=1" : ""}`),
+  graph: (refresh = false, workspace?: string) => {
+    const q = new URLSearchParams();
+    if (workspace) q.set("workspace", workspace);
+    if (refresh) q.set("refresh", "1");
+    const s = q.toString();
+    return call<InfraGraph>(`/api/graph${s ? `?${s}` : ""}`);
+  },
+  status: (workspace?: string, signal?: AbortSignal) => call<StatusSnapshot>(`/api/status${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`, { signal }),
+  workspaces: () => call<{ default: string; workspaces: WorkspaceSummary[] }>("/api/workspaces"),
   meta: () => call<Meta>("/api/meta"),
   catalog: (project: string) => call<Catalog>(`/api/catalog?project=${encodeURIComponent(project)}`),
-  addProject: (d: { name: string; account: string; token: string }) => post<{ ok: true; message: string }>("/api/projects", d),
+  addProject: (d: { name: string; account: string; token: string; workspace?: string }) => post<{ ok: true; message: string }>("/api/projects", d),
   removeProject: (id: string) => post<{ ok: true }>("/api/projects/remove", { id }),
   plan: (d: { project: string; kind: string; params: Record<string, unknown> }) => post<Plan>("/api/plan", d),
   apply: (d: { project: string; kind: string; params: Record<string, unknown>; confirm: true }) => post<{ ok: true; message: string }>("/api/apply", d),

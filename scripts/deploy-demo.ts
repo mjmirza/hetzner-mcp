@@ -219,7 +219,7 @@ async function main(): Promise<void> {
   step("waiting for servers to boot and attach...");
   const waitRunning = async (id: number): Promise<void> => {
     const deadline = Date.now() + 120_000;
-    // BESTPRACTICE_OK: a status poll must run one check after another until ready.
+    // a status poll must run one check after another until ready.
     while (Date.now() < deadline) {
       const s = jsonOf<ServerResp>(await req({ method: "GET", path: `/servers/${id}`, verbose: true }));
       if (s.server?.status === "running") return;
@@ -252,7 +252,7 @@ async function main(): Promise<void> {
   step("waiting for load balancer targets to go healthy...");
   const deadline = Date.now() + 180_000;
   let healthy = 0;
-  // BESTPRACTICE_OK: health convergence is a poll of one resource, one check after another.
+  // health convergence is a poll of one resource, one check after another.
   while (Date.now() < deadline) {
     const cur = jsonOf<LbResp>(await req({ method: "GET", path: `/load_balancers/${lbId}`, verbose: true }));
     const targets = cur.load_balancer?.targets ?? [];
