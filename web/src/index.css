@@ -1,0 +1,194 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Light is the default. Warm neutral surfaces, one red accent, Apple-style soft depth. */
+:root {
+  --radius: 0.875rem;
+  --background: oklch(0.985 0.002 75);
+  --foreground: oklch(0.21 0.006 60);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.006 60);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.006 60);
+  --primary: oklch(0.56 0.2 25);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.955 0.004 75);
+  --secondary-foreground: oklch(0.25 0.006 60);
+  --muted: oklch(0.955 0.004 75);
+  --muted-foreground: oklch(0.52 0.01 60);
+  --accent: oklch(0.95 0.02 25);
+  --accent-foreground: oklch(0.3 0.08 25);
+  --destructive: oklch(0.56 0.2 25);
+  --border: oklch(0.905 0.005 75);
+  --input: oklch(0.905 0.005 75);
+  --ring: oklch(0.56 0.2 25);
+  --stage: oklch(0.975 0.003 75);
+  --stage-dot: oklch(0.86 0.006 75);
+  --edge: oklch(0.72 0.01 60);
+  --risk: oklch(0.58 0.2 25);
+  --risk-soft: oklch(0.96 0.025 25);
+  --ok: oklch(0.6 0.12 155);
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.05), 0 4px 16px oklch(0 0 0 / 0.06);
+  --shadow-lg: 0 8px 32px oklch(0 0 0 / 0.12);
+}
+
+.dark {
+  --background: oklch(0.19 0.005 60);
+  --foreground: oklch(0.95 0.004 75);
+  --card: oklch(0.235 0.006 60);
+  --card-foreground: oklch(0.95 0.004 75);
+  --popover: oklch(0.235 0.006 60);
+  --popover-foreground: oklch(0.95 0.004 75);
+  --primary: oklch(0.66 0.19 25);
+  --primary-foreground: oklch(0.16 0.01 60);
+  --secondary: oklch(0.27 0.006 60);
+  --secondary-foreground: oklch(0.93 0.004 75);
+  --muted: oklch(0.27 0.006 60);
+  --muted-foreground: oklch(0.7 0.008 70);
+  --accent: oklch(0.3 0.05 25);
+  --accent-foreground: oklch(0.93 0.03 25);
+  --destructive: oklch(0.66 0.19 25);
+  --border: oklch(0.32 0.007 60);
+  --input: oklch(0.32 0.007 60);
+  --ring: oklch(0.66 0.19 25);
+  --stage: oklch(0.2 0.005 60);
+  --stage-dot: oklch(0.32 0.007 60);
+  --edge: oklch(0.52 0.01 60);
+  --risk: oklch(0.72 0.17 25);
+  --risk-soft: oklch(0.29 0.05 25);
+  --ok: oklch(0.72 0.12 155);
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 4px 16px oklch(0 0 0 / 0.3);
+  --shadow-lg: 0 8px 32px oklch(0 0 0 / 0.5);
+}
+
+@theme inline {
+  --font-sans: "Inter", "DM Sans", "Geist", ui-sans-serif, sans-serif;
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-stage: var(--stage);
+  --color-risk: var(--risk);
+  --color-risk-soft: var(--risk-soft);
+  --color-ok: var(--ok);
+  --color-edge: var(--edge);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply font-sans;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+/* React Flow, restyled to the theme. */
+.react-flow {
+  --xy-background-color: var(--stage);
+  --xy-edge-stroke: var(--edge);
+  --xy-edge-stroke-selected: var(--primary);
+  --xy-minimap-background-color: var(--card);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--secondary);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-attribution-background-color: transparent;
+}
+.react-flow__controls {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+.react-flow__minimap {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+.react-flow__edge-path {
+  stroke-width: 1.6;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge.hot .react-flow__edge-path {
+  stroke: var(--primary);
+  stroke-width: 2.4;
+}
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: var(--card);
+  border: 1.5px solid var(--edge);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+.react-flow__edge.tree .react-flow__edge-path {
+  stroke: var(--edge);
+  stroke-width: 1.5;
+}
+.react-flow__edge.relation .react-flow__edge-path {
+  stroke: var(--edge);
+  stroke-dasharray: 5 5;
+  stroke-width: 1.4;
+}
+.react-flow__edge.relation.hot .react-flow__edge-path {
+  stroke: var(--primary);
+  stroke-dasharray: none;
+  stroke-width: 2.2;
+}
+.react-flow__edge-textbg {
+  fill: var(--card);
+}
+.react-flow__edge-text {
+  fill: var(--muted-foreground);
+  font-size: 11px;
+}
+.react-flow__node {
+  cursor: grab;
+}
+.react-flow__node.dragging {
+  cursor: grabbing;
+}
+.react-flow__node:focus-visible {
+  outline: none;
+}
+.react-flow__node:focus-visible > div {
+  box-shadow: 0 0 0 3px var(--ring);
+}

@@ -1,22 +1,28 @@
 /**
- * Local, read-only web server for the infrastructure map.
- *
- * Security. Binds 127.0.0.1 only, rejects any Host header that is not this loopback
- * address (blocks DNS rebinding), serves GET only, sends a strict CSP with a per-start
- * nonce, never sends a token, and rate-limits live refreshes.
+ * Local web server for the infrastructure map. Loopback only, strict Host and Origin checks,
+ * a custom header on every API call, a strict CSP, and no token ever sent to the browser.
  */
-import { createServer, type Server } from "node:http";
-import { randomBytes } from "node:crypto";
+import { createServer, type IncomingMessage, type Server } from "node:http";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { join, extname } from "node:path";
 import type { HetznerConfig } from "../config.js";
 import { collectGraph } from "./collect.js";
 import { sampleGraph } from "./sample.js";
-import { renderPage } from "./page.js";
+import { ActionError, apply, catalog, connectProject, deleteNode, deletePlan, disconnectProject, meta, plan, projectById, publicCatalog, type ActionEnv } from "./actions.js";
 import type { InfraGraph } from "./types.js";
 
 /** 43390 is unassigned in the IANA registry and not a common dev-tool port. */
 export const DEFAULT_MAP_PORT = 43390;
 const HOST = "127.0.0.1";
 const MIN_REFRESH_MS = 10_000;
+const MAX_BODY = 16 * 1024;
+const WEB_DIR = fileURLToPath(new URL("../web/", import.meta.url));
+// Running from source (tsx) serves the copy built into dist.
+const WEB_FALLBACK = fileURLToPath(new URL("../../dist/web/", import.meta.url));
+const ASSET = /^\/assets\/[A-Za-z0-9._-]+\.(js|css|svg|woff2)$/;
+const TYPES: Record<string, string> = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".html": "text/html; charset=utf-8" };
+export const CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 export interface MapServerHandle {
   url: string;
@@ -48,13 +54,39 @@ function listen(server: Server, port: number): Promise<number> {
   });
 }
 
+function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    if (Number(req.headers["content-length"] ?? 0) > MAX_BODY) {
+      req.resume();
+      reject(new ActionError(413, "Request too large."));
+      return;
+    }
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size <= MAX_BODY) chunks.push(c);
+    });
+    req.on("end", () => {
+      if (size > MAX_BODY) return reject(new ActionError(413, "Request too large."));
+      try {
+        const v = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+        resolve(v && typeof v === "object" && !Array.isArray(v) ? v : {});
+      } catch {
+        reject(new ActionError(400, "Body must be JSON."));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
 export async function startMapServer(
   cfg: HetznerConfig,
   opts: { port?: number; demo?: boolean; env?: NodeJS.ProcessEnv } = {},
 ): Promise<MapServerHandle> {
   if (running) return running;
   const env = opts.env ?? process.env;
-  const nonce = randomBytes(16).toString("base64");
+  const actx: ActionEnv = { base: cfg, env, demo: opts.demo === true };
   let cache: { graph: InfraGraph; at: number } | undefined;
   let inflight: Promise<InfraGraph> | undefined;
 
@@ -72,13 +104,9 @@ export async function startMapServer(
 
   let boundPort = 0;
   const server = createServer(async (req, res) => {
-    const allowedHosts = new Set([`${HOST}:${boundPort}`, `localhost:${boundPort}`]);
-    if (!allowedHosts.has(String(req.headers.host ?? ""))) {
+    const origins = [`${HOST}:${boundPort}`, `localhost:${boundPort}`];
+    if (!origins.includes(String(req.headers.host ?? ""))) {
       res.writeHead(421, { "Content-Type": "text/plain" }).end("Misdirected request");
-      return;
-    }
-    if (req.method !== "GET" && req.method !== "HEAD") {
-      res.writeHead(405, { Allow: "GET, HEAD", "Content-Type": "text/plain" }).end("Read-only");
       return;
     }
     const common = {
@@ -86,39 +114,97 @@ export async function startMapServer(
       "Referrer-Policy": "no-referrer",
       "X-Frame-Options": "DENY",
       "Cache-Control": "no-store",
+      "Cross-Origin-Resource-Policy": "same-origin",
+    };
+    const json = (status: number, body: unknown) => {
+      res.writeHead(status, { ...common, "Content-Type": "application/json" });
+      res.end(JSON.stringify(body));
     };
     const url = new URL(req.url ?? "/", `http://${HOST}`);
+    const method = req.method ?? "GET";
+
     try {
-      if (url.pathname === "/") {
-        res.writeHead(200, {
-          ...common,
-          "Content-Type": "text/html; charset=utf-8",
-          "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
-        });
-        res.end(renderPage(nonce));
-        return;
-      }
-      if (url.pathname === "/api/graph") {
-        // Only the page itself sends this header. A cross-origin page cannot add a custom
-        // header without a CORS preflight, which this server never answers, so another
-        // site cannot make it call the Hetzner API on your behalf.
-        if (req.headers["x-hzmap"] !== "1") {
-          res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end("Forbidden");
+      if (!url.pathname.startsWith("/api/")) {
+        if (method !== "GET" && method !== "HEAD") {
+          res.writeHead(405, { ...common, Allow: "GET, HEAD" }).end();
           return;
         }
-        const graph = await load(url.searchParams.get("refresh") === "1");
-        res.writeHead(200, { ...common, "Content-Type": "application/json" });
-        res.end(JSON.stringify(graph));
+        if (url.pathname === "/healthz") {
+          res.writeHead(200, { ...common, "Content-Type": "text/plain" }).end("ok");
+          return;
+        }
+        const file = url.pathname === "/" || url.pathname === "/index.html" ? "index.html" : ASSET.test(url.pathname) ? url.pathname.slice(1) : null;
+        if (!file) {
+          res.writeHead(404, { ...common, "Content-Type": "text/plain" }).end("Not found");
+          return;
+        }
+        let body: Buffer | undefined;
+        for (const dir of [WEB_DIR, WEB_FALLBACK]) {
+          body = await readFile(join(dir, file)).catch(() => undefined); // BESTPRACTICE_OK: first existing dir wins, order matters
+          if (body) break;
+        }
+        if (!body) {
+          res.writeHead(503, { ...common, "Content-Type": "text/plain" }).end("The map app is not built. Run npm run build.");
+          return;
+        }
+        res.writeHead(200, { ...common, "Content-Type": TYPES[extname(file)] ?? "application/octet-stream", "Content-Security-Policy": CSP });
+        res.end(method === "HEAD" ? undefined : body);
         return;
       }
-      if (url.pathname === "/healthz") {
-        res.writeHead(200, { ...common, "Content-Type": "text/plain" }).end("ok");
+
+      // A cross-site page cannot add this header without a preflight, which is never answered.
+      if (req.headers["x-hzmap"] !== "1") {
+        res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end("Forbidden");
         return;
       }
-      res.writeHead(404, { ...common, "Content-Type": "text/plain" }).end("Not found");
+      const origin = req.headers.origin;
+      if (origin && !origins.map((o) => `http://${o}`).includes(origin)) {
+        res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end("Forbidden origin");
+        return;
+      }
+
+      if (method === "GET") {
+        if (url.pathname === "/api/graph") return json(200, await load(url.searchParams.get("refresh") === "1"));
+        if (url.pathname === "/api/meta") return json(200, meta(actx));
+        if (url.pathname === "/api/catalog") {
+          if (opts.demo) throw new ActionError(403, "This is sample data. Start the live map to create real resources.");
+          return json(200, publicCatalog(await catalog(projectById(actx, url.searchParams.get("project") ?? ""))));
+        }
+        return json(404, { error: "Not found" });
+      }
+      if (method !== "POST") {
+        res.writeHead(405, { ...common, Allow: "GET, POST" }).end();
+        return;
+      }
+      if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) throw new ActionError(415, "Send JSON.");
+      const body = await readJson(req);
+      if (opts.demo && url.pathname !== "/api/projects") throw new ActionError(403, "This is sample data. Start the live map to change real resources.");
+      const done = (message: string) => {
+        cache = undefined;
+        json(200, { ok: true, message });
+      };
+      switch (url.pathname) {
+        case "/api/projects":
+          return done(await connectProject(actx, body));
+        case "/api/projects/remove":
+          return done(disconnectProject(actx, body.id));
+        case "/api/plan": {
+          if (opts.demo) throw new ActionError(403, "This is sample data. Start the live map to create real resources.");
+          const p = await plan(actx, projectById(actx, String(body.project ?? "")), body.kind, (body.params ?? {}) as Record<string, unknown>);
+          return json(200, { label: p.label, billed: p.billed, monthly: p.monthly, currency: p.currency, notes: p.notes, blocked: p.blocked });
+        }
+        case "/api/apply":
+          return done(await apply(actx, projectById(actx, String(body.project ?? "")), body.kind, (body.params ?? {}) as Record<string, unknown>, body.confirm));
+        case "/api/delete-plan":
+          return json(200, await deletePlan(actx, body.nodeId));
+        case "/api/delete":
+          return done(await deleteNode(actx, body.nodeId, body.typed));
+        default:
+          return json(404, { error: "Not found" });
+      }
     } catch (err) {
-      res.writeHead(502, { ...common, "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      if (err instanceof ActionError) return json(err.status, { error: err.message });
+      return json(502, { error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -127,7 +213,7 @@ export async function startMapServer(
   let lastErr: unknown;
   for (let p = first; p < first + 10; p++) {
     try {
-      boundPort = await listen(server, p);
+      boundPort = await listen(server, p); // BESTPRACTICE_OK: ports are tried in order, each depends on the previous failing
       const url = `http://${HOST}:${boundPort}/`;
       running = {
         url,

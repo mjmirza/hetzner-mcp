@@ -1,0 +1,493 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Background,
+  BackgroundVariant,
+  Controls,
+  MiniMap,
+  ReactFlow,
+  ReactFlowProvider,
+  applyNodeChanges,
+  useReactFlow,
+  type Node,
+  type NodeChange,
+} from "@xyflow/react";
+import {
+  Add02Icon,
+  ArrowDataTransferHorizontalIcon,
+  ArrowDataTransferVerticalIcon,
+  ChartRelationshipIcon,
+  HierarchySquare02Icon,
+  ListViewIcon,
+  Loading03Icon,
+  Menu02Icon,
+  Moon02Icon,
+  Refresh03Icon,
+  Search02Icon,
+  Sun02Icon,
+} from "hugeicons-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Toaster } from "@/components/ui/sonner";
+import { CardContext, InfraNode, KIND_ICON } from "@/components/InfraNode";
+import { ProjectsPanel } from "@/components/ProjectsPanel";
+import { RelationEdge } from "@/components/RelationEdge";
+import { Inspector } from "@/components/Inspector";
+import { ListView } from "@/components/ListView";
+import { AddProjectDialog } from "@/components/AddProjectDialog";
+import { CreateDialog } from "@/components/CreateDialog";
+import { DeleteDialog } from "@/components/DeleteDialog";
+import { api } from "@/lib/api";
+import { buildFlow, type CardData, type Direction } from "@/lib/layout";
+import { relationsByNode } from "@/lib/relations";
+import { CREATABLE, KIND_LABEL } from "@/lib/format";
+import type { InfraGraph, MapNode, Meta, NodeKind } from "@/lib/types";
+
+type ViewMode = "hierarchy" | "connections" | "list";
+type Pos = { x: number; y: number };
+const nodeTypes = { card: InfraNode };
+const edgeTypes = { relation: RelationEdge };
+
+function useMedia(query: string): boolean {
+  const [match, setMatch] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const on = () => setMatch(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, [query]);
+  return match;
+}
+
+function stored<T>(key: string, fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? (JSON.parse(v) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function store(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage blocked. The layout still works, it just is not remembered.
+  }
+}
+
+function ago(iso: string): string {
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  return `${Math.round(s / 3600)} h ago`;
+}
+
+function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect, onToggle, positions, setPositions, fitKey }: {
+  graph: InfraGraph;
+  view: "hierarchy" | "connections";
+  direction: Direction;
+  collapsed: Set<string>;
+  focus: string | null;
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  onToggle: (id: string) => void;
+  positions: Map<string, Pos>;
+  setPositions: (m: Map<string, Pos>) => void;
+  fitKey: string;
+}) {
+  const flow = useReactFlow();
+  const built = useMemo(() => buildFlow(graph, { view, direction, collapsed, focusProject: focus, selected, positions }), [graph, view, direction, collapsed, focus, selected, positions]);
+  const [nodes, setNodes] = useState<Node<CardData>[]>(built.nodes);
+  useEffect(() => setNodes(built.nodes), [built]);
+
+  useEffect(() => {
+    const t = setTimeout(() => flow.fitView({ padding: 0.12, duration: 280, maxZoom: 1.1 }), 30);
+    return () => clearTimeout(t);
+  }, [fitKey, flow]);
+
+  // Bring the selected card and everything connected to it into view.
+  const builtRef = useRef(built);
+  builtRef.current = built;
+  useEffect(() => {
+    if (!selected) return;
+    const t = setTimeout(() => {
+      const ids = builtRef.current.nodes.filter((n) => n.selected || n.data.related).map((n) => ({ id: n.id }));
+      if (ids.length) flow.fitView({ nodes: ids, padding: 0.25, duration: 320, maxZoom: 1 });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [selected, flow]);
+
+  const onNodesChange = useCallback((changes: NodeChange<Node<CardData>>[]) => {
+    setNodes((ns) => applyNodeChanges(changes.filter((c) => c.type === "position" || c.type === "dimensions"), ns));
+  }, []);
+
+  const ctx = useMemo(() => ({ select: (id: string) => onSelect(id), toggle: onToggle, currency: graph.currency }), [onSelect, onToggle, graph.currency]);
+
+  return (
+    <CardContext.Provider value={ctx}>
+      <ReactFlow
+        nodes={nodes}
+        edges={built.edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange}
+        onNodeClick={(_, n) => onSelect(n.id)}
+        onPaneClick={() => onSelect(null)}
+        onNodeDragStop={(_, n) => {
+          const next = new Map(positions);
+          next.set(n.id, n.position);
+          setPositions(next);
+        }}
+        nodesConnectable={false}
+        elementsSelectable
+        minZoom={0.15}
+        maxZoom={1.8}
+        proOptions={{ hideAttribution: true }}
+        fitView
+      >
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="var(--stage-dot)" />
+        <Controls showInteractive={false} position="bottom-right" />
+        <MiniMap
+          pannable
+          zoomable
+          position="bottom-left"
+          className="!hidden md:!block"
+          style={{ width: 168, height: 112 }}
+          nodeColor={(n) => ((n.data as CardData).node.flags.some((f) => f.kind === "risk") ? "var(--risk)" : "var(--edge)")}
+          nodeBorderRadius={6}
+        />
+      </ReactFlow>
+    </CardContext.Provider>
+  );
+}
+
+export function App() {
+  const desktop = useMedia("(min-width: 1024px)");
+  const phone = useMedia("(max-width: 639px)");
+  const [graph, setGraph] = useState<InfraGraph | null>(null);
+  const [meta, setMeta] = useState<Meta | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [view, setView] = useState<ViewMode>(() => (window.matchMedia("(max-width: 639px)").matches ? "list" : stored<ViewMode>("hzmap-view", "hierarchy")));
+  const [direction, setDirection] = useState<Direction>(() => stored<Direction>("hzmap-dir", "LR"));
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [focus, setFocus] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
+  const [query, setQuery] = useState("");
+  const [addProject, setAddProject] = useState(false);
+  const [creating, setCreating] = useState<NodeKind | null>(null);
+  const [deleting, setDeleting] = useState<MapNode | null>(null);
+
+  const layoutKey = `hzmap-pos:${view}:${direction}:${focus ?? "all"}`;
+  const [positions, setPositionsState] = useState<Map<string, Pos>>(() => new Map(stored<Array<[string, Pos]>>(layoutKey, [])));
+  useEffect(() => setPositionsState(new Map(stored<Array<[string, Pos]>>(layoutKey, []))), [layoutKey]);
+  const setPositions = (m: Map<string, Pos>) => {
+    setPositionsState(m);
+    store(layoutKey, [...m.entries()]);
+  };
+
+  const load = useCallback(async (refresh = false) => {
+    setRefreshing(true);
+    try {
+      const [g, m] = await Promise.all([api.graph(refresh), api.meta()]);
+      setGraph(g);
+      setMeta(m);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => store("hzmap-view", view === "list" ? "hierarchy" : view), [view]);
+  useEffect(() => store("hzmap-dir", direction), [direction]);
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+    try {
+      localStorage.setItem("hzmap-theme", dark ? "dark" : "light");
+    } catch {
+      // Storage blocked. Theme still applies for this visit.
+    }
+  }, [dark]);
+
+  const byId = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, n])), [graph]);
+  const relations = useMemo(() => (graph ? relationsByNode(graph) : new Map()), [graph]);
+  const selectedNode = selected ? byId.get(selected) ?? null : null;
+
+  const toggle = useCallback((id: string) => {
+    setCollapsed((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const select = useCallback(
+    (id: string | null) => {
+      setSelected(id);
+      if (!id) return;
+      // Reveal the card if it sits inside a collapsed parent or a different focused project.
+      const n = byId.get(id);
+      if (!n) return;
+      const chain: string[] = [];
+      let p = n.parent;
+      while (p) {
+        chain.push(p);
+        p = byId.get(p)?.parent;
+      }
+      setCollapsed((s) => (chain.some((c) => s.has(c)) ? new Set([...s].filter((c) => !chain.includes(c))) : s));
+      if (focus && !chain.includes(focus) && focus !== id) setFocus(null);
+      if (!desktop) setPanelOpen(false);
+    },
+    [byId, focus, desktop],
+  );
+
+  const projects = graph?.nodes.filter((n) => n.kind === "project") ?? [];
+  const accounts = [...new Set(projects.map((p) => p.account))];
+  const targetProject = focus ?? (selectedNode ? projects.find((p) => p.label === selectedNode.project && p.account === selectedNode.account)?.id : undefined) ?? projects[0]?.id ?? null;
+  const targetLabel = projects.find((p) => p.id === targetProject)?.label ?? "";
+  const canWrite = meta?.mode === "live" && !meta.readOnly;
+  const partsOf = (n: MapNode) => graph!.nodes.filter((x) => x.parent === n.id && (x.kind === "volume" || x.kind === "primary_ip"));
+
+  const runSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = query.trim().toLowerCase();
+    if (!q || !graph) return;
+    const hit = graph.nodes.find((n) => n.label.toLowerCase().includes(q) || String(n.details.ip ?? "").includes(q));
+    if (hit) select(hit.id);
+    else toast(`Nothing called “${query.trim()}”.`);
+  };
+
+  const panel = graph && (
+    <ProjectsPanel
+      graph={graph}
+      focus={focus}
+      onFocus={(p) => {
+        setFocus(p);
+        setSelected(null);
+        if (!desktop) setPanelOpen(false);
+      }}
+      onSelect={select}
+      onAddProject={() => setAddProject(true)}
+    />
+  );
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <div className="flex h-dvh flex-col">
+        <header className="flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4">
+          {!desktop && (
+            <Button variant="ghost" size="icon-sm" className="rounded-lg" onClick={() => setPanelOpen(true)} aria-label="Projects and insights">
+              <Menu02Icon size={18} />
+            </Button>
+          )}
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="hidden truncate text-[15px] font-semibold sm:block">Infrastructure</h1>
+            {meta && (
+              <Badge variant={meta.mode === "demo" ? "secondary" : "outline"} className="rounded-md">
+                {meta.mode === "demo" ? "Sample" : "Live"}
+              </Badge>
+            )}
+            {graph && <span className="hidden text-[12px] text-muted-foreground md:inline">Updated {ago(graph.generatedAt)}</span>}
+          </div>
+
+          <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)} className="mx-auto">
+            <TabsList className="rounded-lg">
+              <TabsTrigger value="hierarchy" className="rounded-md" aria-label="Hierarchy">
+                <HierarchySquare02Icon size={15} /> <span className="hidden md:inline">Hierarchy</span>
+              </TabsTrigger>
+              <TabsTrigger value="connections" className="rounded-md" aria-label="Connections">
+                <ChartRelationshipIcon size={15} /> <span className="hidden md:inline">Connections</span>
+              </TabsTrigger>
+              <TabsTrigger value="list" className="rounded-md" aria-label="List">
+                <ListViewIcon size={15} /> <span className="hidden md:inline">List</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <div className="flex items-center gap-1">
+            <form onSubmit={runSearch} className="relative hidden xl:block" role="search">
+              <Search02Icon size={15} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find by name or IP" aria-label="Find a resource" className="h-8 w-48 rounded-lg pl-8" />
+            </form>
+            {view !== "list" && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="rounded-lg"
+                      onClick={() => setDirection((d) => (d === "LR" ? "TB" : "LR"))}
+                      aria-label={direction === "LR" ? "Lay out top to bottom" : "Lay out left to right"}
+                    >
+                      {direction === "LR" ? <ArrowDataTransferVerticalIcon size={17} /> : <ArrowDataTransferHorizontalIcon size={17} />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{direction === "LR" ? "Top to bottom" : "Left to right"}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="sm" className="hidden rounded-lg sm:inline-flex" onClick={() => setPositions(new Map())} disabled={positions.size === 0}>
+                      Tidy up
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Undo your drags and lay everything out again</TooltipContent>
+                </Tooltip>
+              </>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-sm" className="rounded-lg" onClick={() => load(true)} disabled={refreshing} aria-label="Refresh from Hetzner">
+                  {refreshing ? <Loading03Icon size={17} className="animate-spin" /> : <Refresh03Icon size={17} />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Refresh from Hetzner</TooltipContent>
+            </Tooltip>
+            <Button variant="ghost" size="icon-sm" className="rounded-lg" onClick={() => setDark((d) => !d)} aria-label={dark ? "Use light mode" : "Use dark mode"}>
+              {dark ? <Sun02Icon size={17} /> : <Moon02Icon size={17} />}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="rounded-lg" disabled={!graph || projects.length === 0}>
+                  <Add02Icon size={16} /> <span className="hidden sm:inline">Create</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72 rounded-xl">
+                <DropdownMenuLabel className="text-[12px] font-normal text-muted-foreground">In project {targetLabel}</DropdownMenuLabel>
+                {CREATABLE.map((c) => {
+                  const Icon = KIND_ICON[c.kind];
+                  return (
+                    <DropdownMenuItem key={c.kind} className="items-start gap-2.5 rounded-lg py-2" onSelect={() => setCreating(c.kind)}>
+                      <Icon size={17} className="mt-0.5" />
+                      <span className="flex flex-col">
+                        <span className="text-[13px] font-medium">{KIND_LABEL[c.kind]}</span>
+                        <span className="text-[12px] text-muted-foreground">{c.hint}</span>
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="rounded-lg" onSelect={() => setAddProject(true)}>
+                  Connect another project
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1 gap-2 px-2 pb-2">
+          {desktop && <aside className="w-72 shrink-0 overflow-hidden rounded-2xl bg-card shadow-[var(--shadow)]">{panel}</aside>}
+
+          <main className="relative min-w-0 flex-1 overflow-hidden rounded-2xl bg-stage">
+            {!graph && !error && (
+              <div className="flex h-full items-center justify-center gap-2 rounded-2xl text-[13px] text-muted-foreground">
+                <Loading03Icon size={18} className="animate-spin" /> Reading your Hetzner projects
+              </div>
+            )}
+            {error && !graph && (
+              <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl p-6 text-center">
+                <p className="max-w-md text-[14px]">{error}</p>
+                <Button className="rounded-lg" onClick={() => load(true)}>
+                  Try again
+                </Button>
+              </div>
+            )}
+            {graph && view === "list" && <ListView graph={graph} focus={focus} selected={selected} onSelect={select} />}
+            {graph && view !== "list" && (
+              <ReactFlowProvider>
+                <MapBoard
+                  graph={graph}
+                  view={view}
+                  direction={direction}
+                  collapsed={collapsed}
+                  focus={focus}
+                  selected={selected}
+                  onSelect={select}
+                  onToggle={toggle}
+                  positions={positions}
+                  setPositions={setPositions}
+                  fitKey={`${view}:${direction}:${focus}:${collapsed.size}:${graph.generatedAt}:${positions.size === 0}`}
+                />
+              </ReactFlowProvider>
+            )}
+          </main>
+
+          {desktop && selectedNode && graph && (
+            <aside className="w-[340px] shrink-0 overflow-y-auto rounded-2xl bg-card shadow-[var(--shadow)]">
+              <Inspector
+                node={selectedNode}
+                parts={partsOf(selectedNode)}
+                relations={relations.get(selectedNode.id) ?? []}
+                byId={byId}
+                currency={graph.currency}
+                canDelete={canWrite}
+                onSelect={select}
+                onDelete={setDeleting}
+                onClose={() => setSelected(null)}
+              />
+            </aside>
+          )}
+        </div>
+
+        {!desktop && (
+          <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
+            <SheetContent side="left" className="w-[88vw] max-w-sm p-0">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Projects and insights</SheetTitle>
+                <SheetDescription>Costs, projects and findings</SheetDescription>
+              </SheetHeader>
+              {panel}
+            </SheetContent>
+          </Sheet>
+        )}
+        {!desktop && (
+          <Sheet open={!!selectedNode} onOpenChange={(v) => !v && setSelected(null)}>
+            <SheetContent side={phone ? "bottom" : "right"} className={phone ? "max-h-[80dvh] overflow-y-auto rounded-t-2xl p-0" : "w-[380px] overflow-y-auto p-0"}>
+              <SheetHeader className="sr-only">
+                <SheetTitle>{selectedNode?.label ?? "Details"}</SheetTitle>
+                <SheetDescription>Details for the selected resource</SheetDescription>
+              </SheetHeader>
+              {selectedNode && graph && (
+                <Inspector
+                  node={selectedNode}
+                  parts={partsOf(selectedNode)}
+                  relations={relations.get(selectedNode.id) ?? []}
+                  byId={byId}
+                  currency={graph.currency}
+                  canDelete={canWrite}
+                  onSelect={select}
+                  onDelete={setDeleting}
+                />
+              )}
+            </SheetContent>
+          </Sheet>
+        )}
+
+        <AddProjectDialog open={addProject} onOpenChange={setAddProject} accounts={accounts} demo={meta?.mode === "demo"} onAdded={() => load(true)} />
+        <CreateDialog open={!!creating} onOpenChange={(v) => !v && setCreating(null)} kind={creating} project={targetProject} projectLabel={targetLabel} meta={meta} onCreated={() => load(true)} />
+        <DeleteDialog
+          node={deleting}
+          onOpenChange={(v) => !v && setDeleting(null)}
+          onDeleted={() => {
+            setSelected(null);
+            load(true);
+          }}
+        />
+        <Toaster position="bottom-center" />
+      </div>
+    </TooltipProvider>
+  );
+}

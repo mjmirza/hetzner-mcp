@@ -24,9 +24,17 @@ are included here, and to @jooola for reporting #83 and #84.
   the Sentinel scanner.
 
 ### Added
-- `hetzner-mcp map`, an interactive canvas of every configured account, project, and
+- `hetzner-mcp map`, an interactive map of every configured account, project, and
   resource with estimated monthly cost, top cost drivers, and idle resources still being
-  billed. Local and read-only on http://127.0.0.1:43390, with a labelled `--demo` estate.
+  billed. Local on http://127.0.0.1:43390, with a labelled `--demo` estate. Built with
+  React Flow and an automatic layout that switches between rows and columns, so no line
+  crosses a card. Hierarchy, Connections, and List views, drag with remembered positions,
+  project counts and costs in the side panel, and plain-language links on every card.
+- Create and delete from the map. Price first from the Hetzner pricing API, billed creates
+  only with `HETZNER_MCP_ALLOW_BILLED=1` plus a stated-amount checkbox, deletes need the
+  exact name. Same guards as the MCP tools, re-checked on the server for every request.
+- Connect another project from the map. The token is verified live, then saved in
+  `~/.config/hetzner-mcp/projects.json` with owner-only permissions, never sent to the page.
 - `infra_map` MCP tool returning the cost summary, findings, the canvas URL, and an
   optional Mermaid diagram. Multiple projects via `HETZNER_CLOUD_TOKEN_<NAME>`.
 - `test/safety-guards.ts`, `test/actions.ts`, and `test/map.ts` offline suites, wired into

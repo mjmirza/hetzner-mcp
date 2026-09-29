@@ -144,14 +144,17 @@ What you get:
 - Where the money goes. Monthly cost per account, per project, per resource type, and the top cost drivers.
 - Risks to fix. Server types Hetzner is retiring, servers with no firewall, SSH or database ports open to the whole internet, and certificates about to expire.
 - What you are paying for and not using. Powered off servers, unattached volumes, unassigned IPs, and snapshots of deleted servers, each with the monthly amount tied to it. One click takes you to it on the canvas.
-- How it all connects. Servers inside their private network, volumes and IPs on their server, and lines for firewalls, load balancers, floating IPs, and backups.
-- Several projects and accounts at once. A Hetzner token covers one project, so add one variable per extra project, for example `HETZNER_CLOUD_TOKEN_STAGING`, and group them with `HETZNER_ACCOUNT_STAGING=Acme GmbH`.
+- A layout that stays readable. Cards are laid out automatically, left to right or top to bottom with one click, and no line ever runs through a card. Drag cards where you want them, the map remembers, and Tidy up puts everything back.
+- Three ways to look. Hierarchy shows what sits inside what. Connections also places linked resources next to each other, so you can see which firewall protects which server and which load balancer sends traffic where. List is a plain outline that works well on a phone. Every card also says its links in words, for example "Protected by web-fw".
+- How many projects you have, and what each costs. The side panel lists every account and project with its resource count and monthly total. Click one to show only that project.
+- Create from the map. Pick Create, choose what you want, and you see the real Hetzner price before anything happens. Billed creates stay off until you start the map with `HETZNER_MCP_ALLOW_BILLED=1`, and even then you tick a box that states the monthly amount. Deleting asks you to type the exact name and tells you what else is affected.
+- Add a project from the map. Hetzner has no API to create projects, so the map walks you to the Console, you paste the project's token, it is checked against Hetzner, then saved on this computer only (owner-only file permissions) and never sent back to the page. Tokens from environment variables work too, for example `HETZNER_CLOUD_TOKEN_STAGING`, grouped with `HETZNER_ACCOUNT_STAGING=Acme GmbH`.
 
 Before you create a server, ask "where can I get a 4 core server right now". The `find_capacity` tool lists what Hetzner can actually sell you today, by location and price, so a create does not fail with resource unavailable.
 
 Your assistant can open it too. Ask it to "map my Hetzner infrastructure" and the `infra_map` tool returns the cost summary, the savings list, and the canvas link, or a Mermaid diagram with `mermaid: true`.
 
-It is read-only and local. It only makes GET requests, listens on 127.0.0.1 only, refuses requests addressed to any other host name, and never sends your token to the page. Port 43390 is unassigned in the IANA registry; set `HETZNER_MCP_MAP_PORT` to change it, and it moves to the next free port if that one is busy. Costs are estimates from Hetzner list prices, not your invoice, because Hetzner has no Cloud billing API.
+It is local and guarded. It listens on 127.0.0.1 only, refuses requests addressed to any other host name or sent from another website, and never sends your token to the page. Every create and delete goes through the same cost, read-only (`HETZNER_MCP_READONLY=1`), and destructive guards as the MCP tools, and the sample map cannot change anything. Port 43390 is unassigned in the IANA registry; set `HETZNER_MCP_MAP_PORT` to change it, and it moves to the next free port if that one is busy. Costs are estimates from Hetzner list prices, not your invoice, because Hetzner has no Cloud billing API.
 
 ![Infra map, light](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/map/infra-map-light.png)
 ![Infra map, dark](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/map/infra-map-dark.png)

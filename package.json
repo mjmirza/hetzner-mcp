@@ -33,6 +33,8 @@
   },
   "files": [
     "dist/**/*.js",
+    "dist/web/index.html",
+    "dist/web/assets/*",
     "LICENSE",
     "NOTICE",
     "README.md"
@@ -41,7 +43,9 @@
     "node": ">=18.18.0"
   },
   "scripts": {
-    "build": "tsc && chmod +x dist/index.js",
+    "build": "tsc && chmod +x dist/index.js && vite build --config web/vite.config.ts --logLevel warn",
+    "dev:web": "vite --config web/vite.config.ts",
+    "typecheck:web": "tsc -p web/tsconfig.json",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
@@ -63,8 +67,24 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.10.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@xyflow/react": "^12.12.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "hugeicons-react": "^0.4.0",
+    "radix-ui": "^1.6.7",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite": "^8.3.1"
   }
 }

@@ -60,7 +60,7 @@ const url = await new Promise<string>((res) => {
 assert("map --demo prints a loopback URL", url.startsWith("http://127.0.0.1:"), out);
 if (url) {
   const html = await fetch(url).then((x) => x.text()).catch(() => "");
-  assert("map --demo serves the page", html.includes("Hetzner Infra Map"));
+  assert("map --demo serves the page", html.includes("Hetzner infrastructure map"));
   const g = await fetch(url + "api/graph", { headers: { "X-Hzmap": "1" } }).then((x) => x.json()).catch(() => ({})) as { source?: string };
   assert("map --demo serves sample data", g.source === "sample");
 }
