@@ -61,7 +61,7 @@ assert("map --demo prints a loopback URL", url.startsWith("http://127.0.0.1:"), 
 if (url) {
   const html = await fetch(url).then((x) => x.text()).catch(() => "");
   assert("map --demo serves the page", html.includes("Hetzner Infra Map"));
-  const g = await fetch(url + "api/graph").then((x) => x.json()).catch(() => ({})) as { source?: string };
+  const g = await fetch(url + "api/graph", { headers: { "X-Hzmap": "1" } }).then((x) => x.json()).catch(() => ({})) as { source?: string };
   assert("map --demo serves sample data", g.source === "sample");
 }
 const exited = new Promise<number | null>((res) => child.on("exit", (c) => res(c)));

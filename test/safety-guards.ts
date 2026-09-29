@@ -4,6 +4,7 @@
  */
 import { loadConfig } from "../src/config.js";
 import { classifyCost, classifyDestructive, normalizeCostPath } from "../src/cost.js";
+import { normalizePath } from "../src/security.js";
 
 let passed = 0;
 let total = 0;
@@ -101,6 +102,26 @@ assert("turning protection off needs confirm", classifyDestructive("POST", "/ser
 assert("turning protection on does not", !classifyDestructive("POST", "/servers/9/actions/change_protection", { delete: true, rebuild: true }).destructive);
 assert("disable_backup reason explains the data loss", /deletes all existing automatic backups/.test(classifyDestructive("POST", "/servers/9/actions/disable_backup").reason ?? ""));
 assert("enable_backup is billed", classifyCost("cloud", "POST", "/servers/9/actions/enable_backup").billed);
+
+// Adversarial review 2026-09-29 (second model). Dot segments must not bypass either guard.
+for (const p of ["/./servers", "/servers/.", "./servers", "/x/../servers", "/%2e/servers", "/servers/1/actions/./create_image"]) {
+  assert(`dot-segment bypass closed: POST ${p} is billed`, classifyCost("cloud", "POST", p).billed);
+}
+assert("dot-segment bypass closed for storage boxes", classifyCost("storagebox", "POST", "/./storage_boxes").billed);
+assert("dot-segment bypass closed for rebuild", classifyDestructive("POST", "/servers/1/actions/./rebuild").destructive);
+let rejected = 0;
+for (const p of ["/./servers", "/servers/.", "/%2e/servers", "/servers/1/actions/./rebuild"]) {
+  try { normalizePath(p); } catch { rejected++; }
+}
+assert("request layer refuses '.' segments outright", rejected === 4);
+let accepted = true;
+try { normalizePath("/servers/1.2/metrics"); normalizePath("/zones/example.com"); } catch { accepted = false; }
+assert("dots inside a segment are still allowed (zone names, ids)", accepted);
+assert("volume detach needs confirm", classifyDestructive("POST", "/volumes/1/actions/detach").destructive);
+assert("floating IP unassign needs confirm", classifyDestructive("POST", "/floating_ips/1/actions/unassign").destructive);
+assert("primary IP unassign needs confirm", classifyDestructive("POST", "/primary_ips/1/actions/unassign").destructive);
+assert("volume attach does not need confirm", !classifyDestructive("POST", "/volumes/1/actions/attach").destructive);
+assert("action wait is capped at 10 minutes", loadConfig({ HETZNER_MCP_ACTION_WAIT_MS: "1e308" }).actionWaitMs === 600000);
 
 process.stdout.write(`\n${passed}/${total} safety-guard checks passed\n`);
 if (passed !== total) process.exitCode = 1;

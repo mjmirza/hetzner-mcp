@@ -108,6 +108,9 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
         const res = await hetznerRequest(cfg, { surface: "cloud", method: "DELETE", path: `/servers/${encodeURIComponent(String(args.id))}` });
         const actions = await waitForActions(cfg, res);
         if (anyActionFailed(actions)) return text(`Delete of server ${args.id} did not finish.` + describeActions(actions), true);
+        if (actions.some((o) => o.status === "running")) {
+          return text(`Delete of server ${args.id} was accepted and is still running. Billing stops once it finishes.` + describeActions(actions));
+        }
         return text(`Server ${args.id} deleted. Billing stopped. Auto-created primary IPs release shortly after.` + describeActions(actions));
       } catch (err) {
         return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);

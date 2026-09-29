@@ -54,6 +54,17 @@ are included here, and to @jooola for reporting #83 and #84.
   record-set PUT, `change_primary_nameservers`, network and load balancer removals, and
   turning protection off.
 - Security. Bumped the MCP SDK to 1.31.0 and resolved a high severity `fast-uri` advisory.
+- Guards now resolve `.` and `..` path segments exactly as the request does, and the
+  request layer refuses `.` segments outright, so `/./servers` cannot skip the cost guard
+  and `/servers/1/actions/./rebuild` cannot skip the confirm. Found in an adversarial
+  review by a second model before release.
+- Detaching a volume and unassigning a floating or primary IP now need confirm, and the
+  three curated tools accept it. A server delete whose action is still running is
+  reported as still running, not as done. The action wait is capped at 10 minutes.
+- The infra map API only answers requests from its own page, so another website cannot
+  make it call the Hetzner API on your behalf.
+- README source install passes the token on the command line. The old steps copied a
+  `.env` file that nothing reads.
 - `setup --print --allow-billed` now includes `HETZNER_MCP_ALLOW_BILLED=1` in the printed
   config. Action status from a write comes back as its own content block, so the first
   block stays plain JSON for scripts that parse it.

@@ -282,7 +282,7 @@ function empty(){var e=$("empty");var real=state.g.nodes.filter(function(n){retu
   e.appendChild(h("div",null,state.g.caveats[0]||"This project is empty. Create a server and refresh, or run: npx hetzner-mcp map --demo"))}
 
 function load(force){$("refresh").disabled=true;$("totalSub").textContent="Reading your projects from the Hetzner API";
-  fetch("/api/graph"+(force?"?refresh=1":"")).then(function(r){return r.json()}).then(function(g){if(g.error)throw new Error(g.error);state.g=g;layout();side();draw();empty();fit()})
+  fetch("/api/graph"+(force?"?refresh=1":""),{headers:{"X-Hzmap":"1"}}).then(function(r){return r.json()}).then(function(g){if(g.error)throw new Error(g.error);state.g=g;layout();side();draw();empty();fit()})
   .catch(function(err){$("total").textContent="Unavailable";$("totalSub").textContent=String(err.message||err)})
   .finally(function(){$("refresh").disabled=false})}
 $("refresh").onclick=function(){load(true)};

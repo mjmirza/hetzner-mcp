@@ -231,9 +231,8 @@ claude mcp add hetzner -e HETZNER_CLOUD_TOKEN=your-token -- hetzner-mcp
 git clone https://github.com/mjmirza/hetzner-mcp
 cd hetzner-mcp
 npm install
-cp .env.example .env   # then fill in your token
 npm run build
-npm start
+HETZNER_CLOUD_TOKEN=your-token npm start
 ```
 
 ## Getting your credentials

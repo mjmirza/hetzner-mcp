@@ -30,6 +30,9 @@ export function normalizePath(path: string): string {
   if (raw.includes("..") || decoded.includes("..")) {
     throw new Error("path must not contain '..'");
   }
+  if (/(^|\/)\.(\/|$)/.test(raw) || /(^|\/)\.(\/|$)/.test(decoded)) {
+    throw new Error("path must not contain '.' segments");
+  }
   if (raw.includes("\\") || decoded.includes("\\")) {
     throw new Error("path must not contain '\\'");
   }
