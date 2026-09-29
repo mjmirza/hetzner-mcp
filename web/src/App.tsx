@@ -26,6 +26,8 @@ import {
   MoreHorizontalCircle02Icon,
   Refresh03Icon,
   Search02Icon,
+  Undo02Icon,
+  SecurityCheckIcon,
   Sun02Icon,
 } from "hugeicons-react";
 import { toast } from "sonner";
@@ -42,6 +44,7 @@ import { ProjectsPanel } from "@/components/ProjectsPanel";
 import { RelationEdge } from "@/components/RelationEdge";
 import { Inspector } from "@/components/Inspector";
 import { ListView } from "@/components/ListView";
+import { AuditView } from "@/components/AuditView";
 import { AddProjectDialog } from "@/components/AddProjectDialog";
 import { CreateDialog } from "@/components/CreateDialog";
 import { DeleteDialog } from "@/components/DeleteDialog";
@@ -51,7 +54,7 @@ import { relationsByNode } from "@/lib/relations";
 import { CREATABLE, KIND_LABEL } from "@/lib/format";
 import type { InfraGraph, MapNode, Meta, NodeKind } from "@/lib/types";
 
-type ViewMode = "hierarchy" | "connections" | "list";
+type ViewMode = "hierarchy" | "connections" | "list" | "audit";
 type Pos = { x: number; y: number };
 const nodeTypes = { card: InfraNode };
 const edgeTypes = { relation: RelationEdge };
@@ -177,6 +180,8 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
           setPositions(next);
         }}
         nodesConnectable={false}
+        edgesReconnectable={false}
+        deleteKeyCode={null}
         elementsSelectable
         minZoom={0.15}
         maxZoom={1.8}
@@ -230,6 +235,23 @@ export function App() {
     store(layoutKey, [...m.entries()]);
   };
 
+  // One reset for everything a person can change on the canvas, in every view, then refit.
+  const [resets, setResets] = useState(0);
+  const dirty = positions.size > 0 || collapsed.size > 0 || focus !== null || selected !== null;
+  const resetView = () => {
+    try {
+      for (const k of Object.keys(localStorage)) if (k.startsWith("hzmap-pos:")) localStorage.removeItem(k);
+    } catch {
+      // Private mode: nothing stored, nothing to clear.
+    }
+    setPositionsState(new Map());
+    setCollapsed(new Set());
+    setFocus(null);
+    setSelected(null);
+    setResets((n) => n + 1);
+    toast.success("Map reset to its original layout");
+  };
+
   const load = useCallback(async (refresh = false) => {
     setRefreshing(true);
     try {
@@ -247,7 +269,7 @@ export function App() {
     load();
   }, [load]);
 
-  useEffect(() => store("hzmap-view", view === "list" ? "hierarchy" : view), [view]);
+  useEffect(() => store("hzmap-view", view === "hierarchy" || view === "connections" ? view : "hierarchy"), [view]);
   useEffect(() => store("hzmap-dir", direction), [direction]);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -351,6 +373,12 @@ export function App() {
               <TabsTrigger value="list" className="rounded-md" aria-label="List">
                 <ListViewIcon size={15} /> <span className="hidden lg:inline">List</span>
               </TabsTrigger>
+              <TabsTrigger value="audit" className="rounded-md" aria-label="Audit">
+                <SecurityCheckIcon size={15} /> <span className="hidden lg:inline">Audit</span>
+                {graph?.audit && graph.audit.counts.critical + graph.audit.counts.high > 0 && (
+                  <span className="hidden rounded-full bg-risk px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground tabular-nums sm:inline">{graph.audit.counts.critical + graph.audit.counts.high}</span>
+                )}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -359,7 +387,7 @@ export function App() {
               <Search02Icon size={15} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
               <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find by name or IP" aria-label="Find a resource" className="h-8 w-48 rounded-lg pl-8" />
             </form>
-            {view !== "list" && (
+            {(view === "hierarchy" || view === "connections") && (
               <>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -377,23 +405,23 @@ export function App() {
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="sm" className="hidden rounded-lg sm:inline-flex" onClick={() => setPositions(new Map())} disabled={positions.size === 0}>
-                      Tidy up
+                    <Button variant="ghost" size="sm" className="hidden rounded-lg sm:inline-flex" onClick={resetView} disabled={!dirty} aria-label="Reset the map">
+                      <Undo02Icon size={16} /> <span className="hidden xl:inline">Reset</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Undo your drags and lay everything out again</TooltipContent>
+                  <TooltipContent>{dirty ? "Put every card back, show everything, and center the map" : "Nothing to reset"}</TooltipContent>
                 </Tooltip>
               </>
             )}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon-sm" className="rounded-lg" onClick={() => load(true)} disabled={refreshing} aria-label="Refresh from Hetzner">
+                <Button variant="ghost" size="icon-sm" className="hidden rounded-lg sm:inline-flex" onClick={() => load(true)} disabled={refreshing} aria-label="Refresh from Hetzner">
                   {refreshing ? <Loading03Icon size={17} className="animate-spin" /> : <Refresh03Icon size={17} />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{graph ? `Updated ${ago(graph.generatedAt)}. Refresh from Hetzner` : "Refresh from Hetzner"}</TooltipContent>
             </Tooltip>
-            {view !== "list" && (
+            {(view === "hierarchy" || view === "connections") && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -422,11 +450,15 @@ export function App() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 rounded-xl">
-                {view !== "list" && (
+                {(view === "hierarchy" || view === "connections") && (
                   <>
                     <DropdownMenuItem className="rounded-lg" onSelect={() => setDirection((d) => (d === "LR" ? "TB" : "LR"))}>
                       {direction === "LR" ? <ArrowDataTransferVerticalIcon size={16} /> : <ArrowDataTransferHorizontalIcon size={16} />}
                       {direction === "LR" ? "Lay out top to bottom" : "Lay out left to right"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="rounded-lg" disabled={!dirty} onSelect={resetView}>
+                      <Undo02Icon size={16} />
+                      Reset the map
                     </DropdownMenuItem>
                     <DropdownMenuItem className="rounded-lg" disabled={reduceMotion} onSelect={() => setFlowOn((v) => !v)}>
                       {animate ? <PauseCircleIcon size={16} /> : <PlayCircle02Icon size={16} />}
@@ -434,6 +466,10 @@ export function App() {
                     </DropdownMenuItem>
                   </>
                 )}
+                <DropdownMenuItem className="rounded-lg" disabled={refreshing} onSelect={() => load(true)}>
+                  <Refresh03Icon size={16} />
+                  Refresh from Hetzner
+                </DropdownMenuItem>
                 <DropdownMenuItem className="rounded-lg" onSelect={() => setDark((d) => !d)}>
                   {dark ? <Sun02Icon size={16} /> : <Moon02Icon size={16} />}
                   {dark ? "Use light mode" : "Use dark mode"}
@@ -487,7 +523,16 @@ export function App() {
               </div>
             )}
             {graph && view === "list" && <ListView graph={graph} focus={focus} selected={selected} onSelect={select} />}
-            {graph && view !== "list" && (
+            {graph && view === "audit" && (
+              <AuditView
+                graph={graph}
+                onShow={(id) => {
+                  setView("hierarchy");
+                  select(id);
+                }}
+              />
+            )}
+            {graph && (view === "hierarchy" || view === "connections") && (
               <ReactFlowProvider>
                 <MapBoard
                   graph={graph}
@@ -500,7 +545,7 @@ export function App() {
                   onToggle={toggle}
                   positions={positions}
                   setPositions={setPositions}
-                  fitKey={`${view}:${direction}:${focus}:${collapsed.size}:${graph.generatedAt}:${positions.size === 0}`}
+                  fitKey={`${view}:${direction}:${focus}:${collapsed.size}:${graph.generatedAt}:${positions.size === 0}:${resets}`}
                   animate={animate}
                 />
               </ReactFlowProvider>

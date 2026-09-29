@@ -45,8 +45,50 @@ async function checkSize(browser: Browser, url: string, width: number, height: n
     await list.click();
     await probePage(page, `${tag} list`, out);
   }
+  const auditTab = page.locator("[role=tab][aria-label=Audit]");
+  if (await auditTab.isVisible()) {
+    await auditTab.click();
+    await probePage(page, `${tag} audit`, out);
+    const summary = page.locator("[aria-label='Audit summary']");
+    if (!(await summary.isVisible()) || !/Grade [A-E]/.test(await summary.innerText())) out.failures.push(`${tag} audit: the audit report did not render`);
+  }
   await page.close();
   return out;
+}
+
+// Drag a card, hide a project, press Reset: every card must be back where the layout put it.
+async function checkReset(browser: Browser, url: string): Promise<string[]> {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page.goto(url);
+  await page.waitForSelector(".react-flow__node");
+  await page.waitForTimeout(900);
+  const snap = () =>
+    page.evaluate(() =>
+      Object.fromEntries([...document.querySelectorAll<HTMLElement>(".react-flow__node")].map((n) => [n.dataset.id, n.style.transform])),
+    );
+  const before = await snap();
+  const reset = page.locator("button[aria-label='Reset the map']");
+  const out: string[] = [];
+  if (!(await reset.isDisabled())) out.push("reset is enabled before anything changed");
+  const card = page.locator(".react-flow__node").nth(3);
+  const box = (await card.boundingBox())!;
+  await page.mouse.move(box.x + 20, box.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 220, box.y + 180, { steps: 8 });
+  await page.mouse.up();
+  await page.locator("button[aria-label^='Hide items inside']").first().click();
+  await page.waitForTimeout(600);
+  const changed = await snap();
+  if (Object.keys(changed).length === Object.keys(before).length && JSON.stringify(changed) === JSON.stringify(before)) out.push("drag and hide did not change the map, test is not testing anything");
+  await reset.click();
+  await page.waitForTimeout(900);
+  const after = await snap();
+  if (JSON.stringify(after) !== JSON.stringify(before)) out.push(`reset did not restore the layout (${Object.keys(after).length} cards vs ${Object.keys(before).length})`);
+  if (!(await reset.isDisabled())) out.push("reset still enabled after resetting");
+  const reload = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("hzmap-pos:")).length);
+  if (reload) out.push("dragged positions still stored after reset");
+  await page.close();
+  return out.map((p) => `reset: ${p}`);
 }
 
 async function main(): Promise<void> {
@@ -55,6 +97,7 @@ async function main(): Promise<void> {
   let results: Result[] = [];
   try {
     results = await Promise.all(SIZES.map((s) => checkSize(browser, handle.url, s.width, s.height)));
+    results.push({ layouts: 1, cards: 0, failures: await checkReset(browser, handle.url) });
   } finally {
     await browser.close();
     await handle.close();

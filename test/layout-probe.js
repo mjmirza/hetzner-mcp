@@ -22,7 +22,7 @@
   }
   // List view: every chip and row must sit fully inside the visible area.
   const vw = document.documentElement.clientWidth;
-  for (const el of document.querySelectorAll("[role=toolbar] button, section li > button")) {
+  for (const el of document.querySelectorAll("[role=toolbar] button, section li > button, li button[aria-expanded]")) {
     if (!visible(el)) continue;
     const b = r(el);
     if (b.right > vw + 1 || b.left < -1) problems.push(`list item off screen: "${el.textContent.trim().slice(0, 30)}"`);
