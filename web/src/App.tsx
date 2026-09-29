@@ -669,7 +669,7 @@ export function App() {
           </Sheet>
         )}
 
-        <AddProjectDialog open={addProject} onOpenChange={setAddProject} accounts={accounts} demo={meta?.mode === "demo"} onAdded={() => load(true)} />
+        <AddProjectDialog open={addProject} onOpenChange={setAddProject} accounts={accounts} demo={meta?.mode === "demo"} onAdded={() => load(true)} workspace={workspaces.length > 1 ? graph?.workspace : undefined} />
         <CreateDialog open={!!creating} onOpenChange={(v) => !v && setCreating(null)} kind={creating} project={targetProject} projectLabel={targetLabel} meta={meta} onCreated={() => load(true)} />
         <DeleteDialog
           node={deleting}

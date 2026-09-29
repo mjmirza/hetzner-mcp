@@ -35,6 +35,15 @@ Changelog, and this project follows semantic versioning.
   runs off screen.
 
 ### Fixed
+- With many clients, prices now load from the first working token instead of giving up after
+  three, so revoked tokens at the top of the list no longer mark every project unreadable.
+- Adding a project from the map saves it into the workspace you are viewing, not the default.
+- A slow map read that finished after a change no longer puts old data back into the cache.
+- Two imports at the same time can no longer drop each other's projects (a lock around the store).
+- Short or malformed saved tokens are fully hidden in `projects list`.
+- Names with a pipe or a line break can no longer break the report table or the Mermaid diagram.
+- Malformed CSV quoting is rejected with its row number instead of being merged silently.
+- IPv6-only servers without a firewall, and firewall rules on port "any", are now flagged.
 - Header text such as "Updated 10 min ago" wrapped onto three lines at medium widths.
 - The location card showed its code twice.
 

@@ -33,7 +33,7 @@ export const api = {
   workspaces: () => call<{ default: string; workspaces: WorkspaceSummary[] }>("/api/workspaces"),
   meta: () => call<Meta>("/api/meta"),
   catalog: (project: string) => call<Catalog>(`/api/catalog?project=${encodeURIComponent(project)}`),
-  addProject: (d: { name: string; account: string; token: string }) => post<{ ok: true; message: string }>("/api/projects", d),
+  addProject: (d: { name: string; account: string; token: string; workspace?: string }) => post<{ ok: true; message: string }>("/api/projects", d),
   removeProject: (id: string) => post<{ ok: true }>("/api/projects/remove", { id }),
   plan: (d: { project: string; kind: string; params: Record<string, unknown> }) => post<Plan>("/api/plan", d),
   apply: (d: { project: string; kind: string; params: Record<string, unknown>; confirm: true }) => post<{ ok: true; message: string }>("/api/apply", d),

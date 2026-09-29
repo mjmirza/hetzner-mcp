@@ -2,7 +2,7 @@
  * Projects connected from the map. Saved only on this computer, owner-only (0600 file, 0700 dir).
  * Tokens are read back only by this process and never sent to the browser.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -45,10 +45,40 @@ function write(env: NodeJS.ProcessEnv, projects: StoredProject[]): void {
   chmodSync(target, 0o600);
 }
 
+// Read, change, write under a lock directory, so two imports at once cannot drop each other's
+// projects. A lock older than 30 s is from a crashed run and is taken over.
+function locked<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
+  const dir = storeDir(env);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const lock = join(dir, ".lock");
+  const until = Date.now() + 5000;
+  for (;;) {
+    try {
+      mkdirSync(lock);
+      break;
+    } catch {
+      try {
+        if (Date.now() - statSync(lock).mtimeMs > 30_000) rmSync(lock, { recursive: true, force: true });
+      } catch {
+        // The lock vanished between the two calls; retry.
+      }
+      if (Date.now() > until) throw new Error("The project store is busy. Try again in a moment.");
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
 /** Adds or replaces (same account and name) a project. */
 export function saveStored(env: NodeJS.ProcessEnv, p: Omit<StoredProject, "addedAt">): void {
-  const rest = readStored(env).filter((x) => !(x.name === p.name && x.account === p.account));
-  write(env, [...rest, { ...p, addedAt: new Date().toISOString() }]);
+  locked(env, () => {
+    const rest = readStored(env).filter((x) => !(x.name === p.name && x.account === p.account));
+    write(env, [...rest, { ...p, addedAt: new Date().toISOString() }]);
+  });
 }
 
 /** Adds many projects in one atomic write. Same account and name replaces the old entry. */
@@ -57,13 +87,15 @@ export function saveManyStored(env: NodeJS.ProcessEnv, items: Array<Omit<StoredP
   const key = (x: { account: string; name: string }) => `${x.account}\u0000${x.name}`;
   const incoming = new Set(items.map(key));
   const at = new Date().toISOString();
-  write(env, [...readStored(env).filter((x) => !incoming.has(key(x))), ...items.map((p) => ({ ...p, addedAt: at }))]);
+  locked(env, () => write(env, [...readStored(env).filter((x) => !incoming.has(key(x))), ...items.map((p) => ({ ...p, addedAt: at }))]));
 }
 
 export function removeStored(env: NodeJS.ProcessEnv, account: string, name: string): boolean {
-  const all = readStored(env);
-  const rest = all.filter((x) => !(x.name === name && x.account === account));
-  if (rest.length === all.length) return false;
-  write(env, rest);
-  return true;
+  return locked(env, () => {
+    const all = readStored(env);
+    const rest = all.filter((x) => !(x.name === name && x.account === account));
+    if (rest.length === all.length) return false;
+    write(env, rest);
+    return true;
+  });
 }

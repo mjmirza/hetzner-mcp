@@ -441,11 +441,12 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
   if (withRobot) accounts.add(defaultAccount(env));
   for (const a of accounts) nodes.push({ id: `a:${a}`, kind: "account", label: a, account: a, monthly: null, flags: [], details: {} });
 
-  // Pricing is the same for every project; try a few tokens so one bad one cannot block the map.
+  // Pricing is the same for every project; try each token until one works, so revoked tokens
+  // early in the list can never hide the valid projects after them.
   const loadP = opts.pricingLoader ?? loadPricing;
   let pricing: Pricing | undefined;
   let pricingError = "";
-  for (const p of projects.slice(0, 3)) {
+  for (const p of projects) {
     try {
       pricing = await loadP(p.cfg); // BESTPRACTICE_OK: stop at the first token that works, order matters
       break;

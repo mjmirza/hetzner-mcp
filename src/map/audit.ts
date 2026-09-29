@@ -346,6 +346,10 @@ export function audit(graph: Pick<InfraGraph, "nodes">, now = new Date()): Audit
   };
 }
 
+// Names come from people and env vars; a pipe or a newline must not break the table.
+// eslint-disable-next-line no-control-regex
+const cell = (v: string) => v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\|/g, "\\|");
+
 const SEV_LABEL: Record<Severity, string> = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
 
 /** One finding as Markdown: what, why, and numbered fix steps. */
@@ -388,7 +392,7 @@ export function auditMarkdown(r: AuditReport, currency = "EUR", offset = 0): str
   ];
   if (r.scopes.length) {
     lines.push("## By project", "", "| Account | Project | Score | Findings | Saving / month |", "| --- | --- | --- | --- | --- |");
-    for (const s of r.scopes) lines.push(`| ${s.account} | ${s.project ?? "(account level)"} | ${s.score} | ${s.findings} | ${s.monthlySaving > 0 ? money(s.monthlySaving) : "-"} |`);
+    for (const s of r.scopes) lines.push(`| ${cell(s.account)} | ${cell(s.project ?? "(account level)")} | ${s.score} | ${s.findings} | ${s.monthlySaving > 0 ? money(s.monthlySaving) : "-"} |`);
     lines.push("");
   }
   if (!r.findings.length) lines.push("Nothing to fix right now.", "");

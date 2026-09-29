@@ -104,6 +104,7 @@ export async function startMapServer(
     return listWorkspaces(discoverProjects(cfg, env, readStored(env)), env, !!(cfg.robotUser && cfg.robotPassword));
   };
 
+  let generation = 0;
   const load = async (workspace: string | undefined, force: boolean): Promise<InfraGraph> => {
     if (opts.demo) return { ...sampleGraph(), workspace };
     const key = workspace ?? "";
@@ -114,7 +115,10 @@ export async function startMapServer(
       job = collect(workspace).finally(() => inflight.delete(key));
       inflight.set(key, job);
     }
+    const startedAt = generation;
     const graph = await job;
+    // A change landed while this graph was being read, so it is stale. Serve it once, never cache it.
+    if (startedAt !== generation) return graph;
     cache.delete(key);
     cache.set(key, { graph, at: Date.now() });
     // Keep only the most recently loaded workspaces in memory.
@@ -209,6 +213,8 @@ export async function startMapServer(
       const body = await readJson(req);
       if (opts.demo && url.pathname !== "/api/projects") throw new ActionError(403, "This is sample data. Start the live map to change real resources.");
       const done = (message: string) => {
+        generation++;
+        inflight.clear();
         cache.clear();
         json(200, { ok: true, message });
       };

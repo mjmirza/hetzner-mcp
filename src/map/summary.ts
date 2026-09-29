@@ -31,7 +31,8 @@ export function summarize(g: InfraGraph, url?: string): string {
   return lines.join("\n");
 }
 
-const safe = (s: string) => s.replace(/["[\]{}()<>|#;`]/g, " ").slice(0, 40);
+// eslint-disable-next-line no-control-regex
+const safe = (s: string) => s.replace(/[\u0000-\u001f\u007f"[\]{}()<>|#;`]/g, " ").slice(0, 40);
 
 /** Bounded so a big estate cannot flood the model. The canvas has everything; this is a sketch. */
 export function toMermaid(g: InfraGraph, maxNodes = 150): string {

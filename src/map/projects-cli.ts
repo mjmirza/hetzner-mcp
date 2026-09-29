@@ -21,7 +21,8 @@ export interface ImportRow {
   token: string;
 }
 
-export const maskToken = (t: string): string => `****${t.slice(-4)}`;
+// A short value would be printed almost whole, so it is hidden completely.
+export const maskToken = (t: string): string => (t.length < 16 ? "****" : `****${t.slice(-4)}`);
 
 /** Minimal RFC 4180 reader. Quoted fields may hold commas, quotes ("") and newlines. */
 function parseCsv(text: string): string[][] {
@@ -35,9 +36,15 @@ function parseCsv(text: string): string[][] {
       if (c === '"' && text[i + 1] === '"') {
         field += '"';
         i++;
-      } else if (c === '"') quoted = false;
-      else field += c;
-    } else if (c === '"') quoted = true;
+      } else if (c === '"') {
+        quoted = false;
+        const next = text[i + 1];
+        if (next !== undefined && next !== "," && next !== "\n" && next !== "\r") throw new Error(`Row ${rows.length + 1}: text after a closing quote.`);
+      } else field += c;
+    } else if (c === '"') {
+      if (field !== "") throw new Error(`Row ${rows.length + 1}: a quote in the middle of a field.`);
+      quoted = true;
+    }
     else if (c === ",") {
       row.push(field);
       field = "";
@@ -76,7 +83,13 @@ export function parseImport(text: string, filename = ""): { rows: ImportRow[]; i
       return { row: i + 1, fields: [r.workspace, r.account, r.project ?? r.name, r.token] };
     });
   } else {
-    parseCsv(body).forEach((fields, i) => {
+    let parsed: string[][];
+    try {
+      parsed = parseCsv(body);
+    } catch (err) {
+      return { rows, invalid: [{ row: 0, reason: err instanceof Error ? err.message : String(err) }] };
+    }
+    parsed.forEach((fields, i) => {
       const line = fields.join(",").trim();
       if (!line || line.startsWith("#")) return;
       const head = fields.map((f) => f.trim().toLowerCase());

@@ -9,7 +9,11 @@ import { settleWithLimit } from "../src/map/limit.js";
 import { discoverProjects, listWorkspaces, resolveTarget } from "../src/map/projects.js";
 import { importProjects, maskToken, parseImport, runProjects } from "../src/map/projects-cli.js";
 import { startMapServer } from "../src/map/server.js";
-import { readStored, saveStored } from "../src/map/store.js";
+import { readStored, saveStored, storeDir } from "../src/map/store.js";
+import { mkdirSync, utimesSync } from "node:fs";
+import { sampleGraph } from "../src/map/sample.js";
+import { toMermaid } from "../src/map/summary.js";
+import { auditMarkdown } from "../src/map/audit.js";
 import type { InfraGraph } from "../src/map/types.js";
 
 let passed = 0;
@@ -188,6 +192,50 @@ assert("remove of a missing project fails", (await runProjects(["remove", "Clien
 assert("a missing file exits 2", (await runProjects(["import", file.replace("more", "none")], ienv, capture)) === 2);
 writeFileSync(file, "W,A,p,short\n");
 assert("a file with bad rows exits 1", (await runProjects(["import", file], ienv, capture)) === 1);
+
+// Regressions found by Codex attack pass 2.
+{
+  const NL = String.fromCharCode(10);
+  // Three revoked tokens first must not hide a valid fourth project.
+  let calls = 0;
+  const lateGood = async () => {
+    calls++;
+    if (calls <= 3) throw new Error("401");
+    return pricingLoader();
+  };
+  touched.length = 0;
+  const g4 = await collectGraph(loadConfig(many), many, { workspace: "WS0", collector, pricingLoader: lateGood });
+  assert("prices load from the 4th token when the first 3 are revoked", calls === 4 && touched.length === 4 && !g4.nodes.some((n) => n.project !== "p3" && n.flags.some((f) => f.code === "project_unreadable")), `calls=${calls} touched=${touched.length}`);
+
+  // Short or malformed stored tokens are never printed whole.
+  assert("a short token is fully hidden", maskToken("abc") === "****" && !maskToken("abcdefghij").includes("ghij"));
+  assert("a real token still shows its last 4", maskToken(tok("q") + "WXYZ") === "****WXYZ");
+
+  // A crashed import left its lock behind; the next write takes it over instead of hanging.
+  const lenv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home() };
+  mkdirSync(join(storeDir(lenv), ".lock"), { recursive: true });
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(join(storeDir(lenv), ".lock"), old, old);
+  saveStored(lenv, { name: "x", account: "A", token: tok("x") });
+  assert("a stale lock is taken over and the write lands", readStored(lenv).some((p) => p.name === "x"));
+
+  // Names with a pipe or a newline cannot break the Markdown table or the Mermaid diagram.
+  const g = sampleGraph();
+  const evil = `Evil|Co${NL}flowchart`;
+  const md = auditMarkdown({ ...g.audit!, scopes: [{ account: evil, project: "p", score: 50, findings: 1, monthlySaving: 0 }] });
+  const row = md.split(NL).find((l) => l.includes("Evil"))!;
+  assert("a pipe in a name is escaped in the report table", row.split(" | ").length === 5 && !row.includes(NL));
+  const mer = toMermaid({ ...g, nodes: g.nodes.map((n, i) => (i === 0 ? { ...n, label: evil } : n)) });
+  assert("a newline in a name cannot inject Mermaid lines", !mer.split(NL).some((l) => l.trim() === "flowchart"));
+
+  // Malformed CSV quoting is rejected with a row number instead of silently merged.
+  const bad = parseImport(`"Client"x,Acc,prod,${tok("m")}`, "c.csv");
+  assert("text after a closing quote is rejected", bad.rows.length === 0 && /Row 1/.test(bad.invalid[0]?.reason ?? ""), JSON.stringify(bad.invalid));
+  const bad2 = parseImport(`Cli"ent,Acc,prod,${tok("m")}`, "c.csv");
+  assert("a quote in the middle of a field is rejected", bad2.rows.length === 0 && bad2.invalid.length === 1);
+  const good = parseImport(`"Client, Inc",Acc,prod,${tok("m")}`, "c.csv");
+  assert("a quoted comma still works", good.rows.length === 1 && good.rows[0]!.workspace === "Client, Inc");
+}
 
 process.stdout.write(`\n${passed}/${total} workspace checks passed\n`);
 if (passed !== total) process.exitCode = 1;
