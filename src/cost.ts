@@ -6,6 +6,7 @@
  */
 import type { SurfaceName, HetznerConfig } from "./config.js";
 import { hetznerRequest } from "./http.js";
+import { oneLine } from "./text.js";
 
 /** POST to these collection paths creates a resource that is billed by Hetzner. */
 const BILLED_CREATE: Record<SurfaceName, RegExp[]> = {
@@ -39,6 +40,19 @@ const BILLED_ACTIONS =
 const DESTRUCTIVE_FREE_ACTIONS =
   /\/(actions)\/(poweroff|shutdown|reboot|reset|rebuild|reset_password|enable_rescue|disable_backup|detach|unassign|detach_from_network|disable_public_interface|remove_target|delete_service|delete_route|delete_subnet|import_zonefile|set_records|remove_records|change_primary_nameservers|rollback_snapshot|disable_snapshot_plan|reset_subaccount_password|change_home_directory|update_access_settings)\/?$/i;
 
+/**
+ * Robot calls that reset, cancel, reinstall or reroute a dedicated server or its addresses.
+ * Robot has no /actions/ segment, so these match the whole path.
+ */
+const ROBOT_DESTRUCTIVE: Array<[RegExp, string]> = [
+  [/^\/reset\/[^/]+$/, "hard-resets the dedicated server"],
+  [/^\/server\/[^/]+\/cancellation$/, "cancels the dedicated server"],
+  [/^\/server\/[^/]+\/reversal$/, "reverses the server order"],
+  [/^\/boot\/[^/]+\/(linux|windows|vnc|plesk|cpanel)$/, "reinstalls the server on its next boot, which wipes its disks"],
+  [/^\/failover\/[^/]+$/, "reroutes the failover IP to another server"],
+  [/^\/(subnet|ip)\/[^/]+\/mac$/, "changes which MAC address the addresses are routed to"],
+];
+
 /** Storage Box actions that change what you pay. change_type moves the box to another plan. */
 const BILLED_STORAGEBOX_ACTIONS = /\/storage_boxes\/[^/]+\/actions\/change_type$/i;
 
@@ -55,6 +69,9 @@ const DESTRUCTIVE_REASON: Record<string, string> = {
   disable_public_interface: "takes the server off the public internet",
   rebuild: "wipes the server disk and installs a fresh image",
 };
+
+// A path echoed in a guard message, bounded to one line so it cannot carry instructions.
+const shown = (path: string) => oneLine(path, 120);
 
 export interface CostDecision {
   billed: boolean;
@@ -98,13 +115,13 @@ export function classifyCost(surface: SurfaceName, method: string, path: string)
   if (m !== "POST" && m !== "PUT") return { billed: false };
   const cleanPath = normalizeCostPath(path);
   for (const re of BILLED_CREATE[surface] ?? []) {
-    if (re.test(cleanPath)) return { billed: true, reason: `${m} ${path} creates a billed ${surface} resource` };
+    if (re.test(cleanPath)) return { billed: true, reason: `${m} ${shown(path)} creates a billed ${surface} resource` };
   }
   if (surface === "storagebox" && BILLED_STORAGEBOX_ACTIONS.test(cleanPath)) {
-    return { billed: true, reason: `${m} ${path} changes the Storage Box plan and its price` };
+    return { billed: true, reason: `${m} ${shown(path)} changes the Storage Box plan and its price` };
   }
   if (surface === "cloud" && BILLED_ACTIONS.test(cleanPath)) {
-    return { billed: true, reason: `${m} ${path} is an action that can increase your bill` };
+    return { billed: true, reason: `${m} ${shown(path)} is an action that can increase your bill` };
   }
   return { billed: false };
 }
@@ -117,25 +134,29 @@ export function classifyDestructive(method: string, path: string, body?: unknown
   const m = method.toUpperCase();
   const cleanPath = normalizeCostPath(path);
   if (m === "DELETE") {
-    return { destructive: true, reason: `${m} ${path} permanently deletes a resource and can cause data loss` };
+    return { destructive: true, reason: `${m} ${shown(path)} permanently deletes a resource and can cause data loss` };
+  }
+  if (m === "POST" || m === "PUT") {
+    const hit = ROBOT_DESTRUCTIVE.find(([re]) => re.test(cleanPath));
+    if (hit) return { destructive: true, reason: `${m} ${shown(path)} ${hit[1]}` };
   }
   if (m === "POST" && DESTRUCTIVE_FREE_ACTIONS.test(cleanPath)) {
     const action = cleanPath.split("/").pop() ?? "";
     return {
       destructive: true,
-      reason: `${m} ${path} ${DESTRUCTIVE_REASON[action] ?? "can interrupt service, lose data, or rotate credentials"}`,
+      reason: `${m} ${shown(path)} ${DESTRUCTIVE_REASON[action] ?? "can interrupt service, lose data, or rotate credentials"}`,
     };
   }
   // Turning delete or rebuild protection off removes a safety net. Turning it on is harmless.
   if (m === "POST" && /\/actions\/change_protection$/.test(cleanPath)) {
     const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
     if (Object.values(b).some((v) => v === false)) {
-      return { destructive: true, reason: `${m} ${path} turns protection off, so the resource can then be deleted or rebuilt` };
+      return { destructive: true, reason: `${m} ${shown(path)} turns protection off, so the resource can then be deleted or rebuilt` };
     }
   }
   // Updating a DNS record set replaces its records.
   if (m === "PUT" && /^\/zones\/[^/]+\/rrsets\//.test(cleanPath)) {
-    return { destructive: true, reason: `${m} ${path} replaces the records of this DNS record set` };
+    return { destructive: true, reason: `${m} ${shown(path)} replaces the records of this DNS record set` };
   }
   return { destructive: false };
 }

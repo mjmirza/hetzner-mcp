@@ -9,6 +9,7 @@ import { ACCOUNT, PROJECT_NAME, TOKEN, TOKEN_MIN_LENGTH } from "./actions.js";
 import { settleWithLimit } from "./limit.js";
 import { discoverProjects } from "./projects.js";
 import { readStored, removeStored, saveManyStored } from "./store.js";
+import { normName } from "../text.js";
 
 const MAX_FILE = 5 * 1024 * 1024;
 const WORKSPACE = ACCOUNT;
@@ -102,7 +103,8 @@ export function parseImport(text: string, filename = ""): { rows: ImportRow[]; i
       invalid.push({ row, reason: `Expected 4 fields (workspace,account,project,token), got ${fields.length}.` });
       continue;
     }
-    const [workspace, account, project, token] = fields.map((f) => (typeof f === "string" ? f.trim() : ""));
+    // Names normalized first, so a zero-width or full-width look-alike collides with the real one.
+    const [workspace, account, project, token] = fields.map((f, i) => (typeof f !== "string" ? "" : i < 3 ? normName(f) : f.trim()));
     const bad = [
       !WORKSPACE.test(workspace!) && "workspace",
       !ACCOUNT.test(account!) && "account",
@@ -224,7 +226,7 @@ export async function runProjects(argv: string[], env: NodeJS.ProcessEnv = proce
     return 0;
   }
   if (sub === "remove") {
-    const parts = (rest[0] ?? "").split("/").map((s) => s.trim());
+    const parts = (rest[0] ?? "").split("/").map((s) => normName(s));
     if (parts.length !== 3 || !parts.every(Boolean)) {
       out(`Give the project as <workspace>/<account>/<project>.${USAGE}\n`);
       return 2;

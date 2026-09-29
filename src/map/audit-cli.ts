@@ -5,6 +5,7 @@ import { loadConfig } from "../config.js";
 import { collectGraph } from "./collect.js";
 import { sampleGraph } from "./sample.js";
 import { audit, auditMarkdown, type AuditReport } from "./audit.js";
+import { oneLine } from "../text.js";
 
 /** A few lines an AI or a person can act on without reading the whole report. */
 export function auditSummary(r: AuditReport, currency = "EUR", top = 5): string {
@@ -14,7 +15,7 @@ export function auditSummary(r: AuditReport, currency = "EUR", top = 5): string 
   ];
   if (r.monthlySaving > 0) lines.push(`Fixing the cost findings saves about ${money(r.monthlySaving)} a month.`);
   r.findings.slice(0, top).forEach((f, i) => {
-    const where = [f.resource.project, f.resource.label].filter(Boolean).join("/");
+    const where = [f.resource.project, f.resource.label].filter(Boolean).map((s) => oneLine(s)).join("/");
     lines.push(`${i + 1}. [${f.severity}] ${f.title}: ${where}${f.monthlySaving ? ` (saves ${money(f.monthlySaving)}/mo)` : ""}`);
   });
   if (r.findings.length > top) lines.push(`${r.findings.length - top} more in the full report.`);

@@ -9,8 +9,17 @@ import type { HetznerConfig, SurfaceName } from "../config.js";
 import { hetznerRequest } from "../http.js";
 import { classifyCost, classifyDestructive, cloudServerPriceNote, normalizeCostPath } from "../cost.js";
 import { isWrite, normalizeMethod } from "../security.js";
-import { formatResult } from "../format.js";
+import { resultBlocks } from "../format.js";
 import { waitForActions, actionBlocks, anyActionFailed } from "../actions.js";
+import { HetznerApiError } from "../errors.js";
+import { oneLine } from "../text.js";
+
+// Only messages we wrote go back to the model; anything else could echo input or a secret.
+function errorText(err: unknown): string {
+  if (err instanceof HetznerApiError) return `Error: ${oneLine(err.message, 300)}`;
+  if (err instanceof Error && /^(path |unsupported HTTP method)/.test(err.message)) return `Error: ${oneLine(err.message, 160)}`;
+  return "Error: the request failed before Hetzner answered.";
+}
 
 interface ToolText {
   [key: string]: unknown;
@@ -88,7 +97,7 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
         }
         if (isWrite(method) && cfg.readOnly) {
           return textResult(
-            `Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1), so ${method} ${args.path} is not allowed.`,
+            `Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1), so ${method} requests are not allowed.`,
             true,
           );
         }
@@ -131,11 +140,11 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
         });
         const actions = surface === "cloud" && isWrite(method) ? await waitForActions(cfg, result) : [];
         return {
-          content: [{ type: "text" as const, text: formatResult(result, args.verbose ?? false) }, ...actionBlocks(actions)],
+          content: [...resultBlocks(result, args.verbose ?? false), ...actionBlocks(actions)],
           isError: anyActionFailed(actions),
         };
       } catch (err) {
-        return textResult(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
+        return textResult(errorText(err), true);
       }
     },
   );

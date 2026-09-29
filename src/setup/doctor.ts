@@ -35,6 +35,8 @@ export async function runDoctor(argv: string[]): Promise<number> {
     out(dim("  Checking your token with Hetzner..."));
     const check = await validateCloudToken(token);
     out(`  ${check.ok ? green("OK ") : red("x  ")}${bold("Token")}. ${check.message}`);
+  } else if (cfg.cloudTokenError) {
+    out(`  ${red("x  ")}${bold("Token")}. ${cfg.cloudTokenError}`);
   } else {
     out(`  ${dim("-")}  ${bold("Token")}. Not set in this terminal, which is normal.`);
     out(dim("     It lives inside each app's config, not in your shell."));

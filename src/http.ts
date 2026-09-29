@@ -2,7 +2,7 @@
  * The HTTP client for all three Hetzner surfaces.
  * This module is the only place that touches credentials or the network.
  */
-import { SURFACES, type SurfaceName, type HetznerConfig } from "./config.js";
+import { SURFACES, isTokenShape, type SurfaceName, type HetznerConfig } from "./config.js";
 import { HetznerApiError, redactSecrets } from "./errors.js";
 import { normalizePath, normalizeMethod } from "./security.js";
 import { USER_AGENT } from "./version.js";
@@ -33,8 +33,11 @@ function authHeader(surface: SurfaceName, cfg: HetznerConfig): string {
       surface,
       0,
       "missing_credentials",
-      "Cloud token missing. Set HETZNER_CLOUD_TOKEN.",
+      cfg.cloudTokenError ?? "Cloud token missing. Set HETZNER_CLOUD_TOKEN.",
     );
+  }
+  if (!isTokenShape(cfg.cloudToken)) {
+    throw new HetznerApiError(surface, 0, "malformed_credentials", "The Cloud token is malformed. It must be letters and digits only, on one line.");
   }
   return `Bearer ${cfg.cloudToken}`;
 }
@@ -96,8 +99,9 @@ export async function hetznerRequest(cfg: HetznerConfig, opts: RequestOpts): Pro
   try {
     res = await fetch(url, init); // BESTPRACTICE_OK: timeout set via init.signal AbortSignal.timeout
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new HetznerApiError(surface, 0, "network_error", redactSecrets(msg));
+    // Fixed text: fetch's own message can quote a header value, and so a token.
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    throw new HetznerApiError(surface, 0, timedOut ? "timeout" : "network_error", timedOut ? "Hetzner did not answer in time." : "Could not reach Hetzner (network error).");
   }
 
   const text = await res.text();

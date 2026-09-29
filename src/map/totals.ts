@@ -1,6 +1,7 @@
 /** Rolls node prices up into project, kind, top-driver, and finding totals. */
 import type { InfraGraph, MapEdge, MapNode, NodeKind } from "./types.js";
 import { audit } from "./audit.js";
+import { oneLine } from "../text.js";
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
@@ -52,7 +53,7 @@ export function finalize(input: {
 
   const rank = { risk: 0, waste: 1, info: 2 } as const;
   const findings = nodes
-    .flatMap((n) => n.flags.map((f) => ({ nodeId: n.id, project: n.project, kind: f.kind, title: `${n.label}. ${f.text}`, monthly: f.monthly })))
+    .flatMap((n) => n.flags.map((f) => ({ nodeId: n.id, project: n.project, kind: f.kind, title: `${oneLine(n.label)}. ${oneLine(f.text, 160)}`, monthly: f.monthly })))
     .sort((a, b) => rank[a.kind] - rank[b.kind] || (b.monthly ?? 0) - (a.monthly ?? 0));
 
   const caveats = [

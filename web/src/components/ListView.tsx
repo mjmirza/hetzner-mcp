@@ -3,7 +3,7 @@ import { Alert02Icon, CheckmarkCircle02Icon, CoinsEuroIcon } from "hugeicons-rea
 import { Button } from "@/components/ui/button";
 import { KIND_ICON } from "@/components/InfraNode";
 import { cn } from "@/lib/utils";
-import { KIND_LABEL, money } from "@/lib/format";
+import { KIND_LABEL, money, visible } from "@/lib/format";
 import { cityName } from "@/lib/glossary";
 import type { InfraGraph, MapNode } from "@/lib/types";
 
@@ -149,7 +149,7 @@ export function ListView({ graph, focus, selected, onSelect }: { graph: InfraGra
                     >
                       <Icon size={18} className="shrink-0 text-muted-foreground" />
                       <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-[14px] font-medium">{n.label}</span>
+                        <span className="truncate text-[14px] font-medium">{visible(n.label)}</span>
                         <span className="truncate text-[12px] text-muted-foreground">{where(n, byId)}</span>
                         <span className="mt-1 sm:hidden">
                           <Status n={n} currency={graph.currency} />

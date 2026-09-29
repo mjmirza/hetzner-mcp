@@ -8,6 +8,7 @@ import { capacityRows } from "../tools/capacity.js";
 import { deletionPreview } from "../tools/delete-preview.js";
 import { discoverProjects, type ProjectRef } from "./projects.js";
 import { readStored, removeStoredAsync, saveStoredAsync } from "./store.js";
+import { normName } from "../text.js";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -28,7 +29,8 @@ type CreateKind = (typeof CREATE_KINDS)[number];
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9.-]{0,62}$/;
 export const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
-export const ACCOUNT = /^[^/\u0000-\u001f]{1,60}$/;
+// No slash (it splits targets), control, format or bidi characters, so names cannot spoof.
+export const ACCOUNT = /^[^/\p{Cc}\p{Cf}\u2028\u2029]{1,60}$/u;
 /** Shortest API token accepted. The CLI masks anything shorter completely. */
 export const TOKEN_MIN_LENGTH = 20;
 export const TOKEN = new RegExp(`^[A-Za-z0-9]{${TOKEN_MIN_LENGTH},128}$`);
@@ -53,8 +55,9 @@ export function meta(a: ActionEnv) {
 }
 
 function str(v: unknown, field: string, re: RegExp): string {
-  if (typeof v !== "string" || !re.test(v.trim())) throw new ActionError(400, `${field} is not valid.`);
-  return v.trim();
+  const t = typeof v === "string" ? normName(v) : "";
+  if (!re.test(t)) throw new ActionError(400, `${field} is not valid.`);
+  return t;
 }
 const optId = (v: unknown, field: string) => (v === undefined || v === null || v === "" ? undefined : Number(str(String(v), field, ID)));
 

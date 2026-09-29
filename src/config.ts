@@ -22,6 +22,8 @@ export type SurfaceName = keyof typeof SURFACES;
 export interface HetznerConfig {
   /** Cloud API token. Also authenticates the Storage Box surface. */
   cloudToken: string | undefined;
+  /** Why a set token was not used, naming only the variable. */
+  cloudTokenError?: string;
   /** Robot webservice user, for the dedicated-server surface only. */
   robotUser: string | undefined;
   robotPassword: string | undefined;
@@ -43,9 +45,22 @@ function positiveInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
+/** Hetzner API tokens are letters and digits. Anything else, such as a pasted newline, is a typo. */
+export const isTokenShape = (t: string): boolean => /^[A-Za-z0-9]+$/.test(t);
+
+/** Reads a token variable. A malformed value is dropped and explained by name, never echoed. */
+export function readToken(env: NodeJS.ProcessEnv, name: string): { token?: string; error?: string } {
+  const raw = env[name]?.trim();
+  if (!raw) return {};
+  if (isTokenShape(raw)) return { token: raw };
+  return { error: `${name} is malformed. A token is letters and digits only, on one line. Copy it again.` };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): HetznerConfig {
+  const cloud = readToken(env, "HETZNER_CLOUD_TOKEN");
   return {
-    cloudToken: env.HETZNER_CLOUD_TOKEN?.trim() || undefined,
+    cloudToken: cloud.token,
+    ...(cloud.error ? { cloudTokenError: cloud.error } : {}),
     robotUser: env.HETZNER_ROBOT_USER?.trim() || undefined,
     robotPassword: env.HETZNER_ROBOT_PASSWORD || undefined,
     readOnly: env.HETZNER_MCP_READONLY === "1",

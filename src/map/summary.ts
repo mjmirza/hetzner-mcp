@@ -1,5 +1,6 @@
 /** Plain-text and Mermaid views of the graph, for MCP clients that cannot open a browser. */
 import type { InfraGraph } from "./types.js";
+import { DATA_FENCE, oneLine } from "../text.js";
 
 const fmt = (v: number | null, cur: string) =>
   v == null ? "not priced" : new Intl.NumberFormat("en-DE", { style: "currency", currency: cur }).format(v);
@@ -10,18 +11,18 @@ export function summarize(g: InfraGraph, url?: string): string {
   if (g.source === "sample") lines.push("SAMPLE DATA, not your account.");
   lines.push(`Estimated monthly cost ${fmt(g.totals.monthly, cur)} across ${g.totals.byProject.length} project(s). ${g.vatNote}`);
   if (url) lines.push(`Interactive map. ${url}`);
-  lines.push("", "By project");
-  for (const p of g.totals.byProject) lines.push(`  ${p.project} (${p.account}). ${fmt(p.monthly, cur)}, ${p.resources} resources${p.error ? `, unreadable. ${p.error}` : ""}`);
+  lines.push("", DATA_FENCE, "", "By project");
+  for (const p of g.totals.byProject) lines.push(`  ${oneLine(p.project)} (${oneLine(p.account)}). ${fmt(p.monthly, cur)}, ${p.resources} resources${p.error ? `, unreadable. ${oneLine(p.error, 200)}` : ""}`);
   if (g.totals.topDrivers.length) {
     lines.push("", "Top cost drivers");
-    for (const d of g.totals.topDrivers.slice(0, 5)) lines.push(`  ${d.label} (${d.kind}, ${d.project ?? "account"}). ${fmt(d.monthly, cur)}`);
+    for (const d of g.totals.topDrivers.slice(0, 5)) lines.push(`  ${oneLine(d.label)} (${d.kind}, ${oneLine(d.project ?? "account")}). ${fmt(d.monthly, cur)}`);
   }
   const group = (kind: "risk" | "waste" | "info", title: string) => {
     const items = g.totals.findings.filter((f) => f.kind === kind);
     if (!items.length) return;
     const sum = items.reduce((a, f) => a + (f.monthly ?? 0), 0);
     lines.push("", kind === "waste" ? `${title}, about ${fmt(sum, cur)} a month` : title);
-    for (const f of items.slice(0, 8)) lines.push(`  ${f.title}${f.monthly ? ` ${fmt(f.monthly, cur)}` : ""}`);
+    for (const f of items.slice(0, 8)) lines.push(`  ${oneLine(f.title, 200)}${f.monthly ? ` ${fmt(f.monthly, cur)}` : ""}`);
     if (items.length > 8) lines.push(`  and ${items.length - 8} more, see the map`);
   };
   group("risk", "Risks to fix");
