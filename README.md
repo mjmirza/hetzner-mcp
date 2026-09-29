@@ -150,6 +150,20 @@ What you get:
 - Create from the map. Pick Create, choose what you want, and you see the real Hetzner price before anything happens. Billed creates stay off until you start the map with `HETZNER_MCP_ALLOW_BILLED=1`, and even then you tick a box that states the monthly amount. Deleting asks you to type the exact name and tells you what else is affected.
 - Add a project from the map. Hetzner has no API to create projects, so the map walks you to the Console, you paste the project's token, it is checked against Hetzner, then saved on this computer only (owner-only file permissions) and never sent back to the page. Tokens from environment variables work too, for example `HETZNER_CLOUD_TOKEN_STAGING`, grouped with `HETZNER_ACCOUNT_STAGING=Acme GmbH`.
 
+### Many clients and accounts with workspaces
+
+A workspace groups the accounts of one client. If you only run your own projects, nothing changes, everything sits in one workspace called Personal. When you manage many clients, the map loads one workspace at a time, so 100 accounts never load at once, and one broken token only marks that project as unreadable.
+
+Import every client token in one go, from a CSV with the columns `workspace,account,project,token` or a JSON array of the same fields.
+
+```bash
+npx hetzner-mcp projects import clients.csv --verify   # checks each token with one read call
+npx hetzner-mcp projects list                          # tokens shown as ****abcd only
+npx hetzner-mcp projects remove "Client A/Client A GmbH/prod"
+```
+
+Tokens are saved on this computer only, owner-only file, never printed. Account labels must be unique across workspaces. Environment tokens can join a workspace with `HETZNER_WORKSPACE_STAGING=Client A`, and `HETZNER_WORKSPACE_NAME` renames the default one. Ask your assistant to map one client by passing the workspace name as the `target` of `infra_map`, or one project as `Client A/Client A GmbH/prod`. Every other tool still acts on the `HETZNER_CLOUD_TOKEN` project only.
+
 Before you create a server, ask "where can I get a 4 core server right now". The `find_capacity` tool lists what Hetzner can actually sell you today, by location and price, so a create does not fail with resource unavailable.
 
 Your assistant can open it too. Ask it to "map my Hetzner infrastructure" and the `infra_map` tool returns the cost summary, the savings list, and the canvas link, or a Mermaid diagram with `mermaid: true`.

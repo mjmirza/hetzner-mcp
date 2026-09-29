@@ -3,6 +3,14 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [Unreleased]
+
+### Added
+- Workspaces. Previously every saved project sat in one flat list and the map read all of them at once. Now a project can belong to a workspace (one per client), the map reads only the active workspace, 4 projects at a time, and one bad token only marks its own project unreadable. With no workspace set, everything lands in Personal, so existing setups see no change.
+- `GET /api/workspaces` returns names with account and project counts, never tokens. `GET /api/graph?workspace=<name>` maps one workspace and answers 400 for an unknown name.
+- `hetzner-mcp projects import <file> [--verify]`, `projects list`, `projects remove`. Bulk import from CSV or JSON, one atomic owner-only write, duplicates and bad rows reported by row number, tokens shown only as their last 4 characters.
+- `infra_map` takes an optional `target`, a workspace or `workspace/account/project`, so an assistant can map one client without loading every account.
+
 ## [0.5.0] - 2026-09-29
 
 Thanks to Kevin Laurier (@caoimhin07) for the independent safety audit in #91, whose fixes

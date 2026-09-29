@@ -18,6 +18,7 @@ import { registerContributeTool } from "./tools/contribute.js";
 import { registerMapTool } from "./tools/map.js";
 import { registerCapacityTool } from "./tools/capacity.js";
 import { runMap } from "./map/cli.js";
+import { runProjects } from "./map/projects-cli.js";
 import { runSetup } from "./setup/wizard.js";
 import { runDoctor } from "./setup/doctor.js";
 import { VERSION } from "./version.js";
@@ -37,6 +38,8 @@ function printHelp(): void {
       "    doctor      Read-only status check. Token health, surfaces, which clients are wired.",
       "    map         Interactive map of every project, resource, and its monthly cost.",
       "                Flags. --port N, --open, --demo. Default http://127.0.0.1:43390",
+      "    projects    Manage saved project tokens across workspaces (clients).",
+      "                import <file> [--verify], list [--json], remove <workspace>/<account>/<project>",
       "    help        Show this help.",
       "    version     Print the version.",
       "",
@@ -83,6 +86,10 @@ async function main(): Promise<void> {
   }
   if (cmd === "map" || cmd === "--map") {
     process.exitCode = await runMap(argv.slice(1));
+    return;
+  }
+  if (cmd === "projects") {
+    process.exitCode = await runProjects(argv.slice(1));
     return;
   }
   if (cmd === "version" || cmd === "--version" || cmd === "-v") {

@@ -7,7 +7,8 @@
  */
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
-import { discoverProjects, type ProjectRef } from "./projects.js";
+import { defaultAccount, defaultWorkspace, discoverProjects, type ProjectRef } from "./projects.js";
+import { settleWithLimit } from "./limit.js";
 import { readStored } from "./store.js";
 import { finalize } from "./totals.js";
 import type { Flag, InfraGraph, MapEdge, MapNode } from "./types.js";
@@ -60,7 +61,7 @@ function priceAt(prices: Json[] | undefined, location: string | undefined): numb
   return num(p?.price_monthly?.gross);
 }
 
-interface Pricing {
+export interface Pricing {
   currency: string;
   vatRate: string;
   serverTypes: Map<string, Json[]>;
@@ -410,24 +411,53 @@ async function collectRobot(cfg: HetznerConfig, account: string): Promise<MapNod
   });
 }
 
-export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv = process.env): Promise<InfraGraph> {
-  const projects = discoverProjects(base, env, readStored(env));
+export interface CollectOptions {
+  /** Only this workspace. Undefined maps every configured project, as before. */
+  workspace?: string;
+  /** With workspace, narrows to one project in it. */
+  account?: string;
+  project?: string;
+  /** Projects read at the same time. Each one already makes about a dozen parallel calls. */
+  concurrency?: number;
+  /** Test seams, so the offline suite never touches the network. */
+  collector?: (ref: ProjectRef, pricing: Pricing) => Promise<{ nodes: MapNode[]; edges: MapEdge[] }>;
+  pricingLoader?: (cfg: HetznerConfig) => Promise<Pricing>;
+}
+
+export const PROJECT_CONCURRENCY = 4;
+
+export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv = process.env, opts: CollectOptions = {}): Promise<InfraGraph> {
+  const all = discoverProjects(base, env, readStored(env));
+  const projects = all.filter(
+    (p) => (opts.workspace === undefined || p.workspace === opts.workspace) && (opts.account === undefined || p.account === opts.account) && (opts.project === undefined || p.name === opts.project),
+  );
+  // Robot servers belong to the default account, which lives in the default workspace.
+  const withRobot = !!base.robotUser && opts.project === undefined && (opts.workspace === undefined || opts.workspace === defaultWorkspace(env));
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
   const errors: Array<{ project: string; account: string; error: string }> = [];
   const accounts = new Set(projects.map((p) => p.account));
-  if (base.robotUser) accounts.add(env.HETZNER_ACCOUNT_NAME?.trim() || "Hetzner account");
+  if (withRobot) accounts.add(defaultAccount(env));
   for (const a of accounts) nodes.push({ id: `a:${a}`, kind: "account", label: a, account: a, monthly: null, flags: [], details: {} });
 
+  // Pricing is the same for every project; try a few tokens so one bad one cannot block the map.
+  const loadP = opts.pricingLoader ?? loadPricing;
   let pricing: Pricing | undefined;
-  let currency = "EUR";
-  let vatRate = "";
-  if (projects[0]) {
-    pricing = await loadPricing(projects[0].cfg);
-    currency = pricing.currency;
-    vatRate = pricing.vatRate;
+  let pricingError = "";
+  for (const p of projects.slice(0, 3)) {
+    try {
+      pricing = await loadP(p.cfg); // BESTPRACTICE_OK: stop at the first token that works, order matters
+      break;
+    } catch (err) {
+      pricingError = err instanceof Error ? err.message : String(err);
+    }
   }
-  const results = await Promise.allSettled(projects.map((p) => collectProject(p, pricing!)));
+  const currency = pricing?.currency ?? "EUR";
+  const vatRate = pricing?.vatRate ?? "";
+  const collect = opts.collector ?? collectProject;
+  const results = pricing
+    ? await settleWithLimit(projects, opts.concurrency ?? PROJECT_CONCURRENCY, (p) => collect(p, pricing!))
+    : projects.map((): PromiseSettledResult<never> => ({ status: "rejected", reason: new Error(pricingError || "Could not load prices.") }));
   results.forEach((r, i) => {
     const ref = projects[i]!;
     if (r.status === "fulfilled") {
@@ -439,14 +469,16 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
       nodes.push({ id: `p:${ref.account}/${ref.name}`, kind: "project", label: ref.name, parent: `a:${ref.account}`, project: ref.name, account: ref.account, monthly: null, flags: [risk("project_unreadable", `Could not read this project. ${msg}`)], details: {} });
     }
   });
-  const robotAccount = env.HETZNER_ACCOUNT_NAME?.trim() || "Hetzner account";
-  try {
-    nodes.push(...(await collectRobot(base, robotAccount)));
-  } catch (err) {
-    errors.push({ project: "robot", account: robotAccount, error: err instanceof Error ? err.message : String(err) });
+  const robotAccount = defaultAccount(env);
+  if (withRobot) {
+    try {
+      nodes.push(...(await collectRobot(base, robotAccount)));
+    } catch (err) {
+      errors.push({ project: "robot", account: robotAccount, error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
-  return finalize({
+  const graph = finalize({
     source: "live",
     currency,
     vatNote: vatRate ? `Gross prices, VAT rate ${Number(vatRate)}%.` : "Gross list prices.",
@@ -455,4 +487,6 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
     errors,
     projectCount: projects.length,
   });
+  if (opts.workspace !== undefined) graph.workspace = opts.workspace;
+  return graph;
 }
