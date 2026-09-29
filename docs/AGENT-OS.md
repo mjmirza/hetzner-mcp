@@ -31,7 +31,7 @@ resource without confirmation, and always tear down test resources to stop cost.
 ## Safety defaults for an automated setup
 
 - Set HETZNER_MCP_READONLY=1 for a look but do not touch posture.
-- Set HETZNER_MCP_ALLOW_BILLED=0 to hard disable billed creation entirely.
+- Leave HETZNER_MCP_ALLOW_BILLED unset (default) to hard-block billed creation. Set it to 1 only when billed creates with confirm are intentional.
 - Both can be relaxed per project when you actually need to provision.
 
 ## Token efficiency

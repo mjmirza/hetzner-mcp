@@ -19,8 +19,8 @@ harness where possible.
 | Redirect to an attacker host | fetch uses redirect error, so any redirect fails rather than being followed | src/http.ts |
 | Hung or slow endpoint stalls the agent | Every request has a hard timeout via AbortSignal | src/http.ts |
 | Malformed or hostile tool input | Every tool validates input with a zod schema | src/tools |
-| Accidental spend | Cost guard blocks billed creation unless confirm is true, and shows the live price first. An env kill switch can hard disable billed creation | src/cost.ts, src/tools/generic.ts, src/config.ts |
-| Accidental data loss | Destructive guard. DELETE requires confirm true | src/tools/generic.ts |
+| Accidental spend | Cost guard blocks billed creation unless confirm is true *and* HETZNER_MCP_ALLOW_BILLED=1, and shows the live price first. Unset ALLOW_BILLED hard-blocks billed creation | src/cost.ts, src/tools/generic.ts, src/config.ts |
+| Accidental data loss / downtime | Destructive guard. DELETE and free actions that power off, rebuild, reset, or rotate credentials require confirm true | src/cost.ts classifyDestructive, src/tools/generic.ts |
 | Unwanted writes in a sensitive environment | Global read only mode refuses all writes | src/config.ts, src/tools/generic.ts |
 | Secrets committed to git | .gitignore excludes .env and token files. The token lives only in the environment | .gitignore |
 | Oversized responses leaking or bloating context | Responses are capped and compacted by default | src/format.ts |

@@ -27,12 +27,14 @@ export interface HetznerConfig {
   robotPassword: string | undefined;
   /** When true, every write (POST/PUT/PATCH/DELETE) is refused. */
   readOnly: boolean;
-  /** When false (env set to "0"), billed creates are hard-blocked even with confirm. */
+  /** When true (env set to "1"), billed creates are allowed with per-call confirm. Default off. */
   allowBilled: boolean;
   /** Per-request timeout in milliseconds. */
   timeoutMs: number;
   /** Hard cap on auto-pagination to bound cost and memory. */
   maxPages: number;
+  /** How long a write waits for its Hetzner actions to finish. 0 disables waiting. */
+  actionWaitMs: number;
 }
 
 function positiveInt(value: string | undefined, fallback: number): number {
@@ -47,9 +49,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HetznerConfig 
     robotUser: env.HETZNER_ROBOT_USER?.trim() || undefined,
     robotPassword: env.HETZNER_ROBOT_PASSWORD || undefined,
     readOnly: env.HETZNER_MCP_READONLY === "1",
-    allowBilled: env.HETZNER_MCP_ALLOW_BILLED !== "0",
+    // Opt-in. unset / empty / anything other than "1" blocks billed creates even with confirm.
+    allowBilled: env.HETZNER_MCP_ALLOW_BILLED === "1",
     timeoutMs: positiveInt(env.HETZNER_MCP_TIMEOUT_MS, 30000),
     maxPages: positiveInt(env.HETZNER_MCP_MAX_PAGES, 20),
+    actionWaitMs: env.HETZNER_MCP_ACTION_WAIT_MS === "0" ? 0 : positiveInt(env.HETZNER_MCP_ACTION_WAIT_MS, 120000),
   };
 }
 

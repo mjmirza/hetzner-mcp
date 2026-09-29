@@ -108,7 +108,6 @@ async function main(): Promise<void> {
     "cloud_list_server_types",
     "cloud_list_load_balancer_types",
     "cloud_list_locations",
-    "cloud_list_datacenters",
     "cloud_get_pricing",
   ];
   await Promise.all(
@@ -243,7 +242,6 @@ async function main(): Promise<void> {
       "robot_list_vswitches",
       "robot_list_failover",
       "robot_list_ssh_keys",
-      "robot_list_storageboxes",
       "robot_list_rdns",
     ];
     await Promise.all(

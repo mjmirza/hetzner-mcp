@@ -9,6 +9,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
 import { cloudServerPriceNote } from "../cost.js";
+import { waitForActions, describeActions, anyActionFailed } from "../actions.js";
+import { deletionPreview } from "./delete-preview.js";
 
 function text(value: string, isError = false) {
   return { content: [{ type: "text" as const, text: value }], isError };
@@ -37,7 +39,7 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
     },
     async (args) => {
       if (cfg.readOnly) return text("Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1).", true);
-      if (!cfg.allowBilled) return text("Blocked. Billed creation is disabled (HETZNER_MCP_ALLOW_BILLED=0).", true);
+      if (!cfg.allowBilled) return text("Blocked. Billed creation is disabled. Set HETZNER_MCP_ALLOW_BILLED=1 to allow billed creates with confirm.", true);
       if (args.confirm !== true) {
         const priced = await cloudServerPriceNote(cfg, args.server_type);
         return text(
@@ -73,7 +75,8 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
           root_password: res.root_password ?? null,
           note: "Server is billed while it exists. Delete it with cloud_delete_server when done. A root password is returned only when no SSH key was attached.",
         };
-        return text(JSON.stringify(summary, null, 2));
+        const actions = await waitForActions(cfg, res);
+        return text(JSON.stringify(summary, null, 2) + describeActions(actions), anyActionFailed(actions));
       } catch (err) {
         return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
       }
@@ -94,14 +97,18 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
     async (args) => {
       if (cfg.readOnly) return text("Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1).", true);
       if (args.confirm !== true) {
+        const preview = await deletionPreview(cfg, args.id);
         return text(
-          `DESTRUCTIVE GUARD. Deleting server ${args.id} is permanent and can cause data loss. Re-run with confirm set to true.`,
+          `DESTRUCTIVE GUARD. Deleting server ${args.id} is permanent and can cause data loss. Re-run with confirm set to true.` +
+            (preview ? ` ${preview}` : ""),
           true,
         );
       }
       try {
-        await hetznerRequest(cfg, { surface: "cloud", method: "DELETE", path: `/servers/${encodeURIComponent(String(args.id))}` });
-        return text(`Server ${args.id} deleted. Billing stopped. Auto-created primary IPs release shortly after.`);
+        const res = await hetznerRequest(cfg, { surface: "cloud", method: "DELETE", path: `/servers/${encodeURIComponent(String(args.id))}` });
+        const actions = await waitForActions(cfg, res);
+        if (anyActionFailed(actions)) return text(`Delete of server ${args.id} did not finish.` + describeActions(actions), true);
+        return text(`Server ${args.id} deleted. Billing stopped. Auto-created primary IPs release shortly after.` + describeActions(actions));
       } catch (err) {
         return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
       }

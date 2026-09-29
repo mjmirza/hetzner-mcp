@@ -3,6 +3,66 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [0.5.0] - 2026-09-29
+
+### Security
+- Cost guard now matches Hetzner's real `enable_backup` action (singular). The previous
+  `enable_backups` typo let backup enables bypass the spend confirm. Plural form is still
+  matched defensively.
+- `HETZNER_MCP_ALLOW_BILLED` is now opt-in (`=== "1"`). Unset no longer allows billed
+  creates; this matches `.env.example` and blocks unattended spend after install.
+- Destructive guard extended beyond DELETE: `poweroff`, `shutdown`, `reboot`, `reset`,
+  `rebuild`, `reset_password`, and `enable_rescue` require `confirm: true`.
+- Cost/destructive classifiers strip query and hash fragments before matching so
+  `?x=1` cannot bypass a guard regex.
+
+- Guard paths are canonicalized before matching (percent-decoding, repeated and trailing
+  slashes, case), so no spelling of a billed endpoint skips the cost guard. Reported by
+  the Sentinel scanner.
+
+### Added
+- `hetzner-mcp map`, an interactive canvas of every configured account, project, and
+  resource with estimated monthly cost, top cost drivers, and idle resources still being
+  billed. Local and read-only on http://127.0.0.1:43390, with a labelled `--demo` estate.
+- `infra_map` MCP tool returning the cost summary, findings, the canvas URL, and an
+  optional Mermaid diagram. Multiple projects via `HETZNER_CLOUD_TOKEN_<NAME>`.
+- `test/safety-guards.ts`, `test/actions.ts`, and `test/map.ts` offline suites, wired into
+  `npm run test:offline`.
+
+- `find_capacity` tool. Which server types can be ordered right now, where, and at what
+  price, recommended first, with retirement dates. Avoids `resource_unavailable` on create.
+- `cloud_list_network_members` tool for the new `/networks/{id}/members` endpoint.
+- Map findings grouped into risks, money you can save, and good to know. New checks for
+  retiring server types, the backup surcharge, snapshots older than 90 days, outgoing
+  traffic projected past the allowance, servers with no firewall, firewalls opening SSH or
+  database ports to the internet, and certificates close to expiry.
+- `cloud_delete_server` now lists what keeps billing after the delete (IPs without auto
+  delete, attached volumes, snapshots) and warns that automatic backups are lost.
+- `hetzner-mcp setup` asks whether to allow paid resources and writes
+  `HETZNER_MCP_ALLOW_BILLED`, with `--allow-billed` and `--no-billed` flags.
+
+### Fixed
+- Servers and primary IPs are placed and priced by the new `location` field. Hetzner
+  removed `datacenter` from both on 2026-07-01.
+- Cost guard covers the Storage Box plan change (`change_type`). Confirm is now required
+  for `disable_backup` (deletes backups), Storage Box `rollback_snapshot`,
+  `disable_snapshot_plan`, `update_access_settings`, `reset_subaccount_password`,
+  `change_home_directory`, DNS `import_zonefile`, `set_records`, `remove_records`,
+  record-set PUT, `change_primary_nameservers`, network and load balancer removals, and
+  turning protection off.
+- Security. Bumped the MCP SDK to 1.31.0 and resolved a high severity `fast-uri` advisory.
+- Requests now send a `hetzner-mcp/<version>` User-Agent (#83).
+- Writes wait for their Hetzner actions to finish and report failures, bounded by
+  `HETZNER_MCP_ACTION_WAIT_MS` (default 120000, 0 disables) (#84).
+
+### Changed
+- Breaking. Billed creation now requires `HETZNER_MCP_ALLOW_BILLED=1`, matching what
+  `.env.example` already documented.
+- Removed `cloud_list_datacenters`. Hetzner returns HTTP 410 for `/datacenters` from
+  2026-10-01. Use `cloud_list_locations` or `find_capacity`.
+- Removed `robot_list_storageboxes`. Hetzner retired the Robot storage box API on
+  2025-07-30. Use `storagebox_list`.
+
 ## [0.4.0] - 2026-08-30
 
 ### Added

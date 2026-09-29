@@ -7,9 +7,10 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig, SurfaceName } from "../config.js";
 import { hetznerRequest } from "../http.js";
-import { classifyCost, cloudServerPriceNote } from "../cost.js";
+import { classifyCost, classifyDestructive, cloudServerPriceNote, normalizeCostPath } from "../cost.js";
 import { isWrite, normalizeMethod } from "../security.js";
 import { formatResult } from "../format.js";
+import { waitForActions, describeActions, anyActionFailed } from "../actions.js";
 
 interface ToolText {
   [key: string]: unknown;
@@ -91,24 +92,18 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
             true,
           );
         }
-        if (method === "DELETE" && args.confirm !== true) {
-          return textResult(
-            `DESTRUCTIVE GUARD. ${method} ${args.path} permanently deletes a resource and can cause data loss. Re-run with confirm set to true to proceed.`,
-            true,
-          );
-        }
         if (isWrite(method)) {
           const cost = classifyCost(surface, method, args.path);
           if (cost.billed) {
             if (!cfg.allowBilled) {
               return textResult(
-                `Blocked. Billed creation is disabled (HETZNER_MCP_ALLOW_BILLED=0). ${cost.reason}.`,
+                `Blocked. Billed creation is disabled. Set HETZNER_MCP_ALLOW_BILLED=1 to allow billed creates with confirm. ${cost.reason}.`,
                 true,
               );
             }
             if (args.confirm !== true) {
               let note = "";
-              if (surface === "cloud" && /^\/servers\/?$/i.test(args.path)) {
+              if (surface === "cloud" && normalizeCostPath(args.path) === "/servers") {
                 const body = bodyVal as { server_type?: string } | undefined;
                 const priced = await cloudServerPriceNote(cfg, body?.server_type);
                 if (priced) note = " " + priced;
@@ -119,6 +114,13 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
               );
             }
           }
+          const destructive = classifyDestructive(method, args.path, bodyVal);
+          if (destructive.destructive && args.confirm !== true) {
+            return textResult(
+              `DESTRUCTIVE GUARD. ${destructive.reason}. Re-run with confirm set to true to proceed.`,
+              true,
+            );
+          }
         }
         const result = await hetznerRequest(cfg, {
           surface,
@@ -127,7 +129,11 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
           query: args.query,
           body: bodyVal,
         });
-        return { content: [{ type: "text", text: formatResult(result, args.verbose ?? false) }] };
+        const actions = surface === "cloud" && isWrite(method) ? await waitForActions(cfg, result) : [];
+        return {
+          content: [{ type: "text", text: formatResult(result, args.verbose ?? false) + describeActions(actions) }],
+          isError: anyActionFailed(actions),
+        };
       } catch (err) {
         return textResult(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
       }

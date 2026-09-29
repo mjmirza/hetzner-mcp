@@ -78,6 +78,7 @@ async function main(): Promise<void> {
     assert("cost: create_image is billed", classifyCost("cloud", "POST", "/servers/9/actions/create_image").billed),
     assert("cost: change_type is billed", classifyCost("cloud", "POST", "/servers/9/actions/change_type").billed),
     assert("cost: volume resize is billed", classifyCost("cloud", "POST", "/volumes/9/actions/resize").billed),
+    assert("cost: enable_backup is billed", classifyCost("cloud", "POST", "/servers/9/actions/enable_backup").billed),
     assert("cost: poweron is free", !classifyCost("cloud", "POST", "/servers/9/actions/poweron").billed),
     assert("cost: list is free", !classifyCost("cloud", "GET", "/servers").billed),
   ];

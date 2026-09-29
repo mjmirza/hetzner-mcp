@@ -7,7 +7,6 @@
  * With no arguments it runs the MCP server (how clients launch it). The setup, doctor,
  * help, and version subcommands provide a guided onboarding and a status check.
  */
-import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig, availableSurfaces } from "./config.js";
@@ -16,11 +15,14 @@ import { registerReadTools } from "./tools/resources.js";
 import { registerWriteTools } from "./tools/write.js";
 import { registerCloudWriteTools } from "./tools/write-cloud.js";
 import { registerContributeTool } from "./tools/contribute.js";
+import { registerMapTool } from "./tools/map.js";
+import { registerCapacityTool } from "./tools/capacity.js";
+import { runMap } from "./map/cli.js";
 import { runSetup } from "./setup/wizard.js";
 import { runDoctor } from "./setup/doctor.js";
+import { VERSION } from "./version.js";
 
-const require = createRequire(import.meta.url);
-const pkg = require("../package.json") as { version: string };
+const pkg = { version: VERSION };
 
 function printHelp(): void {
   process.stdout.write(
@@ -33,6 +35,8 @@ function printHelp(): void {
       "    (no args)   Run the MCP server over stdio. This is how MCP clients launch it.",
       "    setup       Guided onboarding. Prompts for a token, verifies it, wires your client.",
       "    doctor      Read-only status check. Token health, surfaces, which clients are wired.",
+      "    map         Interactive map of every project, resource, and its monthly cost.",
+      "                Flags. --port N, --open, --demo. Default http://127.0.0.1:43390",
       "    help        Show this help.",
       "    version     Print the version.",
       "",
@@ -52,6 +56,8 @@ async function runServer(): Promise<void> {
   registerWriteTools(server, cfg);
   registerCloudWriteTools(server, cfg);
   registerContributeTool(server);
+  registerMapTool(server, cfg);
+  registerCapacityTool(server, cfg);
 
   // Diagnostics go to stderr so they never corrupt the stdio protocol on stdout.
   const surfaces = availableSurfaces(cfg);
@@ -74,6 +80,10 @@ async function main(): Promise<void> {
   }
   if (cmd === "doctor" || cmd === "--doctor") {
     process.exit(await runDoctor(argv.slice(1)));
+  }
+  if (cmd === "map" || cmd === "--map") {
+    process.exitCode = await runMap(argv.slice(1));
+    return;
   }
   if (cmd === "version" || cmd === "--version" || cmd === "-v") {
     process.stdout.write(`${pkg.version}\n`);

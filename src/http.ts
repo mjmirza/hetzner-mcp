@@ -5,6 +5,7 @@
 import { SURFACES, type SurfaceName, type HetznerConfig } from "./config.js";
 import { HetznerApiError, redactSecrets } from "./errors.js";
 import { normalizePath, normalizeMethod } from "./security.js";
+import { USER_AGENT } from "./version.js";
 
 export interface RequestOpts {
   surface: SurfaceName;
@@ -69,6 +70,7 @@ export async function hetznerRequest(cfg: HetznerConfig, opts: RequestOpts): Pro
   const headers: Record<string, string> = {
     Authorization: authHeader(surface, cfg),
     Accept: "application/json",
+    "User-Agent": USER_AGENT,
   };
 
   let payload: string | undefined;

@@ -99,7 +99,13 @@ async function main(): Promise<void> {
   assert("flag clients repeatable", f.clients.join(",") === "cursor,vscode");
   assert("flag no-verify parsed", f.noVerify === true);
   assert("flag print parsed", f.print === true);
-  const f2 = parseSetupFlags(["--token=xyz"]);
+  const fb = parseSetupFlags(["--allow-billed"]);
+assert("--allow-billed sets allowBilled", fb.allowBilled === true);
+assert("--no-billed clears allowBilled", parseSetupFlags(["--no-billed"]).allowBilled === false);
+assert("no billed flag leaves it undecided", parseSetupFlags([]).allowBilled === undefined);
+assert("entry carries ALLOW_BILLED=1 when allowed", buildServerEntry({ HETZNER_CLOUD_TOKEN: "t", HETZNER_MCP_ALLOW_BILLED: "1" }).env.HETZNER_MCP_ALLOW_BILLED === "1");
+assert("entry omits ALLOW_BILLED when not allowed", !("HETZNER_MCP_ALLOW_BILLED" in buildServerEntry({ HETZNER_CLOUD_TOKEN: "t" }).env));
+const f2 = parseSetupFlags(["--token=xyz"]);
   assert("flag token equals form", f2.token === "xyz");
 
   // validateCloudToken with stubbed fetch (no network).
