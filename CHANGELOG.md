@@ -3,7 +3,7 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
-## [Unreleased]
+## [0.5.0] - 2026-09-29
 
 ### Security
 - Cost guard now matches Hetzner's real `enable_backup` action (singular). The previous
@@ -16,9 +16,27 @@ Changelog, and this project follows semantic versioning.
 - Cost/destructive classifiers strip query and hash fragments before matching so
   `?x=1` cannot bypass a guard regex.
 
+- Guard paths are canonicalized before matching (percent-decoding, repeated and trailing
+  slashes, case), so no spelling of a billed endpoint skips the cost guard. Reported by
+  the Sentinel scanner.
+
 ### Added
-- `test/safety-guards.ts` offline regression suite for the above, wired into
+- `hetzner-mcp map`, an interactive canvas of every configured account, project, and
+  resource with estimated monthly cost, top cost drivers, and idle resources still being
+  billed. Local and read-only on http://127.0.0.1:43390, with a labelled `--demo` estate.
+- `infra_map` MCP tool returning the cost summary, findings, the canvas URL, and an
+  optional Mermaid diagram. Multiple projects via `HETZNER_CLOUD_TOKEN_<NAME>`.
+- `test/safety-guards.ts`, `test/actions.ts`, and `test/map.ts` offline suites, wired into
   `npm run test:offline`.
+
+### Fixed
+- Requests now send a `hetzner-mcp/<version>` User-Agent (#83).
+- Writes wait for their Hetzner actions to finish and report failures, bounded by
+  `HETZNER_MCP_ACTION_WAIT_MS` (default 120000, 0 disables) (#84).
+
+### Changed
+- Breaking. Billed creation now requires `HETZNER_MCP_ALLOW_BILLED=1`, matching what
+  `.env.example` already documented.
 
 ## [0.4.0] - 2026-08-30
 

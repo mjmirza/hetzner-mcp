@@ -131,13 +131,37 @@ The single most important promise. **Reading and listing are always free, and th
 
 All three are live tested against a real account. See [docs/ENDPOINT-AUDIT.md](docs/ENDPOINT-AUDIT.md) for the exact, dated, per endpoint results.
 
+## See your whole estate on one canvas
+
+Open a live map of every project, server, network, volume, firewall, load balancer, IP, snapshot, storage box, and dedicated server you run on Hetzner, with the monthly cost on every card.
+
+```bash
+npx hetzner-mcp map --open        # your account, at http://127.0.0.1:43390
+npx hetzner-mcp map --demo --open # a labelled sample estate, nothing needed
+```
+
+What you get:
+- Where the money goes. Monthly cost per account, per project, per resource type, and the top cost drivers.
+- What you are paying for and not using. Powered off servers, unattached volumes, unassigned IPs, and snapshots of deleted servers, each with the monthly amount tied to it. One click takes you to it on the canvas.
+- How it all connects. Servers inside their private network, volumes and IPs on their server, and lines for firewalls, load balancers, floating IPs, and backups.
+- Several projects and accounts at once. A Hetzner token covers one project, so add one variable per extra project, for example `HETZNER_CLOUD_TOKEN_STAGING`, and group them with `HETZNER_ACCOUNT_STAGING=Acme GmbH`.
+
+Your assistant can open it too. Ask it to "map my Hetzner infrastructure" and the `infra_map` tool returns the cost summary, the savings list, and the canvas link, or a Mermaid diagram with `mermaid: true`.
+
+It is read-only and local. It only makes GET requests, listens on 127.0.0.1 only, refuses requests addressed to any other host name, and never sends your token to the page. Port 43390 is unassigned in the IANA registry; set `HETZNER_MCP_MAP_PORT` to change it, and it moves to the next free port if that one is busy. Costs are estimates from Hetzner list prices, not your invoice, because Hetzner has no Cloud billing API.
+
+![Infra map, light](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/map/infra-map-light.png)
+![Infra map, dark](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/map/infra-map-dark.png)
+
 ## Cost safety, the part you actually worry about
 
 A wrong API call should never cost you money you did not intend. This tool is built around that.
 
 - Every list and get is free on Hetzner. Use them as much as you like.
 - Resources that are free to create, such as SSH keys, networks, firewalls, and placement groups, are created normally.
-- Resources that cost money, such as servers, volumes, load balancers, floating and primary IPs, and storage boxes, are guarded. The tool refuses to create them unless you pass an explicit confirm, and it first fetches and shows you the live hourly and monthly price.
+- Resources that cost money, such as servers, volumes, load balancers, floating and primary IPs, and storage boxes, are guarded. Billed creation is off until you set `HETZNER_MCP_ALLOW_BILLED=1`, and even then the tool refuses each one unless you pass an explicit confirm, after it fetches and shows you the live hourly and monthly price.
+- Actions that interrupt a running machine, such as power off, reboot, rebuild, or a password reset, also need an explicit confirm.
+- Every write waits for Hetzner to finish the work and tells you if it failed, instead of reporting success while the job is still running.
 - Nothing in the test suite leaves a billed resource running. The whole build is tracked in a cost ledger in [docs/ROADMAP.md](docs/ROADMAP.md), with a target of under five cents total.
 
 ## Quick start
