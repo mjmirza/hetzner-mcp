@@ -56,6 +56,7 @@ import { DeleteDialog } from "@/components/DeleteDialog";
 import { api } from "@/lib/api";
 import { buildFlow, type CardData, type Direction } from "@/lib/layout";
 import { relationsByNode } from "@/lib/relations";
+import { activeWorkspace, loadSequencer, pickWorkspace } from "@/lib/workspace";
 import { CREATABLE, KIND_LABEL } from "@/lib/format";
 import type { InfraGraph, MapNode, Meta, NodeKind, WorkspaceSummary } from "@/lib/types";
 
@@ -280,25 +281,40 @@ export function App() {
     toast.success("Map reset to its original layout");
   };
 
+  const [sequencer] = useState(loadSequencer);
+  const skipReload = useRef(false);
   const load = useCallback(async (refresh = false) => {
+    const seq = sequencer.begin();
     setRefreshing(true);
     try {
       const ws = await api.workspaces().catch(() => ({ default: "", workspaces: [] as WorkspaceSummary[] }));
+      if (!sequencer.isCurrent(seq)) return;
       setWorkspaces(ws.workspaces);
-      // A remembered workspace that no longer exists falls back to the default.
-      const target = workspace && ws.workspaces.some((w) => w.name === workspace) ? workspace : undefined;
-      if (!target && workspace) setWorkspace(null);
+      // A remembered workspace that no longer exists falls back to the default, loaded right here.
+      const picked = pickWorkspace(workspace, ws.workspaces);
+      const target = picked.target;
+      if (picked.stale) {
+        skipReload.current = true;
+        setWorkspace(null);
+      }
       const [g, m] = await Promise.all([api.graph(refresh, target), api.meta()]);
+      // A newer load started (a quick workspace switch), so this older answer must not win.
+      if (!sequencer.isCurrent(seq)) return;
       setGraph(g);
       setMeta(m);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (sequencer.isCurrent(seq)) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setRefreshing(false);
+      if (sequencer.isCurrent(seq)) setRefreshing(false);
     }
-  }, [workspace]);
+  }, [workspace, sequencer]);
   useEffect(() => {
+    // Clearing a stale workspace changes `load`; that load already fetched the default.
+    if (skipReload.current) {
+      skipReload.current = false;
+      return;
+    }
     load();
   }, [load]);
 
@@ -669,7 +685,7 @@ export function App() {
           </Sheet>
         )}
 
-        <AddProjectDialog open={addProject} onOpenChange={setAddProject} accounts={accounts} demo={meta?.mode === "demo"} onAdded={() => load(true)} workspace={workspaces.length > 1 ? graph?.workspace : undefined} />
+        <AddProjectDialog open={addProject} onOpenChange={setAddProject} accounts={accounts} demo={meta?.mode === "demo"} onAdded={() => load(true)} workspace={workspaces.length > 1 ? activeWorkspace(workspace, workspaces) : undefined} />
         <CreateDialog open={!!creating} onOpenChange={(v) => !v && setCreating(null)} kind={creating} project={targetProject} projectLabel={targetLabel} meta={meta} onCreated={() => load(true)} />
         <DeleteDialog
           node={deleting}

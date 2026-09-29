@@ -426,6 +426,7 @@ export interface CollectOptions {
 }
 
 export const PROJECT_CONCURRENCY = 4;
+export const PRICING_CONCURRENCY = 4;
 
 export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv = process.env, opts: CollectOptions = {}): Promise<InfraGraph> {
   const all = discoverProjects(base, env, readStored(env));
@@ -441,19 +442,20 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
   if (withRobot) accounts.add(defaultAccount(env));
   for (const a of accounts) nodes.push({ id: `a:${a}`, kind: "account", label: a, account: a, monthly: null, flags: [], details: {} });
 
-  // Pricing is the same for every project; try each token until one works, so revoked tokens
-  // early in the list can never hide the valid projects after them.
+  // Pricing is the same for every project; probe tokens a few at a time and keep the first that
+  // works, so many revoked tokens cannot stall the map for minutes.
   const loadP = opts.pricingLoader ?? loadPricing;
   let pricing: Pricing | undefined;
   let pricingError = "";
-  for (const p of projects) {
+  await settleWithLimit(projects, PRICING_CONCURRENCY, async (p) => {
+    if (pricing) return;
     try {
-      pricing = await loadP(p.cfg); // BESTPRACTICE_OK: stop at the first token that works, order matters
-      break;
+      const got = await loadP(p.cfg);
+      pricing ??= got;
     } catch (err) {
       pricingError = err instanceof Error ? err.message : String(err);
     }
-  }
+  });
   const currency = pricing?.currency ?? "EUR";
   const vatRate = pricing?.vatRate ?? "";
   const collect = opts.collector ?? collectProject;

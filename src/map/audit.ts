@@ -347,8 +347,9 @@ export function audit(graph: Pick<InfraGraph, "nodes">, now = new Date()): Audit
 }
 
 // Names come from people and env vars; a pipe or a newline must not break the table.
+// Backslashes are escaped first, so a name's own backslash cannot unescape the pipe.
 // eslint-disable-next-line no-control-regex
-const cell = (v: string) => v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\|/g, "\\|");
+const cell = (v: string) => v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 
 const SEV_LABEL: Record<Severity, string> = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
 

@@ -10,10 +10,12 @@ import { discoverProjects, listWorkspaces, resolveTarget } from "../src/map/proj
 import { importProjects, maskToken, parseImport, runProjects } from "../src/map/projects-cli.js";
 import { startMapServer } from "../src/map/server.js";
 import { readStored, saveStored, storeDir } from "../src/map/store.js";
-import { mkdirSync, utimesSync } from "node:fs";
+import { mkdirSync, rmSync, utimesSync } from "node:fs";
 import { sampleGraph } from "../src/map/sample.js";
 import { toMermaid } from "../src/map/summary.js";
 import { auditMarkdown } from "../src/map/audit.js";
+import { disconnectProject } from "../src/map/actions.js";
+import { activeWorkspace, loadSequencer, pickWorkspace } from "../web/src/lib/workspace.js";
 import type { InfraGraph } from "../src/map/types.js";
 
 let passed = 0;
@@ -92,7 +94,7 @@ const flakyPricing = async () => {
   return pricingLoader();
 };
 const gp = await collectGraph(loadConfig(many), many, { workspace: "WS1", collector, pricingLoader: flakyPricing });
-assert("a bad first token does not block prices", pricingCalls === 2 && gp.currency === "EUR");
+assert("a bad first token does not block prices", pricingCalls >= 2 && gp.currency === "EUR" && !gp.nodes.some((n) => n.project !== "p3" && n.flags.some((f) => f.code === "project_unreadable")));
 
 // Server: /api/workspaces never leaks tokens, ?workspace is validated, one collect per workspace.
 const senv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home(), HETZNER_CLOUD_TOKEN: tok("z") };
@@ -235,6 +237,100 @@ assert("a file with bad rows exits 1", (await runProjects(["import", file], ienv
   assert("a quote in the middle of a field is rejected", bad2.rows.length === 0 && bad2.invalid.length === 1);
   const good = parseImport(`"Client, Inc",Acc,prod,${tok("m")}`, "c.csv");
   assert("a quoted comma still works", good.rows.length === 1 && good.rows[0]!.workspace === "Client, Inc");
+}
+
+// Regressions found by Codex attack pass 3.
+{
+  const waitFor = async (cond: () => boolean) => {
+    for (let i = 0; i < 400 && !cond(); i++) await sleep(5); // BESTPRACTICE_OK: polling a test condition
+  };
+  const emptyGraph = (ws: string | undefined): InfraGraph => ({ source: "live", generatedAt: "", currency: "EUR", vatNote: "", nodes: [], edges: [], totals: { monthly: 0, byProject: [], byKind: [], topDrivers: [], findings: [] }, caveats: [], workspace: ws });
+
+  // Many revoked tokens are probed a few at a time, and probing stops once one works.
+  const renv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home() };
+  for (let i = 0; i < 20; i++) saveStored(renv, { name: `r${i}`, account: "R", token: tok("r") + String(i).padStart(2, "0") });
+  let probes = 0;
+  let probing = 0;
+  let probePeak = 0;
+  const slowPricing = async () => {
+    const n = ++probes;
+    probing++;
+    probePeak = Math.max(probePeak, probing);
+    await sleep(20);
+    probing--;
+    if (n < 12) throw new Error("401");
+    return pricingLoader();
+  };
+  const gr = await collectGraph(loadConfig(renv), renv, { collector: async () => ({ nodes: [], edges: [] }), pricingLoader: slowPricing });
+  assert("pricing probes run 4 at a time, not one by one", probePeak === 4, `peak=${probePeak}`);
+  assert("pricing probing stops soon after the first success", probes >= 12 && probes <= 15 && gr.currency === "EUR", `probes=${probes}`);
+
+  // Short or malformed tokens below the accepted minimum are never partly shown.
+  assert("a 19-char token is fully hidden", maskToken("a".repeat(19)) === "****");
+  assert("a 20-char token shows its last 4", maskToken("b".repeat(16) + "WXYZ") === "****WXYZ");
+
+  // A request that started before a change must not evict the newer request for the same key.
+  const xenv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home(), HETZNER_CLOUD_TOKEN: tok("z") };
+  saveStored(xenv, { name: "gone", account: "A", token: tok("w") });
+  const pending: Array<(g: InfraGraph) => void> = [];
+  let collects = 0;
+  const held = (ws: string | undefined) => {
+    collects++;
+    return new Promise<InfraGraph>((resolve) => pending.push(() => resolve(emptyGraph(ws))));
+  };
+  const hx = await startMapServer(loadConfig(xenv), { env: xenv, port: 43390 + 23, collect: held });
+  const call = (method: string, path: string, body?: unknown) =>
+    new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const payload = body === undefined ? undefined : JSON.stringify(body);
+      const headers: Record<string, string> = { Host: `127.0.0.1:${hx.port}`, "X-Hzmap": "1" };
+      if (payload) Object.assign(headers, { "Content-Type": "application/json", "Content-Length": String(Buffer.byteLength(payload)) });
+      const r = request({ host: "127.0.0.1", port: hx.port, path, method, headers }, (res) => {
+        let b = "";
+        res.on("data", (c) => (b += c));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b }));
+      });
+      r.on("error", reject);
+      r.end(payload);
+    });
+  const first = call("GET", "/api/graph");
+  await waitFor(() => collects === 1);
+  const removed = await call("POST", "/api/projects/remove", { id: "p:A/gone" });
+  const second = call("GET", "/api/graph");
+  await waitFor(() => collects === 2);
+  pending[0]!(emptyGraph(undefined));
+  await first;
+  const third = call("GET", "/api/graph");
+  await sleep(50);
+  assert("an old request's cleanup keeps the newer in-flight load", removed.status === 200 && collects === 2, `collects=${collects} remove=${removed.status}`);
+  pending.forEach((done) => done(emptyGraph(undefined)));
+  await Promise.all([second, third]);
+  await hx.close();
+
+  // The server path waits for a busy store lock without freezing the event loop.
+  const benv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home() };
+  saveStored(benv, { name: "held", account: "B", token: tok("v") });
+  const lockDir = join(storeDir(benv), ".lock");
+  mkdirSync(lockDir);
+  setTimeout(() => rmSync(lockDir, { recursive: true, force: true }), 150);
+  let ticks = 0;
+  const ticker = setInterval(() => ticks++, 10);
+  const started = Date.now();
+  const outcome = await Promise.resolve()
+    .then(() => disconnectProject({ base: loadConfig(benv), env: benv, demo: false }, "p:B/held"))
+    .then(() => "ok", (e: unknown) => String(e));
+  clearInterval(ticker);
+  assert("disconnect waits for the lock without blocking the server", outcome === "ok" && Date.now() - started < 2000 && ticks > 5 && readStored(benv).length === 0, `outcome=${outcome} ticks=${ticks}`);
+
+  // The web app drops stale loads, clears a stale workspace once, and writes to the selected one.
+  const s = loadSequencer();
+  const older = s.begin();
+  const newer = s.begin();
+  assert("an older workspace load is recognised as stale", !s.isCurrent(older) && s.isCurrent(newer));
+  const list = [{ name: "Personal" }, { name: "Client" }];
+  const gone = pickWorkspace("Removed", list);
+  assert("a remembered workspace that is gone loads the default and is flagged", gone.target === undefined && gone.stale);
+  assert("no remembered workspace is not stale", !pickWorkspace(null, list).stale && pickWorkspace("Client", list).target === "Client");
+  assert("writes go to the selected workspace", activeWorkspace("Client", list) === "Client" && activeWorkspace(null, list) === "Personal");
 }
 
 process.stdout.write(`\n${passed}/${total} workspace checks passed\n`);
