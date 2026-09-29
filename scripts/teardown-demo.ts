@@ -48,7 +48,7 @@ async function main(): Promise<void> {
     // A firewall or network can stay briefly attached to a server that is still finishing
     // its own deletion, which makes the delete fail. Retry with a short backoff until the
     // association clears.
-    // BESTPRACTICE_OK: a delete that depends on an async detach must retry one after another.
+    // a delete that depends on an async detach must retry one after another.
     for (let attempt = 1; attempt <= 6; attempt++) {
       const r = await req({ method: "DELETE", path: `/${collection}/${id}`, confirm: true });
       if (!r.isError) {
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
   // detaching when the network or firewall delete is attempted.
   await Promise.all([wipe("servers"), wipe("load_balancers")]);
   const deadline = Date.now() + 90_000;
-  // BESTPRACTICE_OK: deletion is asynchronous; poll one check after another until clear.
+  // deletion is asynchronous; poll one check after another until clear.
   while (Date.now() < deadline) {
     const [srv, lbs] = await Promise.all([idsOf("servers"), idsOf("load_balancers")]);
     if (srv.length === 0 && lbs.length === 0) break;

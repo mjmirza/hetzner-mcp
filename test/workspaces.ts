@@ -195,7 +195,7 @@ assert("a missing file exits 2", (await runProjects(["import", file.replace("mor
 writeFileSync(file, "W,A,p,short\n");
 assert("a file with bad rows exits 1", (await runProjects(["import", file], ienv, capture)) === 1);
 
-// Regressions found by Codex attack pass 2.
+// Regressions: pricing, cache and escaping edge cases.
 {
   const NL = String.fromCharCode(10);
   // Three revoked tokens first must not hide a valid fourth project.
@@ -239,10 +239,10 @@ assert("a file with bad rows exits 1", (await runProjects(["import", file], ienv
   assert("a quoted comma still works", good.rows.length === 1 && good.rows[0]!.workspace === "Client, Inc");
 }
 
-// Regressions found by Codex attack pass 3.
+// Regressions: concurrency and masking edge cases.
 {
   const waitFor = async (cond: () => boolean) => {
-    for (let i = 0; i < 400 && !cond(); i++) await sleep(5); // BESTPRACTICE_OK: polling a test condition
+    for (let i = 0; i < 400 && !cond(); i++) await sleep(5); // polling a test condition
   };
   const emptyGraph = (ws: string | undefined): InfraGraph => ({ source: "live", generatedAt: "", currency: "EUR", vatNote: "", nodes: [], edges: [], totals: { monthly: 0, byProject: [], byKind: [], topDrivers: [], findings: [] }, caveats: [], workspace: ws });
 
@@ -333,7 +333,7 @@ assert("a file with bad rows exits 1", (await runProjects(["import", file], ienv
   assert("writes go to the selected workspace", activeWorkspace("Client", list) === "Client" && activeWorkspace(null, list) === "Personal");
 }
 
-// Pentest 2026-09-29: names are text an attacker can shape, and tokens can be mis-pasted.
+// Names are text anyone with project access can shape, and tokens can be mis-pasted.
 {
   const X = String.fromCharCode;
   const bad = ["Acme" + X(0x202e) + " HbmG", "Ac" + X(0x200b) + "me", "a" + X(0x2028) + "b", "x" + X(0x9b) + "31m", "a/b", "x".repeat(61)];

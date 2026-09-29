@@ -14,18 +14,16 @@ jobs:
     # so it can never try to republish an existing version.
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
-    # The release environment needs the owner's approval before anything is published.
     environment: release
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 BESTPRACTICE_OK pinned to full commit SHA
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 BESTPRACTICE_OK pinned to full commit SHA
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4, pinned to full commit SHA
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4, pinned to full commit SHA
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
-      # Publishes with the NPM_TOKEN secret by owner choice, not trusted publishing.
       - run: npm ci
       - name: Release tag must match package.json version
         run: node scripts/check-release-tag.mjs
@@ -33,7 +31,6 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
       - run: npm run build
       - run: npm run test:offline
-      # Build ran above without any token. Publishing skips scripts, so no build tool sees it.
       - run: npm publish --provenance --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -46,8 +43,8 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 BESTPRACTICE_OK pinned to full commit SHA
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 BESTPRACTICE_OK pinned to full commit SHA
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4, pinned to full commit SHA
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4, pinned to full commit SHA
         with:
           node-version: "24"
           registry-url: "https://npm.pkg.github.com"

@@ -90,7 +90,7 @@ async function lockedAsync<T>(env: NodeJS.ProcessEnv, fn: () => T): Promise<T> {
   const until = Date.now() + 5000;
   while (!tryLock(lock)) {
     if (Date.now() > until) throw busy();
-    await new Promise((r) => setTimeout(r, 25)); // BESTPRACTICE_OK: polling a lock, one wait per attempt
+    await new Promise((r) => setTimeout(r, 25)); // polling a lock, one wait per attempt
   }
   try {
     return fn();

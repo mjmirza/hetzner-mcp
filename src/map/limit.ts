@@ -6,7 +6,7 @@ export async function settleWithLimit<T, R>(items: readonly T[], limit: number, 
     while (next < items.length) {
       const i = next++;
       try {
-        out[i] = { status: "fulfilled", value: await fn(items[i]!, i) }; // BESTPRACTICE_OK: worker pool, the bound on in-flight calls is the point
+        out[i] = { status: "fulfilled", value: await fn(items[i]!, i) }; // worker pool: the bound on in-flight calls is the point
       } catch (reason) {
         out[i] = { status: "rejected", reason };
       }

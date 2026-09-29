@@ -172,7 +172,7 @@ export async function startMapServer(
         }
         let body: Buffer | undefined;
         for (const dir of [WEB_DIR, WEB_FALLBACK]) {
-          body = await readFile(join(dir, file)).catch(() => undefined); // BESTPRACTICE_OK: first existing dir wins, order matters
+          body = await readFile(join(dir, file)).catch(() => undefined); // first existing dir wins, order matters
           if (body) break;
         }
         if (!body) {
@@ -276,7 +276,7 @@ export async function startMapServer(
   let lastErr: unknown;
   for (let p = first; p < first + 10; p++) {
     try {
-      boundPort = await listen(server, p); // BESTPRACTICE_OK: ports are tried in order, each depends on the previous failing
+      boundPort = await listen(server, p); // ports are tried in order, each depends on the previous failing
       const url = `http://${HOST}:${boundPort}/`;
       running = {
         url,

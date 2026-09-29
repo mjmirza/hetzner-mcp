@@ -180,7 +180,7 @@ export async function runSetup(argv: string[]): Promise<number> {
       out("");
       let verified = false;
       for (let attempt = 0; attempt < 3 && !verified; attempt++) {
-        const entered = (await rl.question("  Paste your Hetzner Cloud API token: ")).trim(); // BESTPRACTICE_OK: one shared stdin, prompts run one at a time
+        const entered = (await rl.question("  Paste your Hetzner Cloud API token: ")).trim(); // one shared stdin, prompts run one at a time
         if (!entered) {
           out("  A token is required to talk to Hetzner. Try again.");
           continue;
@@ -191,7 +191,7 @@ export async function runSetup(argv: string[]): Promise<number> {
           break;
         }
         out(dim("  Verifying with Hetzner..."));
-        const check = await validateCloudToken(token); // BESTPRACTICE_OK: verify must follow the prompt in this retry loop
+        const check = await validateCloudToken(token); // verify must follow the prompt in this retry loop
         out(`  ${check.ok ? green("OK") : red("x ")} ${check.message}`);
         if (check.ok) {
           verified = true;
@@ -199,7 +199,7 @@ export async function runSetup(argv: string[]): Promise<number> {
         }
         if (check.status === undefined) {
           // Could not reach Hetzner. An offline user can save now and verify later.
-          const ans = (await rl.question("  Save this token anyway and verify later? [y/N]: ")).trim().toLowerCase(); // BESTPRACTICE_OK: one shared stdin, prompts run one at a time
+          const ans = (await rl.question("  Save this token anyway and verify later? [y/N]: ")).trim().toLowerCase(); // one shared stdin, prompts run one at a time
           if (ans === "y" || ans === "yes") {
             verified = true;
             break;
@@ -264,7 +264,7 @@ export async function runSetup(argv: string[]): Promise<number> {
       for (const t of all) {
         const detected = isLikelyInstalled(t) ? " (detected)" : "";
         const def = isLikelyInstalled(t) ? "Y/n" : "y/N";
-        const ans = (await rl!.question(`    ${t.name}${detected} [${def}]: `)).trim().toLowerCase(); // BESTPRACTICE_OK: one shared stdin, prompts run one at a time
+        const ans = (await rl!.question(`    ${t.name}${detected} [${def}]: `)).trim().toLowerCase(); // one shared stdin, prompts run one at a time
         const yes = ans === "" ? isLikelyInstalled(t) : ans === "y" || ans === "yes";
         if (yes) chosen.push(t);
       }

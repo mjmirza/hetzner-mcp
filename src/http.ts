@@ -97,7 +97,7 @@ export async function hetznerRequest(cfg: HetznerConfig, opts: RequestOpts): Pro
 
   let res: Response;
   try {
-    res = await fetch(url, init); // BESTPRACTICE_OK: timeout set via init.signal AbortSignal.timeout
+    res = await fetch(url, init); // timeout set via init.signal AbortSignal.timeout
   } catch (err) {
     // Fixed text: fetch's own message can quote a header value, and so a token.
     const timedOut = err instanceof Error && err.name === "TimeoutError";
