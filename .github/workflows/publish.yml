@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  packages: write
 
 jobs:
   publish-npm:
@@ -16,14 +14,28 @@ jobs:
     # so it can never try to republish an existing version.
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
+    # The release environment needs the owner's approval before anything is published.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 BESTPRACTICE_OK pinned to full commit SHA
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 BESTPRACTICE_OK pinned to full commit SHA
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+      # Trusted publishing (OIDC) needs npm 11.5.1 or newer.
+      - run: npm install -g npm@12.1.0
       - run: npm ci
-      - run: npm publish --provenance --access public
+      - name: Release tag must match package.json version
+        run: node scripts/check-release-tag.mjs
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+      - run: npm run build
+      - run: npm run test:offline
+      # Build ran above without any token. Publishing skips scripts, so no build tool sees it.
+      - run: npm publish --provenance --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -31,6 +43,9 @@ jobs:
     # GitHub Packages mirror, scoped to the owner as GitHub requires. Runs on a release
     # and on manual dispatch, so an existing version can be mirrored at any time.
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 BESTPRACTICE_OK pinned to full commit SHA
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 BESTPRACTICE_OK pinned to full commit SHA
@@ -43,6 +58,6 @@ jobs:
       # GitHub Packages needs an owner-scoped name, so mirror under @mjmirza in the
       # runner only. The public npmjs name (hetzner-mcp) is never changed on disk.
       - run: npm pkg set name=@mjmirza/hetzner-mcp
-      - run: npm publish --access public
+      - run: npm publish --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

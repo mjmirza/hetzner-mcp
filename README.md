@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/hetzner-cloud-logo.png" alt="Hetzner" height="56" />
+<img src="https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/hetzner-cloud-logo.png" alt="Hetzner" height="56" />
 
 Manage your entire Hetzner platform from any AI assistant. Cloud servers, networks, volumes, firewalls, load balancers, IPs and DNS, plus Storage Boxes and Robot dedicated servers. One Model Context Protocol server, every surface, tested live, with a hard cost guard so you never get a surprise bill.
 
@@ -199,8 +199,8 @@ npx hetzner-mcp audit --fail-on high      # exit 1 in CI when a high or critical
 
 In the map, open the Audit tab. From your AI, the `infra_audit` tool returns the summary first and one finding's steps on request (`finding: 3`), which keeps the conversation short.
 
-![Infra map, light](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/map/infra-map-light.png)
-![Infra map, dark](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/map/infra-map-dark.png)
+![Infra map, light](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/map/infra-map-light.png)
+![Infra map, dark](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/map/infra-map-dark.png)
 
 ## Small on tokens, by design
 
@@ -298,17 +298,17 @@ Full, beginner friendly, step by step instructions, including the German console
 
 Open the Cloud Console, then your project.
 
-![Open the Hetzner Cloud Console](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/01-cloud-open-console.png)
-![Select your project](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/02-cloud-select-project.png)
+![Open the Hetzner Cloud Console](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/01-cloud-open-console.png)
+![Select your project](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/02-cloud-select-project.png)
 
 Open Security, then the API Tokens tab, and generate the token.
 
-![Open Security](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/03-cloud-open-security.png)
-![API Tokens tab and generate](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/04-cloud-api-tokens.png)
+![Open Security](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/03-cloud-open-security.png)
+![API Tokens tab and generate](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/04-cloud-api-tokens.png)
 
 For dedicated servers, create a Robot webservice user.
 
-![Robot web service and app settings](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/master/assets/setup/05-robot-webservice-settings.png)
+![Robot web service and app settings](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/setup/05-robot-webservice-settings.png)
 
 ## What is tested, and how this compares
 

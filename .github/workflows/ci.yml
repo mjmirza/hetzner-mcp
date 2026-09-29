@@ -3,16 +3,19 @@ on:
   push:
     branches: [main]
   pull_request:
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4, pinned to a full commit SHA
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4, pinned to a full commit SHA
         with:
           node-version: "20"
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run typecheck:web
       - run: npm run build
       - name: Offline tests (unit + API-shape hallucination check)
         run: npm run test:offline
