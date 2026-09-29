@@ -112,7 +112,11 @@ export async function startMapServer(
     if (hit && Date.now() - hit.at < (force ? MIN_REFRESH_MS : 60_000)) return hit.graph;
     let job = inflight.get(key);
     if (!job) {
-      job = collect(workspace).finally(() => inflight.delete(key));
+      // Only remove our own entry; after a clear, a newer request for this key may own it.
+      const mine: Promise<InfraGraph> = collect(workspace).finally(() => {
+        if (inflight.get(key) === mine) inflight.delete(key);
+      });
+      job = mine;
       inflight.set(key, job);
     }
     const startedAt = generation;
@@ -222,7 +226,7 @@ export async function startMapServer(
         case "/api/projects":
           return done(await connectProject(actx, body));
         case "/api/projects/remove":
-          return done(disconnectProject(actx, body.id));
+          return done(await disconnectProject(actx, body.id));
         case "/api/plan": {
           if (opts.demo) throw new ActionError(403, "This is sample data. Start the live map to create real resources.");
           const p = await plan(actx, projectById(actx, String(body.project ?? "")), body.kind, (body.params ?? {}) as Record<string, unknown>);

@@ -47,24 +47,35 @@ function write(env: NodeJS.ProcessEnv, projects: StoredProject[]): void {
 
 // Read, change, write under a lock directory, so two imports at once cannot drop each other's
 // projects. A lock older than 30 s is from a crashed run and is taken over.
-function locked<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
+function lockPath(env: NodeJS.ProcessEnv): string {
   const dir = storeDir(env);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const lock = join(dir, ".lock");
-  const until = Date.now() + 5000;
-  for (;;) {
+  return join(dir, ".lock");
+}
+
+function tryLock(lock: string): boolean {
+  try {
+    mkdirSync(lock);
+    return true;
+  } catch {
     try {
-      mkdirSync(lock);
-      break;
+      if (Date.now() - statSync(lock).mtimeMs > 30_000) rmSync(lock, { recursive: true, force: true });
     } catch {
-      try {
-        if (Date.now() - statSync(lock).mtimeMs > 30_000) rmSync(lock, { recursive: true, force: true });
-      } catch {
-        // The lock vanished between the two calls; retry.
-      }
-      if (Date.now() > until) throw new Error("The project store is busy. Try again in a moment.");
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+      // The lock vanished between the two calls; retry.
     }
+    return false;
+  }
+}
+
+const busy = () => new Error("The project store is busy. Try again in a moment.");
+
+// The CLI has nothing else to run, so it may block while it waits.
+function locked<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
+  const lock = lockPath(env);
+  const until = Date.now() + 5000;
+  while (!tryLock(lock)) {
+    if (Date.now() > until) throw busy();
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
   }
   try {
     return fn();
@@ -73,12 +84,34 @@ function locked<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
   }
 }
 
+// The map server must keep answering requests while another process holds the lock.
+async function lockedAsync<T>(env: NodeJS.ProcessEnv, fn: () => T): Promise<T> {
+  const lock = lockPath(env);
+  const until = Date.now() + 5000;
+  while (!tryLock(lock)) {
+    if (Date.now() > until) throw busy();
+    await new Promise((r) => setTimeout(r, 25)); // BESTPRACTICE_OK: polling a lock, one wait per attempt
+  }
+  try {
+    return fn();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
+const upsert = (env: NodeJS.ProcessEnv, p: Omit<StoredProject, "addedAt">) => (): void => {
+  const rest = readStored(env).filter((x) => !(x.name === p.name && x.account === p.account));
+  write(env, [...rest, { ...p, addedAt: new Date().toISOString() }]);
+};
+
 /** Adds or replaces (same account and name) a project. */
 export function saveStored(env: NodeJS.ProcessEnv, p: Omit<StoredProject, "addedAt">): void {
-  locked(env, () => {
-    const rest = readStored(env).filter((x) => !(x.name === p.name && x.account === p.account));
-    write(env, [...rest, { ...p, addedAt: new Date().toISOString() }]);
-  });
+  locked(env, upsert(env, p));
+}
+
+/** saveStored without blocking the event loop, for the map server. */
+export function saveStoredAsync(env: NodeJS.ProcessEnv, p: Omit<StoredProject, "addedAt">): Promise<void> {
+  return lockedAsync(env, upsert(env, p));
 }
 
 /** Adds many projects in one atomic write. Same account and name replaces the old entry. */
@@ -90,12 +123,19 @@ export function saveManyStored(env: NodeJS.ProcessEnv, items: Array<Omit<StoredP
   locked(env, () => write(env, [...readStored(env).filter((x) => !incoming.has(key(x))), ...items.map((p) => ({ ...p, addedAt: at }))]));
 }
 
+const drop = (env: NodeJS.ProcessEnv, account: string, name: string) => (): boolean => {
+  const all = readStored(env);
+  const rest = all.filter((x) => !(x.name === name && x.account === account));
+  if (rest.length === all.length) return false;
+  write(env, rest);
+  return true;
+};
+
 export function removeStored(env: NodeJS.ProcessEnv, account: string, name: string): boolean {
-  return locked(env, () => {
-    const all = readStored(env);
-    const rest = all.filter((x) => !(x.name === name && x.account === account));
-    if (rest.length === all.length) return false;
-    write(env, rest);
-    return true;
-  });
+  return locked(env, drop(env, account, name));
+}
+
+/** removeStored without blocking the event loop, for the map server. */
+export function removeStoredAsync(env: NodeJS.ProcessEnv, account: string, name: string): Promise<boolean> {
+  return lockedAsync(env, drop(env, account, name));
 }

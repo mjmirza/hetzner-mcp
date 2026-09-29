@@ -7,7 +7,7 @@ import { waitForActions } from "../actions.js";
 import { capacityRows } from "../tools/capacity.js";
 import { deletionPreview } from "../tools/delete-preview.js";
 import { discoverProjects, type ProjectRef } from "./projects.js";
-import { readStored, removeStored, saveStored } from "./store.js";
+import { readStored, removeStoredAsync, saveStoredAsync } from "./store.js";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -29,7 +29,9 @@ type CreateKind = (typeof CREATE_KINDS)[number];
 const NAME = /^[A-Za-z0-9][A-Za-z0-9.-]{0,62}$/;
 export const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$/;
 export const ACCOUNT = /^[^/\u0000-\u001f]{1,60}$/;
-export const TOKEN = /^[A-Za-z0-9]{20,128}$/;
+/** Shortest API token accepted. The CLI masks anything shorter completely. */
+export const TOKEN_MIN_LENGTH = 20;
+export const TOKEN = new RegExp(`^[A-Za-z0-9]{${TOKEN_MIN_LENGTH},128}$`);
 const ID = /^[0-9]{1,15}$/;
 const CIDR = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
 
@@ -333,13 +335,13 @@ export async function connectProject(a: ActionEnv, body: Json): Promise<string> 
     const status = (err as { status?: number }).status;
     throw new ActionError(400, status === 401 || status === 403 ? "Hetzner rejected this token. Copy it again from the project." : "Could not reach Hetzner to check the token. Try again.");
   }
-  saveStored(a.env, { name, account, token, ...(workspace ? { workspace } : {}) });
+  await saveStoredAsync(a.env, { name, account, token, ...(workspace ? { workspace } : {}) });
   return `Connected ${name}. The token checked out with Hetzner and is saved only on this computer.`;
 }
 
-export function disconnectProject(a: ActionEnv, projectNodeId: unknown): string {
+export async function disconnectProject(a: ActionEnv, projectNodeId: unknown): Promise<string> {
   const ref = projectById(a, String(projectNodeId));
   if (ref.source !== "local") throw new ActionError(400, "This project comes from your environment settings. Remove it there.");
-  removeStored(a.env, ref.account, ref.name);
+  await removeStoredAsync(a.env, ref.account, ref.name);
   return `Disconnected ${ref.name}. Nothing at Hetzner changed.`;
 }

@@ -101,5 +101,24 @@ assert("cli rejects --out without a path", codeBad === 2);
 assert("cli rejects an unknown --fail-on value", codeFailBad === 2);
 assert("cli rejects --fail-on without a value", codeFailMissing === 2);
 
+// A name that already holds a backslash before its pipe must not turn the pipe into a column break.
+{
+  const BS = String.fromCharCode(92);
+  const tricky = `Acme${BS}|prod`;
+  const md = auditMarkdown({ ...r, scopes: [{ account: tricky, project: "p", score: 50, findings: 1, monthlySaving: 0 }] });
+  const row = md.split("\n").find((l) => l.includes("Acme"))!;
+  // Count column breaks: pipes not escaped by an odd run of backslashes.
+  let breaks = 0;
+  let run = 0;
+  for (const c of row) {
+    if (c === BS) run++;
+    else {
+      if (c === "|" && run % 2 === 0) breaks++;
+      run = 0;
+    }
+  }
+  assert("a backslash before a pipe cannot add a table column", breaks === 6);
+}
+
 process.stdout.write(`\n${passed}/${total} audit checks passed\n`);
 if (passed !== total) process.exitCode = 1;

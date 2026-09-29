@@ -5,7 +5,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { loadConfig, type HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
-import { ACCOUNT, PROJECT_NAME, TOKEN } from "./actions.js";
+import { ACCOUNT, PROJECT_NAME, TOKEN, TOKEN_MIN_LENGTH } from "./actions.js";
 import { settleWithLimit } from "./limit.js";
 import { discoverProjects } from "./projects.js";
 import { readStored, removeStored, saveManyStored } from "./store.js";
@@ -21,8 +21,8 @@ export interface ImportRow {
   token: string;
 }
 
-// A short value would be printed almost whole, so it is hidden completely.
-export const maskToken = (t: string): string => (t.length < 16 ? "****" : `****${t.slice(-4)}`);
+// Anything shorter than a valid token is malformed and would leak too much, so hide it all.
+export const maskToken = (t: string): string => (t.length < TOKEN_MIN_LENGTH ? "****" : `****${t.slice(-4)}`);
 
 /** Minimal RFC 4180 reader. Quoted fields may hold commas, quotes ("") and newlines. */
 function parseCsv(text: string): string[][] {
