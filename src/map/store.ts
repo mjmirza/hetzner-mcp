@@ -28,7 +28,7 @@ const posix = process.platform !== "win32";
 const myUid = (): number | undefined => (posix && typeof process.getuid === "function" ? process.getuid() : undefined);
 
 /** Creates the store directory owner-only, tightens a loose one we own, refuses one we do not. */
-function ensureDir(env: NodeJS.ProcessEnv): string {
+export function ensureDir(env: NodeJS.ProcessEnv): string {
   const dir = storeDir(env);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
   const uid = myUid();
@@ -181,7 +181,7 @@ function locked<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
 }
 
 // The map server must keep answering requests while another process holds the lock.
-async function lockedAsync<T>(env: NodeJS.ProcessEnv, fn: () => T): Promise<T> {
+export async function lockedAsync<T>(env: NodeJS.ProcessEnv, fn: () => T): Promise<T> {
   const lock = lockPath(env);
   const until = Date.now() + 5000;
   const seen = new Map<string, number>();

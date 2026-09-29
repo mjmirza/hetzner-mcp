@@ -84,6 +84,13 @@ function priceAt(prices: Json[] | undefined, location: string | undefined): numb
   return num(p?.price_monthly?.gross);
 }
 
+/** Hourly gross price, for spend history. Hetzner caps the hourly total at the monthly price. */
+function hourlyAt(prices: Json[] | undefined, location: string | undefined): number | null {
+  if (!prices?.length) return null;
+  const p = prices.find((x) => x.location === location) ?? prices[0];
+  return num(p?.price_hourly?.gross);
+}
+
 export interface Pricing {
   currency: string;
   vatRate: string;
@@ -179,6 +186,8 @@ export function buildProject(
       costNote += ` Includes ${pricing.backupPct}% for automatic backups.`;
       flags.push(info("backup_surcharge", `Automatic backups add ${surcharge.toFixed(2)} a month. Worth it for production, often not for test boxes.`, surcharge));
     }
+    const perHour = hourlyAt(typePrices, loc);
+    const hourly = perHour !== null && backupsOn && pricing.backupPct ? perHour * (1 + pricing.backupPct / 100) : perHour;
     if (s.status === "off") flags.push(waste("server_off", "Powered off but still billed in full. Delete it, or snapshot it and delete, to stop the cost.", monthly === null ? null : round(monthly)));
 
     // Retiring server type, per location first (the top-level field is deprecated).
@@ -220,6 +229,7 @@ export function buildProject(
         firewalls: Array.isArray(s.public_net?.firewalls) ? s.public_net.firewalls.length : null,
         traffic_used_pct: out !== null && incl ? Math.round((out / incl) * 100) : null,
         created: s.created ?? null,
+        hourly,
       },
       ...base,
     });
@@ -239,7 +249,7 @@ export function buildProject(
     nodes.push({
       id, kind: "volume", label: v.name, parent: attachedTo ?? locNode(loc), location: loc, status: v.status,
       monthly, costNote: `${v.size} GB at the per-GB volume price.`, flags,
-      details: { size_gb: v.size ?? null, format: v.format ?? null, attached: Boolean(v.server) },
+      details: { size_gb: v.size ?? null, format: v.format ?? null, attached: Boolean(v.server), created: v.created ?? null },
       ...base,
     });
     if (attachedTo) edges.push({ from: id, to: attachedTo, kind: "attached" });
@@ -254,7 +264,7 @@ export function buildProject(
     nodes.push({
       id, kind: "primary_ip", label: ip.ip ?? ip.name, parent: target ?? locNode(loc), location: loc,
       monthly: ipPrice, costNote: `Primary ${ip.type} address.`, flags,
-      details: { type: ip.type ?? null, ip: ip.ip ?? null, auto_delete: ip.auto_delete ?? null },
+      details: { type: ip.type ?? null, ip: ip.ip ?? null, auto_delete: ip.auto_delete ?? null, created: ip.created ?? null, hourly: hourlyAt(pricing.primaryIp.get(ip.type), loc) },
       ...base,
     });
     if (target) edges.push({ from: id, to: target, kind: "assigned" });
@@ -269,7 +279,7 @@ export function buildProject(
     nodes.push({
       id, kind: "floating_ip", label: ip.ip ?? ip.name, parent: locNode(loc), location: loc,
       monthly: fipPrice, costNote: `Floating ${ip.type} address.`, flags,
-      details: { type: ip.type ?? null, ip: ip.ip ?? null },
+      details: { type: ip.type ?? null, ip: ip.ip ?? null, created: ip.created ?? null },
       ...base,
     });
     if (target) edges.push({ from: id, to: target, kind: "assigned" });
@@ -286,7 +296,7 @@ export function buildProject(
     nodes.push({
       id, kind: "load_balancer", label: lb.name, parent: net && netIds.has(net) ? netIds.get(net)! : locNode(loc), location: loc,
       monthly: lbPrice, costNote: `${type ?? "load balancer"} list price.`, flags, health: targetHealth(targets),
-      details: { type: type ?? null, ipv4: lb.public_net?.ipv4?.ip ?? null, targets: targets.length, services: lb.services?.length ?? 0 },
+      details: { type: type ?? null, ipv4: lb.public_net?.ipv4?.ip ?? null, targets: targets.length, services: lb.services?.length ?? 0, created: lb.created ?? null, hourly: hourlyAt(pricing.lbTypes.get(type ?? ""), loc) },
       ...base,
     });
     for (const t of targets) {
@@ -367,7 +377,7 @@ export function buildProject(
     nodes.push({
       id: `${P}/sb:${b.id}`, kind: "storage_box", label: b.name ?? `storage box ${b.id}`, parent: P, location: loc, status: b.status,
       monthly: priceAt(b.storage_box_type?.prices, loc), costNote: `${b.storage_box_type?.name ?? "Storage Box"} list price.`,
-      flags: [], details: { type: b.storage_box_type?.name ?? null, size_gb: b.storage_box_type?.size ? Math.round(b.storage_box_type.size / 1e9) : null },
+      flags: [], details: { type: b.storage_box_type?.name ?? null, size_gb: b.storage_box_type?.size ? Math.round(b.storage_box_type.size / 1e9) : null, created: b.created ?? null },
       ...base,
     });
   }
@@ -530,6 +540,7 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
     projectCount: projects.length,
   });
   for (const text of incomplete) graph.caveats.push(text);
+  if (vatRate && Number.isFinite(Number(vatRate))) graph.vatRate = Number(vatRate);
   if (opts.workspace !== undefined) graph.workspace = opts.workspace;
   return graph;
 }

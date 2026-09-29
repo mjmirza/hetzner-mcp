@@ -15,8 +15,10 @@ export default defineConfig({
     outDir: fileURLToPath(new URL("../dist/web", import.meta.url)),
     emptyOutDir: true,
     sourcemap: false,
-    chunkSizeWarningLimit: 900,
+    // The PDF reader worker (about 1.3 MB) loads only when an invoice is added, never on page load.
+    chunkSizeWarningLimit: 1400,
     rollupOptions: { output: { entryFileNames: "assets/app.js", chunkFileNames: "assets/[name].js", assetFileNames: "assets/[name][extname]" } },
   },
+  worker: { format: "es" },
   server: { port: 43391, proxy: { "/api": "http://127.0.0.1:43400" } },
 });

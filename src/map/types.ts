@@ -84,6 +84,8 @@ export interface InfraGraph {
   generatedAt: string;
   currency: string;
   vatNote: string;
+  /** VAT rate in percent included in the gross prices, when Hetzner states it. */
+  vatRate?: number;
   nodes: MapNode[];
   edges: MapEdge[];
   totals: {

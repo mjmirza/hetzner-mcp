@@ -22,6 +22,7 @@
     "test/safety-guards.ts",
     "test/setup.ts",
     "test/smoke.ts",
+    "test/spend.ts",
     "test/token-budget.ts",
     "test/workspaces.ts"
   ],
