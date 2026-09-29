@@ -23,6 +23,12 @@ Manage your entire Hetzner platform from any AI assistant. Cloud servers, networ
 
 </div>
 
+## See it in 90 seconds
+
+<video src="https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/video/explainer.mp4" poster="https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/video/poster.png" controls muted playsinline width="100%"></video>
+
+Can't see the player? [Watch the video](https://github.com/mjmirza/hetzner-mcp/blob/main/assets/video/explainer.mp4).
+
 ## Please sponsor this project
 
 This is built and maintained in the open, for free, under a license that only asks for attribution. If your team relies on it, [becoming a sponsor](https://github.com/sponsors/mjmirza) directly buys the time to cover more endpoints, keep the endpoint audit current as Hetzner changes, and respond to issues and pull requests faster. Even a small monthly amount makes a real difference. Thank you.
