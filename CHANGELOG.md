@@ -5,6 +5,8 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-29
+
 ### Added
 - `hetzner-mcp map` now works straight after setup. With no token in the terminal it uses the
   one setup saved for your assistant and says which app it came from. Before, it stopped with
