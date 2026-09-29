@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { CSP } from "../src/map/server.js";
 import { readStored, saveStored, removeStored } from "../src/map/store.js";
 import { connectProject, ActionError } from "../src/map/actions.js";
+import { placeName, explainLocation, explainType, familyOf } from "../web/src/lib/glossary.js";
 
 let passed = 0;
 let total = 0;
@@ -138,6 +139,15 @@ assert("localhost Host also accepted", (await get("/healthz", `localhost:${handl
 const again = await startMapServer(loadConfig({}), { demo: true });
 assert("second start reuses the running server", again.port === handle.port);
 await handle.close();
+
+// Every location and server type code on the map has a plain-language name.
+for (const code of ["fsn1", "nbg1", "hel1", "ash", "hil", "sin"]) assert(`location ${code} has a place name`, placeName(code) !== null && explainLocation(code) !== null);
+for (const t of ["cx23", "cpx22", "cax11", "ccx13"]) assert(`server type ${t} has a family`, familyOf(t) !== null);
+assert("cpx is not mistaken for cx", familyOf("cpx22") === "x86 CPU, shared, regular");
+assert("unknown location stays null", placeName("zzz9") === null);
+for (const n of g.nodes.filter((x) => x.kind === "location")) assert(`sample location ${n.label} is named`, placeName(n.label) !== null);
+const srv = g.nodes.find((x) => x.kind === "server" && typeof x.details.type === "string")!;
+assert("server type explains itself in a sentence", /^\w+ is .+\.$/.test(explainType(srv) ?? ""));
 
 process.stdout.write(`\n${passed}/${total} map checks passed\n`);
 if (passed !== total) process.exitCode = 1;

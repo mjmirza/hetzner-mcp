@@ -21,6 +21,7 @@ import {
 } from "hugeicons-react";
 import { cn } from "@/lib/utils";
 import { KIND_LABEL, money } from "@/lib/format";
+import { cityName, explainLocation, explainType, placeName } from "@/lib/glossary";
 import type { CardData } from "@/lib/layout";
 import type { MapNode, NodeKind } from "@/lib/types";
 
@@ -55,10 +56,31 @@ export const CardContext = createContext<CardActions>({ select: () => {}, toggle
 
 function subtitle(n: MapNode): string {
   const d = n.details;
-  const bits = [d.type, n.location, n.status].filter((x) => x != null && x !== "" && x !== n.label);
+  if (n.kind === "location") return `Data center ${n.label}`;
+  const where = n.location ? cityName(n.location) ?? n.location : null;
+  const bits = [d.type, where, n.status].filter((x) => x != null && x !== "" && x !== n.label);
   if (n.kind === "network" && d.ip_range) return String(d.ip_range);
   if (n.kind === "project") return `${n.account}`;
   return bits.join(" · ");
+}
+
+/** The card title. Locations read as a place, not a code. */
+function title(n: MapNode): string {
+  return n.kind === "location" ? placeName(n.label) ?? n.label : n.label;
+}
+
+/** Hover text that spells out every short code on the card. */
+function explain(n: MapNode): string | undefined {
+  const lines = [n.kind === "server" ? explainType(n) : null, explainLocation(n.location ?? (n.kind === "location" ? n.label : null))].filter(Boolean);
+  return lines.length ? lines.join("\n") : undefined;
+}
+
+/** Short enough to always fit a card: "4 vCPU · 8 GB · 160 GB disk". The full story is in the panel. */
+function specs(n: MapNode): string | null {
+  if (n.kind !== "server") return null;
+  const d = n.details;
+  const bits = [typeof d.cores === "number" ? `${d.cores} vCPU` : null, typeof d.memory_gb === "number" ? `${d.memory_gb} GB` : null, typeof d.disk_gb === "number" ? `${d.disk_gb} GB disk` : null];
+  return bits.filter(Boolean).join(" · ") || null;
 }
 
 function Row({ n }: { n: MapNode }) {
@@ -130,8 +152,17 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
             <span className="truncate">{shelf ? "Project-wide" : KIND_LABEL[n.kind]}</span>
             {!container && n.monthly != null && <span className="ml-auto shrink-0 text-[12px] font-semibold tracking-normal text-foreground normal-case tabular-nums">{money(total, currency)}</span>}
           </div>
-          <div className="truncate text-[15px] leading-5 font-semibold">{shelf ? `${data.rows.length} shared resources` : n.label}</div>
-          {!shelf && subtitle(n) && <div className={cn("truncate text-[12px] text-muted-foreground", n.kind === "account" && "text-background/70")}>{subtitle(n)}</div>}
+          <div className="truncate text-[15px] leading-5 font-semibold" title={shelf ? undefined : title(n)}>{shelf ? `${data.rows.length} shared resources` : title(n)}</div>
+          {!shelf && subtitle(n) && (
+            <div className={cn("truncate text-[12px] text-muted-foreground", n.kind === "account" && "text-background/70")} title={explain(n)}>
+              {subtitle(n)}
+            </div>
+          )}
+          {specs(n) && (
+            <div className="truncate text-[12px] text-muted-foreground" title={explain(n)}>
+              {specs(n)}
+            </div>
+          )}
         </div>
       </div>
 

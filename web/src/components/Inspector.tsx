@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { KIND_ICON } from "@/components/InfraNode";
 import { KIND_LABEL, money } from "@/lib/format";
+import { explainLocation, explainType, placeName } from "@/lib/glossary";
 import type { Relation } from "@/lib/relations";
 import type { MapNode } from "@/lib/types";
 
@@ -27,6 +28,8 @@ export function Inspector({ node, parts, relations, byId, currency, canDelete, o
   const Icon = KIND_ICON[node.kind];
   const details = Object.entries(node.details).filter(([, v]) => v !== null && v !== "");
   const parent = node.parent ? byId.get(node.parent) : undefined;
+  const loc = node.location ?? (node.kind === "location" ? node.label : null);
+  const codes = [node.kind === "server" ? explainType(node) : null, explainLocation(loc)].filter((x): x is string => !!x);
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-start gap-3">
@@ -35,8 +38,8 @@ export function Inspector({ node, parts, relations, byId, currency, canDelete, o
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{KIND_LABEL[node.kind]}</div>
-          <h2 className="truncate text-[17px] leading-6 font-semibold">{node.label}</h2>
-          <div className="text-[12px] text-muted-foreground">{[node.project, node.location, node.status].filter(Boolean).join(" · ")}</div>
+          <h2 className="truncate text-[17px] leading-6 font-semibold">{node.kind === "location" ? placeName(node.label) ?? node.label : node.label}</h2>
+          <div className="text-[12px] text-muted-foreground">{[node.project, loc ? placeName(loc) ?? loc : null, node.status].filter(Boolean).join(" · ")}</div>
         </div>
         {onClose && (
           <Button variant="ghost" size="icon-sm" className="rounded-lg" onClick={onClose} aria-label="Close details">
@@ -44,6 +47,17 @@ export function Inspector({ node, parts, relations, byId, currency, canDelete, o
           </Button>
         )}
       </div>
+
+      {codes.length > 0 && (
+        <section aria-label="What the codes mean" className="rounded-xl border px-3 py-2.5">
+          <div className="mb-1 text-[12px] font-medium">What the codes mean</div>
+          <ul className="flex flex-col gap-1 text-[12px] leading-5 text-muted-foreground">
+            {codes.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {node.monthly != null && (
         <div className="rounded-xl bg-secondary px-3 py-2.5">

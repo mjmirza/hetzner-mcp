@@ -151,9 +151,6 @@ export function buildFlow(
         target: b,
         type: "relation",
         className: touches ? "relation hot" : "relation",
-        label: e.kind.replace("_", " "),
-        labelBgPadding: [6, 3],
-        labelBgBorderRadius: 6,
         zIndex: 10,
         animated: opts.animate === true,
       });
