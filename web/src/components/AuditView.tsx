@@ -35,7 +35,7 @@ function Finding({ f, n, open, onToggle, currency, onShow }: { f: AuditFinding; 
           <span className="w-6 shrink-0 text-right text-[12px] text-muted-foreground tabular-nums">{n}</span>
           <span className={cn("w-16 shrink-0 rounded-md px-1.5 py-0.5 text-center text-[11px] font-semibold", SEV[f.severity].cls)}>{SEV[f.severity].label}</span>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[14px] font-medium">{f.title}</span>
+            <span className="line-clamp-2 text-[14px] font-medium sm:truncate">{f.title}</span>
             <span className="truncate text-[12px] text-muted-foreground">
               {f.resource.label}
               {where ? ` · ${where}` : ""}
@@ -88,10 +88,10 @@ function Finding({ f, n, open, onToggle, currency, onShow }: { f: AuditFinding; 
   );
 }
 
-export function AuditView({ graph, onShow }: { graph: InfraGraph; onShow: (id: string) => void }) {
+export function AuditView({ graph, onShow, initialOpen = 0 }: { graph: InfraGraph; onShow: (id: string) => void; initialOpen?: number }) {
   const report = graph.audit;
   const [filter, setFilter] = useState<Filter>("all");
-  const [open, setOpen] = useState<number | null>(0);
+  const [open, setOpen] = useState<number | null>(initialOpen);
   const list = useMemo(() => {
     if (!report) return [];
     return report.findings
@@ -122,7 +122,7 @@ export function AuditView({ graph, onShow }: { graph: InfraGraph; onShow: (id: s
     <div className="h-full overflow-x-hidden overflow-y-auto">
       <div className="mx-auto flex max-w-3xl flex-col gap-5 p-3 sm:p-5">
         <Card aria-label="Audit summary" className="rounded-xl py-4 shadow-none">
-          <CardContent className="flex flex-wrap items-center gap-4 px-4">
+          <CardContent className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:gap-4">
             <div className="flex size-16 shrink-0 flex-col items-center justify-center rounded-xl bg-secondary">
               <span className="text-[22px] leading-6 font-semibold tabular-nums">{report.score}</span>
               <span className="text-[11px] text-muted-foreground">of 100</span>
@@ -135,8 +135,9 @@ export function AuditView({ graph, onShow }: { graph: InfraGraph; onShow: (id: s
                 {report.findings.length ? `${report.findings.length} things to look at, most serious first.` : "Nothing to fix right now."}
                 {report.monthlySaving > 0 ? ` Fixing the cost ones saves about ${money(report.monthlySaving, graph.currency)} a month.` : ""}
               </p>
+              <p className="mt-1 text-[12px] text-muted-foreground">Each project starts at 100 and loses 25 per critical, 12 per high, 6 per medium and 2 per low finding.</p>
             </div>
-            <Button variant="secondary" size="sm" className="rounded-lg" onClick={download}>
+            <Button variant="secondary" size="sm" className="self-start rounded-lg sm:self-auto" onClick={download}>
               <Download04Icon size={16} /> Download report
             </Button>
           </CardContent>

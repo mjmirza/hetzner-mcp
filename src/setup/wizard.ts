@@ -360,10 +360,14 @@ function printSetupHelp(): void {
 
 async function firstAudit(token: string, out: (line: string) => void): Promise<void> {
   try {
+    let timer: NodeJS.Timeout | undefined;
     const graph = await Promise.race([
       collectGraph(loadConfig({ ...process.env, HETZNER_CLOUD_TOKEN: token })),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20_000)),
-    ]);
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timed out")), 20_000);
+        timer.unref();
+      }),
+    ]).finally(() => clearTimeout(timer));
     if (!graph.audit) return;
     out("  " + bold("First look at your infrastructure:"));
     for (const line of auditSummary(graph.audit, graph.currency, 3).split("\n")) out("  " + line);

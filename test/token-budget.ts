@@ -45,7 +45,7 @@ assert("every tool still has a description", tools.every((t) => (t.description ?
 // Compact view: nested objects collapse to a name, empty values vanish, no indentation.
 const fake = { servers: [{ id: 1, name: "web", status: "running", server_type: { name: "cx23", cores: 2, prices: [{ location: "fsn1", price_monthly: { gross: "5.49" } }] }, location: { name: "fsn1", city: "Falkenstein" }, labels: {}, created: "2026-01-01" }] };
 const out = formatResult(fake, false);
-assert("compact view collapses nested objects to their name", out.includes('"server_type":"cx23"') && out.includes('"location":"fsn1"'));
+assert("compact view keeps server size, collapses location to its name", out.includes('"server_type":{"name":"cx23","cores":2}') && out.includes('"location":"fsn1"'));
 assert("compact view drops prices from nested objects", !out.includes("price_monthly"));
 assert("compact view drops empty labels", !out.includes("labels"));
 assert("compact view has no indentation", !out.includes("\n  "));

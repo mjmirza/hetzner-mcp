@@ -120,7 +120,6 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
   const container = n.kind === "account" || n.kind === "project" || n.kind === "location" || n.kind === "network";
   const lr = data.direction === "LR";
   const own = n.monthly ?? 0;
-  const total = own + data.rows.reduce((s, r) => s + (shelf ? 0 : r.monthly ?? 0), 0);
 
   return (
     <div
@@ -131,7 +130,7 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
         selected && "border-primary ring-4 ring-primary/15",
         data.related && "border-primary/60",
         risk > 0 && !selected && "border-risk/50",
-        data.dim && "opacity-35",
+        data.dim && "opacity-60",
       )}
     >
       <Handle type="target" position={lr ? Position.Left : Position.Top} className="!opacity-0" isConnectable={false} />
@@ -150,7 +149,7 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
         <div className="min-w-0 flex-1">
           <div className={cn("flex items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase", n.kind === "account" && "text-background/70")}>
             <span className="truncate">{shelf ? "Project-wide" : KIND_LABEL[n.kind]}</span>
-            {!container && n.monthly != null && <span className="ml-auto shrink-0 text-[12px] font-semibold tracking-normal text-foreground normal-case tabular-nums">{money(total, currency)}</span>}
+            {!container && n.monthly != null && <span className="ml-auto shrink-0 text-[12px] font-semibold tracking-normal text-foreground normal-case tabular-nums">{money(own, currency)}</span>}
           </div>
           <div className="truncate text-[15px] leading-5 font-semibold" title={shelf ? undefined : title(n)}>{shelf ? `${data.rows.length} shared resources` : title(n)}</div>
           {!shelf && subtitle(n) && (

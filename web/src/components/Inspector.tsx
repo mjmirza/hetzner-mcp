@@ -14,6 +14,26 @@ const FLAG = {
   info: { icon: InformationCircleIcon, word: "Note", cls: "text-muted-foreground" },
 } as const;
 
+// Details read as words, not API keys: "Memory 8 GB", not "memory_gb 8".
+const DETAIL: Record<string, [string, string?]> = {
+  type: ["Type"], cores: ["vCPU"], memory_gb: ["Memory", "GB"], disk_gb: ["Disk", "GB"], size_gb: ["Size", "GB"],
+  image: ["Image"], ipv4: ["IPv4"], ipv6: ["IPv6"], ip: ["IP"], backups: ["Automatic backups"], firewalls: ["Firewalls"],
+  traffic_used_pct: ["Traffic used this month", "%"], created: ["Created"], ip_range: ["IP range"], zone: ["Network zone"],
+  servers: ["Servers"], targets: ["Targets"], services: ["Services"], size: ["Size", "GB"], expires: ["Expires"],
+};
+function label(k: string): string {
+  const d = DETAIL[k];
+  if (d) return d[0];
+  const t = k.replace(/_/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function value(k: string, v: unknown): string {
+  if (typeof v === "boolean") return v ? "On" : "Off";
+  if (k === "created" && typeof v === "string") return v.slice(0, 10);
+  const unit = DETAIL[k]?.[1];
+  return unit ? `${String(v)}${unit === "%" ? "%" : ` ${unit}`}` : String(v);
+}
+
 export function Inspector({ node, parts, relations, byId, currency, canDelete, onSelect, onDelete, onClose }: {
   node: MapNode;
   parts: MapNode[];
@@ -117,8 +137,8 @@ export function Inspector({ node, parts, relations, byId, currency, canDelete, o
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[13px]">
             {details.map(([k, v]) => (
               <div key={k} className="contents">
-                <dt className="text-muted-foreground">{k.replace(/_/g, " ")}</dt>
-                <dd className="min-w-0 truncate text-right">{String(v)}</dd>
+                <dt className="text-muted-foreground">{label(k)}</dt>
+                <dd className="min-w-0 truncate text-right" title={value(k, v)}>{value(k, v)}</dd>
               </div>
             ))}
           </dl>

@@ -42,20 +42,28 @@ function projectItem(item: unknown): unknown {
   const picked: Record<string, unknown> = {};
   for (const f of COMPACT_FIELDS) {
     if (!(f in inner)) continue;
-    const v = flatten(inner[f]);
+    const v = flatten(inner[f], f);
     if (v !== undefined) picked[f] = v;
   }
   return Object.keys(picked).length > 0 ? picked : inner;
 }
 
+// Size fields a model needs to answer capacity questions without asking for verbose.
+const KEEP_NESTED: Record<string, string[]> = {
+  server_type: ["name", "cores", "memory", "disk", "architecture", "cpu_type"],
+  load_balancer_type: ["name", "max_connections", "max_targets"],
+};
+
 // A nested object such as server_type carries its full price table. In the compact view it
-// collapses to the one value a reader needs: its name, its ip, or its id. Empty values go.
-function flatten(v: unknown): unknown {
+// collapses to its name, ip, or id, or to the few size fields above. Empty values go.
+function flatten(v: unknown, key = ""): unknown {
   if (v === null || v === undefined || v === "") return undefined;
   if (Array.isArray(v)) return v.length ? v : undefined;
   if (typeof v !== "object") return v;
   const o = v as Record<string, unknown>;
   if (Object.keys(o).length === 0) return undefined;
+  const keep = KEEP_NESTED[key];
+  if (keep && typeof o.name === "string") return Object.fromEntries(keep.filter((k) => o[k] !== undefined && o[k] !== null).map((k) => [k, o[k]]));
   for (const k of ["name", "ip", "id"]) if (typeof o[k] === "string" || typeof o[k] === "number") return o[k];
   return o;
 }

@@ -32,6 +32,15 @@
       if (tb.right > b.right + 1) problems.push(`list text escapes its row: "${t.textContent.trim().slice(0, 30)}"`);
     }
   }
+  // Text squeezed into a narrow column wraps one word per line. Flag any multi-word text block
+  // outside the canvas that runs to 4+ lines while under 120px wide.
+  for (const el of document.querySelectorAll("main p, main span, main div, [role=dialog] p")) {
+    if (!visible(el) || el.closest(".react-flow") || [...el.childNodes].every((c) => c.nodeType !== 3)) continue;
+    const words = el.textContent.trim().split(/\s+/).length;
+    const lh = parseFloat(getComputedStyle(el).lineHeight) || 18;
+    const b = r(el);
+    if (words >= 4 && b.width < 120 && b.height > lh * 3.5) problems.push(`text squeezed into a narrow column: "${el.textContent.trim().slice(0, 30)}"`);
+  }
   const nodes = [...document.querySelectorAll(".react-flow__node")].filter(visible);
   for (const n of nodes) {
     const card = n.firstElementChild;

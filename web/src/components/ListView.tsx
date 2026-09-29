@@ -11,7 +11,8 @@ import type { InfraGraph, MapNode } from "@/lib/types";
 // urgent things first, and plain words next to every icon. Built to be easy to scan.
 type Filter = "all" | "attention" | "save" | "paid";
 
-const CONTAINERS = new Set(["account", "project", "location", "network"]);
+// Networks are real resources, so they are listed; only grouping levels are left out.
+const CONTAINERS = new Set(["account", "project", "location"]);
 
 const FILTERS: Array<{ id: Filter; label: string; test: (n: MapNode) => boolean }> = [
   { id: "all", label: "Everything", test: () => true },

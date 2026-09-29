@@ -31,6 +31,10 @@ export async function runAudit(argv: string[]): Promise<number> {
     return 2;
   }
   const failOn = argv.includes("--fail-on") ? argv[argv.indexOf("--fail-on") + 1] : undefined;
+  if (argv.includes("--fail-on") && failOn !== "critical" && failOn !== "high") {
+    process.stderr.write("--fail-on takes critical or high.\n");
+    return 2;
+  }
   const graph = demo ? sampleGraph() : await collectGraph(loadConfig());
   const report = graph.audit ?? audit(graph);
 

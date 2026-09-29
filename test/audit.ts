@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MapNode } from "../src/map/types.js";
+import { buildProject, type Pricing } from "../src/map/collect.js";
 
 let passed = 0;
 let total = 0;
@@ -49,6 +50,24 @@ assert("two-target load balancer not flagged", !audit({ nodes: [lb(2)] }).findin
 const unknown: MapNode = { id: "x", kind: "server", label: "s", account: "A", monthly: 1, flags: [{ kind: "risk", code: "made_up", text: "odd", monthly: null }], details: {} };
 assert("unknown code still gets a usable playbook", audit({ nodes: [unknown] }).findings[0]!.console.length > 0);
 
+// Regressions found by the Codex attack pass. Each input used to slip past a check.
+const noPrices: Pricing = { currency: "EUR", vatRate: "19", serverTypes: new Map(), lbTypes: new Map(), volumePerGb: null, imagePerGb: null, backupPct: null, primaryIp: new Map(), floatingIp: new Map() };
+const blank = { servers: [], volumes: [], networks: [], firewalls: [], loadBalancers: [], floatingIps: [], primaryIps: [], snapshots: [], backups: [], certificates: [], placementGroups: [], storageBoxes: [] };
+const s6 = { id: 1, name: "v6only", status: "running", server_type: { name: "cx23" }, location: { name: "fsn1" }, public_net: { ipv4: null, ipv6: { ip: "2001:db8::/64" }, firewalls: [] }, private_net: [] };
+const v6 = buildProject({ name: "p", account: "A" }, { ...blank, servers: [s6] }, noPrices);
+assert("IPv6-only public server without firewall is flagged", v6.nodes.some((n) => n.flags.some((f) => f.code === "no_firewall")));
+const anyFw = buildProject({ name: "p", account: "A" }, { ...blank, firewalls: [{ id: 9, name: "open-all", rules: [{ direction: "in", protocol: "tcp", port: "any", source_ips: ["0.0.0.0/0"] }], applied_to: [] }] }, noPrices);
+assert("firewall rule with port any from the internet is flagged", anyFw.nodes.some((n) => n.flags.some((f) => f.code === "fw_open_ports")));
+const weird = buildProject({ name: "p", account: "A" }, { ...blank, firewalls: [{ id: 8, name: "odd", rules: [{ direction: "in", protocol: "tcp", port: "abc", source_ips: ["0.0.0.0/0"] }], applied_to: [] }] }, noPrices);
+assert("garbage port spec is not treated as open SSH", !weird.nodes.some((n) => n.flags.some((f) => f.code === "fw_open_ports")));
+const two = (group: Record<string, unknown> | null): MapNode[] => [
+  { id: "p:A/x", kind: "project", label: "x", project: "x", account: "A", monthly: null, flags: [], details: {} },
+  ...[1, 2].map((i): MapNode => ({ id: `p:A/x/srv:${i}`, kind: "server", label: `s${i}`, project: "x", account: "A", location: i === 1 ? "fsn1" : "nbg1", monthly: 5, flags: [], details: {} })),
+  ...(group ? [{ id: "p:A/x/pg:1", kind: "placement_group" as const, label: "g", project: "x", account: "A", monthly: 0, flags: [], details: group as MapNode["details"] }] : []),
+];
+assert("empty placement group does not hide the finding", audit({ nodes: two({ type: "spread", servers: 0 }) }).findings.some((f) => f.code === "no_placement_group"));
+assert("spread group with both servers clears the finding", !audit({ nodes: two({ type: "spread", servers: 2 }) }).findings.some((f) => f.code === "no_placement_group"));
+
 // Output shapes.
 const md = auditMarkdown(r, g.currency);
 assert("markdown has title, table and limits", md.startsWith("# Hetzner infrastructure audit") && md.includes("| Account |") && md.includes("cannot see"));
@@ -70,6 +89,8 @@ process.stderr.write = (() => true) as typeof process.stderr.write;
 const code = await runAudit(["--demo", "--out", file]);
 const codeFail = await runAudit(["--demo", "--fail-on", "critical"]);
 const codeBad = await runAudit(["--demo", "--out"]);
+const codeFailBad = await runAudit(["--demo", "--fail-on", "bogus"]);
+const codeFailMissing = await runAudit(["--demo", "--fail-on"]);
 process.stdout.write = origOut;
 process.stderr.write = origErr;
 assert("cli writes the full report", readFileSync(file, "utf8").startsWith("# Hetzner infrastructure audit") && statSync(file).size > 1000);
@@ -77,6 +98,8 @@ assert("cli prints the summary", captured.includes("Audit score"));
 assert("cli exit 0 by default", code === 0);
 assert("cli --fail-on critical fails on a critical finding", codeFail === 1);
 assert("cli rejects --out without a path", codeBad === 2);
+assert("cli rejects an unknown --fail-on value", codeFailBad === 2);
+assert("cli rejects --fail-on without a value", codeFailMissing === 2);
 
 process.stdout.write(`\n${passed}/${total} audit checks passed\n`);
 if (passed !== total) process.exitCode = 1;

@@ -300,7 +300,8 @@ export function audit(graph: Pick<InfraGraph, "nodes">, now = new Date()): Audit
     }
     const locs = new Set(servers.map((s) => s.location).filter(Boolean));
     if (servers.length >= 2 && locs.size === 1) out.push(finding("single_location", p, `All ${servers.length} servers in ${p.label} run in ${[...locs][0]}.`, null));
-    const hasGroup = nodes.some((n) => n.kind === "placement_group" && n.project === p.project && n.account === p.account);
+    // Only a spread group that actually holds two or more servers protects anything.
+    const hasGroup = nodes.some((n) => n.kind === "placement_group" && n.project === p.project && n.account === p.account && n.details.type === "spread" && Number(n.details.servers) >= 2);
     if (servers.length >= 2 && !hasGroup) out.push(finding("no_placement_group", p, `${p.label} has ${servers.length} servers and no placement group.`, null));
   }
   for (const lb of nodes.filter((n) => n.kind === "load_balancer" && n.details.targets === 1)) {

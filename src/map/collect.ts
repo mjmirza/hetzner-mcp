@@ -26,8 +26,9 @@ const WORLD = new Set(["0.0.0.0/0", "::/0"]);
 
 /** True when a rule's port spec (single, range, or "any") includes the port. */
 function portCovers(spec: string | null | undefined, port: number): boolean {
-  if (!spec) return true;
+  if (!spec || spec.trim().toLowerCase() === "any") return true;
   const [a, b] = spec.split("-").map(Number);
+  if (!Number.isFinite(a)) return false;
   return b ? port >= a! && port <= b : port === a;
 }
 
@@ -350,7 +351,7 @@ export function buildProject(
   for (const n of nodes) {
     const fromServer = n.details.firewalls;
     const unprotected = typeof fromServer === "number" ? fromServer === 0 : !protectedServers.has(n.id);
-    if (n.kind === "server" && n.details.ipv4 && unprotected) {
+    if (n.kind === "server" && (n.details.ipv4 || n.details.ipv6) && unprotected) {
       n.flags.push(risk("no_firewall", "No Hetzner firewall is attached and it has a public address. One mistake in its own setup exposes it."));
     }
   }

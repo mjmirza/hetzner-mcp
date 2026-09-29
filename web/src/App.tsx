@@ -7,7 +7,10 @@ import {
   ReactFlow,
   ReactFlowProvider,
   applyNodeChanges,
+  getNodesBounds,
+  getViewportForBounds,
   useReactFlow,
+  useStore,
   type Node,
   type NodeChange,
 } from "@xyflow/react";
@@ -39,6 +42,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CardContext, InfraNode, KIND_ICON } from "@/components/InfraNode";
 import { ProjectsPanel } from "@/components/ProjectsPanel";
 import { RelationEdge } from "@/components/RelationEdge";
@@ -108,6 +112,22 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
   fitKey: string;
 }) {
   const flow = useReactFlow();
+  const width = useStore((st) => st.width);
+  const height = useStore((st) => st.height);
+  // Fit the whole map only while the text stays readable. Past that, stop at 75% zoom and start
+  // at the top-left of the tree, so a large estate scrolls instead of shrinking to specks.
+  const fitReadable = useCallback(
+    (duration: number) => {
+      const ns = flow.getNodes();
+      if (!ns.length || !width || !height) return;
+      const b = getNodesBounds(ns);
+      const vp = getViewportForBounds(b, width, height, 0.15, 1.1, 0.12);
+      const MIN = 0.75;
+      if (vp.zoom >= MIN) flow.setViewport(vp, { duration });
+      else flow.setViewport({ zoom: MIN, x: 32 - b.x * MIN, y: 32 - b.y * MIN }, { duration });
+    },
+    [flow, width, height],
+  );
   // Cards grow to fit their content. Once the browser measures them, the layout reruns with
   // the real heights, so a long card never spills into the next one.
   const [heights, setHeights] = useState<Map<string, number>>(new Map());
@@ -119,9 +139,9 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
   useEffect(() => setNodes(built.nodes), [built]);
 
   useEffect(() => {
-    const t = setTimeout(() => flow.fitView({ padding: 0.12, duration: 280, maxZoom: 1.1 }), 30);
+    const t = setTimeout(() => fitReadable(280), 30);
     return () => clearTimeout(t);
-  }, [fitKey, flow]);
+  }, [fitKey, fitReadable]);
 
   // Bring the selected card and everything connected to it into view.
   const builtRef = useRef(built);
@@ -130,7 +150,7 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
     if (!selected) return;
     const t = setTimeout(() => {
       const ids = builtRef.current.nodes.filter((n) => n.selected || n.data.related).map((n) => ({ id: n.id }));
-      if (ids.length) flow.fitView({ nodes: ids, padding: 0.25, duration: 320, maxZoom: 1 });
+      if (ids.length) flow.fitView({ nodes: ids, padding: 0.25, duration: 320, maxZoom: 1, minZoom: 0.6 });
     }, 80);
     return () => clearTimeout(t);
   }, [selected, flow]);
@@ -138,7 +158,7 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
   const measuredOnce = heights.size > 0;
   useEffect(() => {
     if (!measuredOnce || selected) return;
-    const t = setTimeout(() => flow.fitView({ padding: 0.12, duration: 200, maxZoom: 1.1 }), 30);
+    const t = setTimeout(() => fitReadable(200), 30);
     return () => clearTimeout(t);
     // Refit once, when the first real measurements arrive.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -186,7 +206,6 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
         minZoom={0.15}
         maxZoom={1.8}
         proOptions={{ hideAttribution: true }}
-        fitView
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="var(--stage-dot)" />
         <Controls showInteractive={false} position="bottom-right" />
@@ -198,6 +217,9 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
           style={{ width: 168, height: 112 }}
           nodeColor={(n) => ((n.data as CardData).node.flags.some((f) => f.kind === "risk") ? "var(--risk)" : "var(--edge)")}
           nodeBorderRadius={6}
+          bgColor="var(--card)"
+          maskColor="color-mix(in oklch, var(--stage) 72%, transparent)"
+          maskStrokeColor="var(--edge)"
         />
       </ReactFlow>
     </CardContext.Provider>
@@ -223,6 +245,8 @@ export function App() {
   const animate = flowOn && !reduceMotion;
   useEffect(() => store("hzmap-flow", flowOn), [flowOn]);
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(0);
   const [addProject, setAddProject] = useState(false);
   const [creating, setCreating] = useState<NodeKind | null>(null);
   const [deleting, setDeleting] = useState<MapNode | null>(null);
@@ -324,8 +348,12 @@ export function App() {
     e.preventDefault();
     const q = query.trim().toLowerCase();
     if (!q || !graph) return;
-    const hit = graph.nodes.find((n) => n.label.toLowerCase().includes(q) || String(n.details.ip ?? "").includes(q));
-    if (hit) select(hit.id);
+    const hit = graph.nodes.find((n) => n.label.toLowerCase().includes(q) || ["ip", "ipv4", "ipv6"].some((k) => String(n.details[k] ?? "").toLowerCase().includes(q)));
+    if (hit) {
+      if (view === "list" || view === "audit") setView("hierarchy");
+      select(hit.id);
+      setSearchOpen(false);
+    }
     else toast(`Nothing called “${query.trim()}”.`);
   };
 
@@ -338,8 +366,13 @@ export function App() {
         setSelected(null);
         if (!desktop) setPanelOpen(false);
       }}
-      onSelect={select}
       onAddProject={() => setAddProject(true)}
+      onOpenAudit={(i) => {
+        setAuditOpen(i);
+        setView("audit");
+        if (!desktop) setPanelOpen(false);
+      }}
+      updated={ago(graph.generatedAt)}
     />
   );
 
@@ -376,7 +409,7 @@ export function App() {
               <TabsTrigger value="audit" className="rounded-md" aria-label="Audit">
                 <SecurityCheckIcon size={15} /> <span className="hidden lg:inline">Audit</span>
                 {graph?.audit && graph.audit.counts.critical + graph.audit.counts.high > 0 && (
-                  <span className="hidden rounded-full bg-risk px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground tabular-nums sm:inline">{graph.audit.counts.critical + graph.audit.counts.high}</span>
+                  <span aria-label={`${graph.audit.counts.critical + graph.audit.counts.high} urgent findings`} className="hidden rounded-full bg-risk px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground tabular-nums sm:inline">{graph.audit.counts.critical + graph.audit.counts.high}</span>
                 )}
               </TabsTrigger>
             </TabsList>
@@ -387,6 +420,9 @@ export function App() {
               <Search02Icon size={15} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
               <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find by name or IP" aria-label="Find a resource" className="h-8 w-48 rounded-lg pl-8" />
             </form>
+            <Button variant="ghost" size="icon-sm" className="hidden rounded-lg sm:inline-flex 2xl:hidden" onClick={() => setSearchOpen(true)} aria-label="Find a resource">
+              <Search02Icon size={17} />
+            </Button>
             {(view === "hierarchy" || view === "connections") && (
               <>
                 <Tooltip>
@@ -466,6 +502,10 @@ export function App() {
                     </DropdownMenuItem>
                   </>
                 )}
+                <DropdownMenuItem className="rounded-lg" onSelect={() => setSearchOpen(true)}>
+                  <Search02Icon size={16} />
+                  Find a resource
+                </DropdownMenuItem>
                 <DropdownMenuItem className="rounded-lg" disabled={refreshing} onSelect={() => load(true)}>
                   <Refresh03Icon size={16} />
                   Refresh from Hetzner
@@ -525,6 +565,8 @@ export function App() {
             {graph && view === "list" && <ListView graph={graph} focus={focus} selected={selected} onSelect={select} />}
             {graph && view === "audit" && (
               <AuditView
+                key={auditOpen}
+                initialOpen={auditOpen}
                 graph={graph}
                 onShow={(id) => {
                   setView("hierarchy");
@@ -613,7 +655,21 @@ export function App() {
             load(true);
           }}
         />
-        <Toaster position="bottom-center" />
+        <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+        <DialogContent className="rounded-xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Find a resource</DialogTitle>
+            <DialogDescription>Type a name or an IP address. It opens on the map.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={runSearch} role="search" className="flex gap-2">
+            <Input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="web-1 or 203.0.113.51" aria-label="Name or IP" className="rounded-lg" />
+            <Button type="submit" className="rounded-lg">
+              Find
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Toaster position="bottom-center" />
       </div>
     </TooltipProvider>
   );
