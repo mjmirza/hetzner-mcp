@@ -46,7 +46,8 @@ export function Inspector({ node, parts, relations, byId, currency, canDelete, o
   onClose?: () => void;
 }) {
   const Icon = KIND_ICON[node.kind];
-  const details = Object.entries(node.details).filter(([, v]) => v !== null && v !== "");
+  // The hourly price feeds the Spend tab; the card already shows the monthly one.
+  const details = Object.entries(node.details).filter(([k, v]) => v !== null && v !== "" && k !== "hourly");
   const parent = node.parent ? byId.get(node.parent) : undefined;
   const loc = node.location ?? (node.kind === "location" ? node.label : null);
   const codes = [node.kind === "server" ? explainType(node) : null, explainLocation(loc)].filter((x): x is string => !!x);
