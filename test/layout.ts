@@ -40,6 +40,11 @@ async function checkSize(browser: Browser, url: string, width: number, height: n
     await conn.click();
     await probePage(page, `${tag} connections`, out);
   }
+  const list = page.locator("[role=tab][aria-label=List]");
+  if (await list.isVisible()) {
+    await list.click();
+    await probePage(page, `${tag} list`, out);
+  }
   await page.close();
   return out;
 }
