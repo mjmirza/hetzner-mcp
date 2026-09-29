@@ -1,6 +1,11 @@
 /** Plain-text and Mermaid views of the graph, for MCP clients that cannot open a browser. */
 import type { InfraGraph } from "./types.js";
 import { DATA_FENCE, oneLine } from "../text.js";
+import { capText } from "../format.js";
+
+/** Projects and notes listed by name. The rest are counted, the map shows every one. */
+export const SUMMARY_PROJECTS = 20;
+const SUMMARY_CAVEATS = 12;
 
 const fmt = (v: number | null, cur: string) =>
   v == null ? "not priced" : new Intl.NumberFormat("en-DE", { style: "currency", currency: cur }).format(v);
@@ -12,7 +17,9 @@ export function summarize(g: InfraGraph, url?: string): string {
   lines.push(`Estimated monthly cost ${fmt(g.totals.monthly, cur)} across ${g.totals.byProject.length} project(s). ${g.vatNote}`);
   if (url) lines.push(`Interactive map. ${url}`);
   lines.push("", DATA_FENCE, "", "By project");
-  for (const p of g.totals.byProject) lines.push(`  ${oneLine(p.project)} (${oneLine(p.account)}). ${fmt(p.monthly, cur)}, ${p.resources} resources${p.error ? `, unreadable. ${oneLine(p.error, 200)}` : ""}`);
+  for (const p of g.totals.byProject.slice(0, SUMMARY_PROJECTS)) lines.push(`  ${oneLine(p.project)} (${oneLine(p.account)}). ${fmt(p.monthly, cur)}, ${p.resources} resources${p.error ? `, unreadable. ${oneLine(p.error, 200)}` : ""}`);
+  const more = g.totals.byProject.length - SUMMARY_PROJECTS;
+  if (more > 0) lines.push(`  and ${more} more project(s), see the map or pass target for one workspace`);
   if (g.totals.topDrivers.length) {
     lines.push("", "Top cost drivers");
     for (const d of g.totals.topDrivers.slice(0, 5)) lines.push(`  ${oneLine(d.label)} (${d.kind}, ${oneLine(d.project ?? "account")}). ${fmt(d.monthly, cur)}`);
@@ -28,8 +35,10 @@ export function summarize(g: InfraGraph, url?: string): string {
   group("risk", "Risks to fix");
   group("waste", "Money you can save");
   group("info", "Good to know");
-  lines.push("", ...g.caveats);
-  return lines.join("\n");
+  lines.push("");
+  for (const c of g.caveats.slice(0, SUMMARY_CAVEATS)) lines.push(oneLine(c, 300));
+  if (g.caveats.length > SUMMARY_CAVEATS) lines.push(`and ${g.caveats.length - SUMMARY_CAVEATS} more notes, see the map`);
+  return capText(lines.join("\n"), "Pass target to map one workspace or project.");
 }
 
 // eslint-disable-next-line no-control-regex

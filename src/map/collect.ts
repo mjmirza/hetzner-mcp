@@ -37,18 +37,39 @@ const DAY_MS = 86_400_000;
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+const PER_PAGE = 50;
+
+/** How a list was read: pages fetched, and what it covers when Hetzner still had more. */
+export interface ListInfo {
+  pages: number;
+  /** Set when the page limit stopped the read, for example "servers". */
+  truncated?: string;
+}
+const listInfos = new WeakMap<Json[], ListInfo>();
+export const listInfo = (list: Json[]): ListInfo | undefined => listInfos.get(list);
+
 export async function listAll(cfg: HetznerConfig, surface: "cloud" | "storagebox", path: string, key: string): Promise<Json[]> {
   const out: Json[] = [];
   const [bare, qs] = path.split("?");
   const extra = Object.fromEntries(new URLSearchParams(qs ?? ""));
+  const info: ListInfo = { pages: 0 };
   for (let page = 1; page <= cfg.maxPages; page++) {
-    const res = (await hetznerRequest(cfg, { surface, path: bare!, query: { ...extra, page, per_page: 50 } })) as Json;
-    const items = (res[key] as Json[] | undefined) ?? [];
-    out.push(...items);
+    const res = (await hetznerRequest(cfg, { surface, path: bare!, query: { ...extra, page, per_page: PER_PAGE } })) as Json;
+    info.pages = page;
+    const items = res[key];
+    // One push per item: spreading a huge page into push overflows the call stack.
+    if (Array.isArray(items)) for (const item of items as Json[]) out.push(item);
     const next = res.meta?.pagination?.next_page;
     if (!next) break;
+    if (page === cfg.maxPages) info.truncated = key === "images" ? (extra.type === "backup" ? "backups" : "snapshots") : key.replace(/_/g, " ");
   }
+  listInfos.set(out, info);
   return out;
+}
+
+/** The caveat for a list cut off by the page limit. */
+export function truncatedNote(cfg: HetznerConfig, what: string): string {
+  return `Only the first ${(cfg.maxPages * PER_PAGE).toLocaleString("en-US")} ${what} were read; totals are incomplete.`;
 }
 
 const num = (v: unknown): number | null => {
@@ -117,10 +138,12 @@ export function buildProject(
   const base = { project: ref.name, account: ref.account };
   nodes.push({ id: P, kind: "project", label: ref.name, parent: `a:${ref.account}`, monthly: null, details: {}, ...base, flags: [] });
 
+  const locs = new Set<string>();
   const locNode = (loc: string | undefined) => {
     const l = loc || "global";
     const id = `${P}/loc:${l}`;
-    if (!nodes.some((n) => n.id === id)) {
+    if (!locs.has(id)) {
+      locs.add(id);
       nodes.push({ id, kind: "location", label: l, parent: P, location: l, monthly: null, details: {}, ...base, flags: [] });
     }
     return id;
@@ -377,7 +400,7 @@ function certFlags(c: Json): Flag[] {
   return days <= limit ? [risk("cert_expiring", `Certificate expires in ${days} days${c.type === "managed" ? " and has not renewed yet" : ". Upload a renewed one"}.`)] : [];
 }
 
-async function collectProject(ref: ProjectRef, pricing: Pricing) {
+async function collectProject(ref: ProjectRef, pricing: Pricing): Promise<{ nodes: MapNode[]; edges: MapEdge[]; incomplete?: string[] }> {
   const c = ref.cfg;
   const [servers, volumes, networks, firewalls, loadBalancers, floatingIps, primaryIps, snapshots, backups, certificates, placementGroups] =
     await Promise.all([
@@ -395,7 +418,11 @@ async function collectProject(ref: ProjectRef, pricing: Pricing) {
     ]);
   // Storage Box uses a separate API; a token without that scope must not break the map.
   const storageBoxes = await listAll(c, "storagebox", "/storage_boxes", "storage_boxes").catch(() => []);
-  return buildProject(ref, { servers, volumes, networks, firewalls, loadBalancers, floatingIps, primaryIps, snapshots, backups, certificates, placementGroups, storageBoxes }, pricing);
+  const built = buildProject(ref, { servers, volumes, networks, firewalls, loadBalancers, floatingIps, primaryIps, snapshots, backups, certificates, placementGroups, storageBoxes }, pricing);
+  const cut = [servers, volumes, networks, firewalls, loadBalancers, floatingIps, primaryIps, snapshots, backups, certificates, placementGroups, storageBoxes]
+    .map((l) => listInfo(l)?.truncated)
+    .filter((w): w is string => !!w);
+  return cut.length ? { ...built, incomplete: cut.map((w) => truncatedNote(c, w)) } : built;
 }
 
 async function collectRobot(cfg: HetznerConfig, account: string): Promise<MapNode[]> {
@@ -422,7 +449,7 @@ export interface CollectOptions {
   /** Projects read at the same time. Each one already makes about a dozen parallel calls. */
   concurrency?: number;
   /** Test seams, so the offline suite never touches the network. */
-  collector?: (ref: ProjectRef, pricing: Pricing) => Promise<{ nodes: MapNode[]; edges: MapEdge[] }>;
+  collector?: (ref: ProjectRef, pricing: Pricing) => Promise<{ nodes: MapNode[]; edges: MapEdge[]; incomplete?: string[] }>;
   pricingLoader?: (cfg: HetznerConfig) => Promise<Pricing>;
 }
 
@@ -439,6 +466,7 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
   const errors: Array<{ project: string; account: string; error: string }> = [];
+  const incomplete: string[] = [];
   const accounts = new Set(projects.map((p) => p.account));
   if (withRobot) accounts.add(defaultAccount(env));
   for (const a of accounts) nodes.push({ id: `a:${a}`, kind: "account", label: a, account: a, monthly: null, flags: [], details: {} });
@@ -466,8 +494,17 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
   results.forEach((r, i) => {
     const ref = projects[i]!;
     if (r.status === "fulfilled") {
-      nodes.push(...r.value.nodes);
-      edges.push(...r.value.edges);
+      for (const n of r.value.nodes) nodes.push(n);
+      for (const e of r.value.edges) edges.push(e);
+      const cut = r.value.incomplete;
+      if (cut?.length) {
+        const projectNode = r.value.nodes.find((n) => n.kind === "project");
+        if (projectNode) {
+          projectNode.details.incomplete = true;
+          for (const text of cut) projectNode.flags.push(info("list_incomplete", text));
+        }
+        for (const text of cut) incomplete.push(`Project ${ref.name}: ${text}`);
+      }
     } else {
       const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
       errors.push({ project: ref.name, account: ref.account, error: msg });
@@ -492,6 +529,7 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
     errors,
     projectCount: projects.length,
   });
+  for (const text of incomplete) graph.caveats.push(text);
   if (opts.workspace !== undefined) graph.workspace = opts.workspace;
   return graph;
 }

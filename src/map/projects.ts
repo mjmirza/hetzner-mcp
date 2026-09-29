@@ -35,9 +35,13 @@ export function discoverProjects(base: HetznerConfig, env: NodeJS.ProcessEnv = p
   const ws0 = defaultWorkspace(env);
   const out: ProjectRef[] = [];
   const seen = new Set<string>();
+  // account + name pairs already taken, so each check is a lookup instead of a scan.
+  const taken = new Set<string>();
+  const pair = (account: string, name: string) => `${account}\u0000${name}`;
   if (base.cloudToken || base.cloudTokenError) {
     const name = normName(env.HETZNER_PROJECT_NAME) || "default";
     out.push({ name, account: account0, workspace: ws0, cfg: base, source: "env" });
+    taken.add(pair(account0, name));
     if (base.cloudToken) seen.add(base.cloudToken);
   }
   for (const [key, value] of Object.entries(env).sort(([a], [b]) => a.localeCompare(b))) {
@@ -52,17 +56,19 @@ export function discoverProjects(base: HetznerConfig, env: NodeJS.ProcessEnv = p
     const workspace = normName(env[`HETZNER_WORKSPACE_${suffix}`]) || ws0;
     // _PROD and _prod give the same name; the later one gets a suffix so ids never collide.
     let name = base0;
-    for (let i = 2; out.some((o) => o.name === name && o.account === account); i++) name = `${base0}-${i}`;
+    for (let i = 2; taken.has(pair(account, name)); i++) name = `${base0}-${i}`;
     // Robot credentials belong to the default account only; extra projects are cloud only.
     const cfg: HetznerConfig = { ...base, cloudToken: token, robotUser: undefined, robotPassword: undefined };
     if (error) cfg.cloudTokenError = error;
     else delete cfg.cloudTokenError;
     out.push({ name, account, workspace, cfg, source: "env" });
+    taken.add(pair(account, name));
   }
   // Projects connected from the map. An env token always wins over a saved duplicate.
   for (const p of stored) {
-    if (seen.has(p.token) || out.some((o) => o.name === p.name && o.account === normName(p.account))) continue;
+    if (seen.has(p.token) || taken.has(pair(normName(p.account), p.name))) continue;
     seen.add(p.token);
+    taken.add(pair(normName(p.account), p.name));
     out.push({ name: p.name, account: normName(p.account), workspace: normName(p.workspace) || ws0, cfg: { ...base, cloudToken: p.token, robotUser: undefined, robotPassword: undefined }, source: "local" });
   }
   return out;

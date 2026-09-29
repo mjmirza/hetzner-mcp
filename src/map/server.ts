@@ -13,6 +13,7 @@ import { DEFAULT_WORKSPACE, defaultWorkspace, discoverProjects, listWorkspaces, 
 import { readStored } from "./store.js";
 import { sampleGraph } from "./sample.js";
 import { collectStatuses, sampleStatuses } from "./live.js";
+import { invalidateGraphs } from "./graph-cache.js";
 import type { StatusSnapshot } from "./status.js";
 import { ActionError, apply, catalog, connectProject, deleteNode, deletePlan, disconnectProject, meta, plan, projectById, publicCatalog, type ActionEnv } from "./actions.js";
 import type { InfraGraph } from "./types.js";
@@ -23,6 +24,8 @@ const HOST = "127.0.0.1";
 const MIN_REFRESH_MS = 10_000;
 const MAX_BODY = 16 * 1024;
 const MAX_CACHED_WORKSPACES = 12;
+/** A request waits this long for a map or status read, then gets a clear error while the read goes on. */
+const JOB_DEADLINE_MS = 45_000;
 const WEB_DIR = fileURLToPath(new URL("../web/", import.meta.url));
 // Running from source (tsx) serves the copy built into dist.
 const WEB_FALLBACK = fileURLToPath(new URL("../../dist/web/", import.meta.url));
@@ -93,6 +96,7 @@ export async function startMapServer(
   cfg: HetznerConfig,
   opts: { port?: number; demo?: boolean; env?: NodeJS.ProcessEnv; collect?: (workspace: string | undefined) => Promise<InfraGraph>;
     statuses?: (workspace: string | undefined) => Promise<StatusSnapshot>;
+    deadlineMs?: number;
   } = {},
 ): Promise<MapServerHandle> {
   if (running) return running;
@@ -102,6 +106,14 @@ export async function startMapServer(
   const cache = new Map<string, { graph: InfraGraph; at: number }>();
   const inflight = new Map<string, Promise<InfraGraph>>();
   const collect = opts.collect ?? ((workspace: string | undefined) => collectGraph(cfg, env, { workspace }));
+  const deadline = opts.deadlineMs ?? JOB_DEADLINE_MS;
+  const withinDeadline = <T>(job: Promise<T>, what: string): Promise<T> => {
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new ActionError(504, `Reading ${what} from Hetzner is taking longer than ${Math.round(deadline / 1000)} seconds. It carries on in the background, try again shortly.`)), deadline);
+    });
+    return Promise.race([job, late]).finally(() => clearTimeout(timer));
+  };
 
   const workspaces = (): WorkspaceSummary[] => {
     if (opts.demo) {
@@ -117,25 +129,35 @@ export async function startMapServer(
     if (opts.demo) return { ...sampleGraph(), workspace };
     const key = workspace ?? "";
     const hit = cache.get(key);
-    if (hit && Date.now() - hit.at < (force ? MIN_REFRESH_MS : 60_000)) return hit.graph;
+    if (hit && Date.now() - hit.at < (force ? MIN_REFRESH_MS : 60_000)) {
+      // Most recently used goes last, so eviction drops the workspace unused the longest.
+      cache.delete(key);
+      cache.set(key, hit);
+      return hit.graph;
+    }
     let job = inflight.get(key);
     if (!job) {
-      // Only remove our own entry; after a clear, a newer request for this key may own it.
-      const mine: Promise<InfraGraph> = collect(workspace).finally(() => {
-        if (inflight.get(key) === mine) inflight.delete(key);
-      });
+      const startedAt = generation;
+      // Cached when the read ends, even if the request that started it already gave up waiting.
+      const mine: Promise<InfraGraph> = collect(workspace)
+        .then((graph) => {
+          // A change landed while this graph was being read, so it is stale. Serve it once, never cache it.
+          if (startedAt === generation) {
+            cache.delete(key);
+            cache.set(key, { graph, at: Date.now() });
+            // Keep only the most recently loaded workspaces in memory.
+            while (cache.size > MAX_CACHED_WORKSPACES) cache.delete(cache.keys().next().value!);
+          }
+          return graph;
+        })
+        .finally(() => {
+          // Only remove our own entry; after a clear, a newer request for this key may own it.
+          if (inflight.get(key) === mine) inflight.delete(key);
+        });
       job = mine;
       inflight.set(key, job);
     }
-    const startedAt = generation;
-    const graph = await job;
-    // A change landed while this graph was being read, so it is stale. Serve it once, never cache it.
-    if (startedAt !== generation) return graph;
-    cache.delete(key);
-    cache.set(key, { graph, at: Date.now() });
-    // Keep only the most recently loaded workspaces in memory.
-    while (cache.size > MAX_CACHED_WORKSPACES) cache.delete(cache.keys().next().value!);
-    return graph;
+    return withinDeadline(job, "the map");
   };
 
   // A fresh secret each launch, so another local user or a page cannot call the API.
@@ -245,6 +267,7 @@ export async function startMapServer(
         inflight.clear();
         cache.clear();
         statusCache.clear();
+        invalidateGraphs();
         json(200, { ok: true, message });
       };
       switch (url.pathname) {
@@ -273,16 +296,26 @@ export async function startMapServer(
   });
 
   // Several open tabs share one poll, so the rate limit never pays per tab.
-  const statusCache = new Map<string, { at: number; job: Promise<StatusSnapshot> }>();
+  // A running poll is shared until it ends, then its answer is reused for 20 seconds.
+  const statusCache = new Map<string, { at: number; job: Promise<StatusSnapshot>; done: boolean }>();
   const liveStatus = (workspace: string | undefined): Promise<StatusSnapshot> => {
     if (opts.demo) return Promise.resolve(sampleStatuses(workspace));
     const key = workspace ?? "";
     const hit = statusCache.get(key);
-    if (hit && Date.now() - hit.at < MIN_REFRESH_MS * 2) return hit.job;
+    if (hit && (!hit.done || Date.now() - hit.at < MIN_REFRESH_MS * 2)) return withinDeadline(hit.job, "live status");
     const job = opts.statuses ? opts.statuses(workspace) : collectStatuses(cfg, env, { workspace });
-    job.catch(() => statusCache.delete(key));
-    statusCache.set(key, { at: Date.now(), job });
-    return job;
+    const entry = { at: Date.now(), job, done: false };
+    job.then(
+      () => {
+        entry.done = true;
+        entry.at = Date.now();
+      },
+      () => {
+        if (statusCache.get(key) === entry) statusCache.delete(key);
+      },
+    );
+    statusCache.set(key, entry);
+    return withinDeadline(job, "live status");
   };
 
   // Try the chosen port, then the next nine, so a busy port never blocks the map.

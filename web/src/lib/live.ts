@@ -4,6 +4,8 @@ import { api } from "./api";
 import type { InfraGraph, MapNode } from "./types";
 
 const POLL_MS = 60_000;
+/** A poll that has not answered by then is dropped and counts as failed. */
+const POLL_TIMEOUT_MS = 30_000;
 
 export interface LiveLookup {
   view: (n: MapNode) => LiveView | undefined;
@@ -25,16 +27,24 @@ export function useLiveStatus(graph: InfraGraph | null): LiveLookup {
     if (!graph) return;
     last.current = Date.parse(graph.generatedAt) || Date.now();
     let alive = true;
+    let busy: AbortController | null = null;
     const poll = async () => {
-      if (document.visibilityState !== "visible") return;
+      // One poll at a time: a slow answer skips the next tick instead of stacking requests.
+      if (document.visibilityState !== "visible" || busy) return;
       last.current = Date.now();
+      const ctrl = new AbortController();
+      busy = ctrl;
+      const timer = setTimeout(() => ctrl.abort(), POLL_TIMEOUT_MS);
       try {
-        const s = await api.status(graph.workspace);
+        const s = await api.status(graph.workspace, ctrl.signal);
         if (!alive) return;
         setSnap(s);
         setFailed(false);
       } catch {
         if (alive) setFailed(true);
+      } finally {
+        clearTimeout(timer);
+        busy = null;
       }
     };
     const timer = setInterval(poll, POLL_MS);
@@ -45,6 +55,7 @@ export function useLiveStatus(graph: InfraGraph | null): LiveLookup {
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
+      busy?.abort();
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };

@@ -28,6 +28,11 @@ export interface StatusSnapshot {
   entries: Record<string, LiveEntry>;
   /** Project node ids Hetzner could not be read for on this check. */
   failedProjects: string[];
+  /** Large projects skipped on this check; their values come from an earlier one. */
+  deferredProjects?: string[];
+  /** Projects where the page limit stopped the read, so some resources have no value. */
+  incompleteProjects?: string[];
+  note?: string;
 }
 
 const CHANGING = new Set(["initializing", "starting", "stopping", "migrating", "rebuilding"]);
@@ -107,7 +112,8 @@ export function liveOf(n: MapNode, snap: StatusSnapshot | null, failed: boolean)
   if (snap && !projectFailed) entry = snap.entries[n.id] ?? {};
   const d = describe(n.kind, entry);
   const stale = failed || projectFailed;
-  if (snap && !projectFailed && !snap.entries[n.id]) d.raw = "not returned by Hetzner on the last check";
+  if (snap && !projectFailed && !snap.entries[n.id]) d.raw = snap.incompleteProjects?.includes(projectOf(n)) ? "not read, the project has more resources than one check reads" : "not returned by Hetzner on the last check";
+  else if (snap?.deferredProjects?.includes(projectOf(n))) d.raw += " (from an earlier check, large projects are checked less often)";
   return { ...d, state: stale ? "stale" : d.known, stale };
 }
 

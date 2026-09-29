@@ -53,7 +53,7 @@ export const api = {
     const s = q.toString();
     return call<InfraGraph>(`/api/graph${s ? `?${s}` : ""}`);
   },
-  status: (workspace?: string) => call<StatusSnapshot>(`/api/status${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`),
+  status: (workspace?: string, signal?: AbortSignal) => call<StatusSnapshot>(`/api/status${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`, { signal }),
   workspaces: () => call<{ default: string; workspaces: WorkspaceSummary[] }>("/api/workspaces"),
   meta: () => call<Meta>("/api/meta"),
   catalog: (project: string) => call<Catalog>(`/api/catalog?project=${encodeURIComponent(project)}`),
