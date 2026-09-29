@@ -224,10 +224,11 @@ export async function startMapServer(
       if (!authorized(req.headers["x-hzmap"])) {
         // No key means the page was opened without the full link; a wrong key means the map restarted.
         const sent = req.headers["x-hzmap"];
-        const why = !sent || sent === "1"
+        const missing = !sent || sent === "1";
+        const why = missing
           ? "This page was opened without its access key. Open the full link the map printed when it started (it ends in #k=...)."
           : "This map link is out of date because the map restarted. Open the new link it printed.";
-        res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end(why);
+        res.writeHead(403, { ...common, "Content-Type": "text/plain", "X-Hzmap-Key": missing ? "missing" : "stale" }).end(why);
         return;
       }
       const origin = req.headers.origin;

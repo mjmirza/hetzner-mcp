@@ -5,6 +5,11 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Changed
+- A map page opened without its access key, or with the key of an earlier run, now asks for the
+  key. Paste the link the map printed (or just the key) and the map opens. Before, the page
+  showed a message and a Try again button that could not help.
+
 ## [0.6.0] - 2026-09-29
 
 ### Added

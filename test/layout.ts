@@ -187,6 +187,32 @@ async function checkBlockedStorage(browser: Browser): Promise<string[]> {
   return out.map((p) => `blocked storage: ${p}`);
 }
 
+// Opened without its key, the page asks for it and opens once a pasted link is accepted.
+async function checkKeyEntry(browser: Browser): Promise<string[]> {
+  const out: string[] = [];
+  const handle = await startMapServer(loadConfig(), { demo: true, port: 43483 });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await page.goto(handle.url.split("#")[0]!);
+    const input = page.locator("#map-key");
+    const shown = await input.waitFor({ timeout: 8000 }).then(() => true, () => false);
+    if (!shown) return ["key entry: no key box when the page has no key"];
+    await input.fill("not a key");
+    await page.getByRole("button", { name: "Open the map" }).click();
+    if (!/not the map link or key/.test(await page.locator("#map-key-problem").innerText())) out.push("a wrong value is not explained");
+    await input.fill(handle.url);
+    await page.getByRole("button", { name: "Open the map" }).click();
+    // Phones open on the List view, so check that the box is gone and the estate loaded.
+    await page
+      .waitForFunction(() => !document.querySelector("#map-key") && /production/.test(document.querySelector("main")?.textContent ?? ""), null, { timeout: 8000 })
+      .catch(() => out.push("a pasted link does not open the map"));
+  } finally {
+    await page.close();
+    await handle.close();
+  }
+  return out.map((p) => `key entry: ${p}`);
+}
+
 async function main(): Promise<void> {
   const handle = await startMapServer(loadConfig(), { demo: true, port: 43480 });
   const browser = await chromium.launch();
@@ -200,6 +226,7 @@ async function main(): Promise<void> {
   try {
     results.push({ layouts: 1, cards: 0, failures: await checkWorkspaces(browser) });
     results.push({ layouts: 1, cards: 0, failures: await checkNewKey(browser) });
+    results.push({ layouts: 1, cards: 0, failures: await checkKeyEntry(browser) });
     results.push({ layouts: 1, cards: 0, failures: await checkBlockedStorage(browser) });
   } finally {
     await browser.close();

@@ -53,7 +53,8 @@ import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { AddProjectDialog } from "@/components/AddProjectDialog";
 import { CreateDialog } from "@/components/CreateDialog";
 import { DeleteDialog } from "@/components/DeleteDialog";
-import { api } from "@/lib/api";
+import { AccessKeyError, api } from "@/lib/api";
+import { KeyEntry } from "@/components/KeyEntry";
 import { planFlow, type BuildResult, type CardData, type Direction } from "@/lib/layout";
 import { runDagre } from "@/lib/dagre-run";
 import { useLiveStatus, type LiveLookup } from "@/lib/live";
@@ -292,6 +293,7 @@ export function App() {
   const [graph, setGraph] = useState<InfraGraph | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [keyNeeded, setKeyNeeded] = useState<"missing" | "stale" | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = useState<ViewMode>(() => (window.matchMedia("(max-width: 639px)").matches ? "list" : stored<ViewMode>("hzmap-view", "hierarchy")));
   const [direction, setDirection] = useState<Direction>(() => stored<Direction>("hzmap-dir", "LR"));
@@ -368,8 +370,11 @@ export function App() {
       }
       setMeta(m);
       setError(null);
+      setKeyNeeded(null);
     } catch (err) {
-      if (sequencer.isCurrent(seq)) setError(err instanceof Error ? err.message : String(err));
+      if (!sequencer.isCurrent(seq)) return;
+      if (err instanceof AccessKeyError) setKeyNeeded(err.reason);
+      else setError(err instanceof Error ? err.message : String(err));
     } finally {
       if (sequencer.isCurrent(seq)) setRefreshing(false);
     }
@@ -655,12 +660,21 @@ export function App() {
           {desktop && <aside className="w-72 shrink-0 overflow-hidden rounded-2xl bg-card shadow-[var(--shadow)]">{panel}</aside>}
 
           <main className="relative min-w-0 flex-1 overflow-hidden rounded-2xl bg-stage">
-            {!graph && !error && (
+            {keyNeeded && !graph && (
+              <KeyEntry
+                reason={keyNeeded}
+                onReady={() => {
+                  setKeyNeeded(null);
+                  load(true);
+                }}
+              />
+            )}
+            {!graph && !error && !keyNeeded && (
               <div className="flex h-full items-center justify-center gap-2 rounded-2xl text-[13px] text-muted-foreground">
                 <Loading03Icon size={18} className="animate-spin" /> Reading your Hetzner projects
               </div>
             )}
-            {error && !graph && (
+            {error && !graph && !keyNeeded && (
               <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl p-6 text-center">
                 <p className="max-w-md text-[14px]">{error}</p>
                 <Button className="rounded-lg" onClick={() => load(true)}>
