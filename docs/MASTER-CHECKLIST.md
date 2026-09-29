@@ -18,7 +18,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 ## B. Endpoint coverage and the audit
 
 - [x] DONE. Generic per-surface request tools give complete reach to every endpoint. Evidence. src/tools/generic.ts.
-- [x] DONE. Curated read tools across all surfaces. Evidence. src/tools/resources.ts, 28 tools.
+- [x] DONE. Curated read tools across all surfaces. Evidence. src/tools/resources.ts, 27 tools as of 0.5.0.
 - [x] DONE. Live endpoint audit with real HTTP results and a deprecation log. Evidence. docs/ENDPOINT-AUDIT.md, docs/AUDIT.md.
 - [x] DONE. Eval harness validates every endpoint live, 39 of 39 passed. Evidence. test/eval.ts, docs/AUDIT.md.
 - [x] DONE. No fabrication. every endpoint proven by a live call in docs/AUDIT.md, 39 of 39.
@@ -47,7 +47,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 - [x] DONE. Compact projection of list responses by default, verbose on request. Evidence. src/format.js.
 - [x] DONE. Hard response size cap with a truncation hint. Evidence. src/format.js MAX_CHARS.
 - [x] DONE. Concise tool descriptions, lean tool count. Evidence. src/tools/.
-- [x] DONE. Token footprint documented, 32 tools, compact default, 24000 char cap. Evidence. docs/TOKEN-BUDGET.md.
+- [x] DONE. Token footprint documented, 57 tools as of 0.5.0, compact default, 24000 char cap. Evidence. docs/TOKEN-BUDGET.md.
 
 ## F. Quality and tooling, no stupidity
 

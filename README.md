@@ -158,6 +158,8 @@ It is read-only and local. It only makes GET requests, listens on 127.0.0.1 only
 
 ## Cost safety, the part you actually worry about
 
+Upgrading from 0.4? Paid resources are now off by default. Rerun `npx hetzner-mcp setup` and answer yes when it asks about paid resources, or add `HETZNER_MCP_ALLOW_BILLED=1` to your client config. Two tools were retired along with the Hetzner endpoints behind them. `cloud_list_datacenters` is replaced by `cloud_list_locations` and `find_capacity`, and `robot_list_storageboxes` by `storagebox_list`.
+
 A wrong API call should never cost you money you did not intend. This tool is built around that.
 
 - Every list and get is free on Hetzner. Use them as much as you like.
