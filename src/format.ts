@@ -4,7 +4,11 @@
  * Callers can pass verbose to get the full payload when they actually need it.
  */
 
+import { DATA_FENCE, oneLine } from "./text.js";
+
 const MAX_CHARS = 24000;
+// Free text people type into Hetzner. Kept as JSON, but flattened to one bounded line.
+const TEXT_FIELDS = new Set(["name", "description", "server_name"]);
 
 /** Fields worth keeping in a compact list view across Cloud, Storage Box, and Robot. */
 const COMPACT_FIELDS = [
@@ -96,9 +100,23 @@ function compact(value: unknown): unknown {
   return value;
 }
 
+function clean(v: unknown, key = ""): unknown {
+  if (typeof v === "string") return TEXT_FIELDS.has(key) ? oneLine(v, 200) : v;
+  if (Array.isArray(v)) return v.map((x) => clean(x, key === "labels" ? "" : key));
+  if (!v || typeof v !== "object") return v;
+  const o = v as Record<string, unknown>;
+  if (key === "labels") return Object.fromEntries(Object.entries(o).map(([k, x]) => [oneLine(k, 200), typeof x === "string" ? oneLine(x, 200) : x]));
+  return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, clean(x, k)]));
+}
+
+/** The fence line for a result that carries names, or nothing, to keep plain results small. */
+function dataNote(text: string): string | undefined {
+  return /"(name|labels|description|server_name)":/.test(text) ? DATA_FENCE : undefined;
+}
+
 /** Render a value as text for a tool result, compacting and capping unless verbose. */
 export function formatResult(value: unknown, verbose: boolean): string {
-  const shaped = verbose ? value : compact(value);
+  const shaped = clean(verbose ? value : compact(value));
   let text = typeof shaped === "string" ? shaped : JSON.stringify(shaped);
   if (text.length > MAX_CHARS) {
     text =
@@ -106,4 +124,11 @@ export function formatResult(value: unknown, verbose: boolean): string {
       `\n... [truncated at ${MAX_CHARS} characters. Narrow with an id or query, fetch one page, and use verbose only when needed.]`;
   }
   return text;
+}
+
+/** Content blocks for a tool result: the JSON, then the data fence when names are present. */
+export function resultBlocks(value: unknown, verbose: boolean): Array<{ type: "text"; text: string }> {
+  const text = formatResult(value, verbose);
+  const note = dataNote(text);
+  return note ? [{ type: "text", text }, { type: "text", text: note }] : [{ type: "text", text }];
 }

@@ -13,7 +13,7 @@ function text(value: string, isError = false) {
 
 // Hetzner resource ids are positive integers. Accept a numeric string too, but reject anything
 // that is not all digits so a stray value never reaches a path.
-const id = z.union([z.number().int().positive(), z.string().regex(/^[0-9]+$/, "id must be a positive integer")]);
+export const id = z.union([z.number().int().positive(), z.string().regex(/^[0-9]+$/, "id must be a positive integer")]);
 const enc = (v: string | number) => encodeURIComponent(String(v));
 
 /**

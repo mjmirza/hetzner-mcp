@@ -14,7 +14,7 @@ import { mkdirSync, rmSync, utimesSync } from "node:fs";
 import { sampleGraph } from "../src/map/sample.js";
 import { toMermaid } from "../src/map/summary.js";
 import { auditMarkdown } from "../src/map/audit.js";
-import { disconnectProject } from "../src/map/actions.js";
+import { ACCOUNT, disconnectProject, projectById } from "../src/map/actions.js";
 import { activeWorkspace, loadSequencer, pickWorkspace } from "../web/src/lib/workspace.js";
 import type { InfraGraph } from "../src/map/types.js";
 
@@ -331,6 +331,33 @@ assert("a file with bad rows exits 1", (await runProjects(["import", file], ienv
   assert("a remembered workspace that is gone loads the default and is flagged", gone.target === undefined && gone.stale);
   assert("no remembered workspace is not stale", !pickWorkspace(null, list).stale && pickWorkspace("Client", list).target === "Client");
   assert("writes go to the selected workspace", activeWorkspace("Client", list) === "Client" && activeWorkspace(null, list) === "Personal");
+}
+
+// Pentest 2026-09-29: names are text an attacker can shape, and tokens can be mis-pasted.
+{
+  const X = String.fromCharCode;
+  const bad = ["Acme" + X(0x202e) + " HbmG", "Ac" + X(0x200b) + "me", "a" + X(0x2028) + "b", "x" + X(0x9b) + "31m", "a/b", "x".repeat(61)];
+  assert("D5: account names with bidi, zero-width, line separator, C1, slash or >60 chars are rejected", bad.every((s) => !ACCOUNT.test(s)));
+  assert("D5: ordinary account names still pass", ["Acme GmbH", "Müller & Söhne", "Client X"].every((s) => ACCOUNT.test(s)));
+
+  const zw = parseImport(`W,Acm${X(0x200b)}e GmbH,prod,${tok("k")}\nW,ＡＣＭＥ,web,${tok("l")}`, "x.csv");
+  assert("D6: import normalizes zero-width and full-width names before validating", zw.invalid.length === 0 && zw.rows[0]!.account === "Acme GmbH" && zw.rows[1]!.account === "ACME");
+  const denv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home() };
+  const drep = await importProjects(denv, `W,Acme GmbH,prod,${tok("m")}\nW,Acm${X(0x200b)}e GmbH,prod,${tok("n")}`, "x.csv");
+  assert("D6: a look-alike account collides with the real one instead of becoming a twin", drep.added.length === 1 && drep.duplicates.length === 1);
+
+  const cenv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home(), HETZNER_PROJECT_NAME: "prod", HETZNER_CLOUD_TOKEN_PROD: tok("p"), HETZNER_CLOUD_TOKEN_prod: tok("q") };
+  const cp = discoverProjects(loadConfig({ HETZNER_CLOUD_TOKEN: tok("o") }), cenv);
+  const ids = cp.map((p) => `p:${p.account}/${p.name}`);
+  assert("D7: _PROD, _prod and the default prod get distinct project ids", cp.length === 3 && new Set(ids).size === 3, ids.join(" "));
+  const ae = { base: loadConfig({ HETZNER_CLOUD_TOKEN: tok("o") }), env: cenv, demo: false };
+  assert("D7: every id resolves to its own token", new Set(ids.map((id) => projectById(ae, id).cfg.cloudToken)).size === 3);
+
+  const CANARY = "LEAKCANARYTAIL" + "B".repeat(20);
+  const benv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home(), HETZNER_CLOUD_TOKEN_STAGING: `${"A".repeat(30)}\n${CANARY}` };
+  const bp = discoverProjects(loadConfig({}), benv).find((p) => p.name === "staging");
+  assert("B1: a token with a line break is not used", !!bp && bp.cfg.cloudToken === undefined);
+  assert("B1: the error names the variable, never the value", !!bp?.cfg.cloudTokenError?.includes("HETZNER_CLOUD_TOKEN_STAGING") && !bp.cfg.cloudTokenError.includes("LEAKCANARY"));
 }
 
 process.stdout.write(`\n${passed}/${total} workspace checks passed\n`);

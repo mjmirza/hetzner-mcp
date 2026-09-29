@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { STATE_LABEL } from "../../../src/map/status";
 import { StatusDot } from "@/components/LiveStatus";
 import type { LiveLookup } from "@/lib/live";
-import { KIND_LABEL, money } from "@/lib/format";
+import { KIND_LABEL, money, visible } from "@/lib/format";
 import { cityName, explainLocation, explainType, placeName } from "@/lib/glossary";
 import type { CardData } from "@/lib/layout";
 import type { MapNode, NodeKind } from "@/lib/types";
@@ -73,7 +73,7 @@ function subtitle(n: MapNode): string {
 
 /** The card title. Locations read as a place, not a code. */
 function title(n: MapNode): string {
-  return n.kind === "location" ? placeName(n.label) ?? n.label : n.label;
+  return n.kind === "location" ? placeName(n.label) ?? n.label : visible(n.label);
 }
 
 /** Hover text that spells out every short code on the card. */
@@ -109,7 +109,7 @@ function Row({ n }: { n: MapNode }) {
       <Icon size={14} className="shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate">
         <span className="text-muted-foreground">{KIND_LABEL[n.kind]} </span>
-        {n.label}
+        {visible(n.label)}
       </span>
       {risky && <Alert02Icon size={13} className="shrink-0 text-risk" aria-label="Needs attention" />}
       <span className="shrink-0 tabular-nums text-muted-foreground">{money(n.monthly, currency)}</span>

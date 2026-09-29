@@ -10,7 +10,8 @@
  *   HETZNER_WORKSPACE_<NAME>       optional workspace a project belongs to
  *   HETZNER_WORKSPACE_NAME         workspace for the default project, "Personal" when unset
  */
-import type { HetznerConfig } from "../config.js";
+import { readToken, type HetznerConfig } from "../config.js";
+import { normName } from "../text.js";
 import type { StoredProject } from "./store.js";
 
 export interface ProjectRef {
@@ -26,36 +27,43 @@ export interface ProjectRef {
 const PREFIX = "HETZNER_CLOUD_TOKEN_";
 export const DEFAULT_WORKSPACE = "Personal";
 
-export const defaultWorkspace = (env: NodeJS.ProcessEnv = process.env): string => env.HETZNER_WORKSPACE_NAME?.trim() || DEFAULT_WORKSPACE;
-export const defaultAccount = (env: NodeJS.ProcessEnv = process.env): string => env.HETZNER_ACCOUNT_NAME?.trim() || "Hetzner account";
+export const defaultWorkspace = (env: NodeJS.ProcessEnv = process.env): string => normName(env.HETZNER_WORKSPACE_NAME) || DEFAULT_WORKSPACE;
+export const defaultAccount = (env: NodeJS.ProcessEnv = process.env): string => normName(env.HETZNER_ACCOUNT_NAME) || "Hetzner account";
 
 export function discoverProjects(base: HetznerConfig, env: NodeJS.ProcessEnv = process.env, stored: StoredProject[] = []): ProjectRef[] {
   const account0 = defaultAccount(env);
   const ws0 = defaultWorkspace(env);
   const out: ProjectRef[] = [];
   const seen = new Set<string>();
-  if (base.cloudToken) {
-    const name = env.HETZNER_PROJECT_NAME?.trim() || "default";
+  if (base.cloudToken || base.cloudTokenError) {
+    const name = normName(env.HETZNER_PROJECT_NAME) || "default";
     out.push({ name, account: account0, workspace: ws0, cfg: base, source: "env" });
-    seen.add(base.cloudToken);
+    if (base.cloudToken) seen.add(base.cloudToken);
   }
   for (const [key, value] of Object.entries(env).sort(([a], [b]) => a.localeCompare(b))) {
     if (!key.startsWith(PREFIX) || !value?.trim()) continue;
-    const token = value.trim();
-    if (seen.has(token)) continue;
-    seen.add(token);
+    // A malformed token stays on the map as an unreadable project that names its variable.
+    const { token, error } = readToken(env, key);
+    if (token && seen.has(token)) continue;
+    if (token) seen.add(token);
     const suffix = key.slice(PREFIX.length);
-    const name = suffix.toLowerCase().replace(/_/g, "-");
-    const account = env[`HETZNER_ACCOUNT_${suffix}`]?.trim() || account0;
-    const workspace = env[`HETZNER_WORKSPACE_${suffix}`]?.trim() || ws0;
+    const base0 = suffix.toLowerCase().replace(/_/g, "-");
+    const account = normName(env[`HETZNER_ACCOUNT_${suffix}`]) || account0;
+    const workspace = normName(env[`HETZNER_WORKSPACE_${suffix}`]) || ws0;
+    // _PROD and _prod give the same name; the later one gets a suffix so ids never collide.
+    let name = base0;
+    for (let i = 2; out.some((o) => o.name === name && o.account === account); i++) name = `${base0}-${i}`;
     // Robot credentials belong to the default account only; extra projects are cloud only.
-    out.push({ name, account, workspace, cfg: { ...base, cloudToken: token, robotUser: undefined, robotPassword: undefined }, source: "env" });
+    const cfg: HetznerConfig = { ...base, cloudToken: token, robotUser: undefined, robotPassword: undefined };
+    if (error) cfg.cloudTokenError = error;
+    else delete cfg.cloudTokenError;
+    out.push({ name, account, workspace, cfg, source: "env" });
   }
   // Projects connected from the map. An env token always wins over a saved duplicate.
   for (const p of stored) {
-    if (seen.has(p.token) || out.some((o) => o.name === p.name && o.account === p.account)) continue;
+    if (seen.has(p.token) || out.some((o) => o.name === p.name && o.account === normName(p.account))) continue;
     seen.add(p.token);
-    out.push({ name: p.name, account: p.account, workspace: p.workspace?.trim() || ws0, cfg: { ...base, cloudToken: p.token, robotUser: undefined, robotPassword: undefined }, source: "local" });
+    out.push({ name: p.name, account: normName(p.account), workspace: normName(p.workspace) || ws0, cfg: { ...base, cloudToken: p.token, robotUser: undefined, robotPassword: undefined }, source: "local" });
   }
   return out;
 }
@@ -91,7 +99,7 @@ export interface Target {
 
 /** Parses "workspace" or "workspace/account/project". Returns an error text when unknown. */
 export function resolveTarget(projects: ProjectRef[], raw: string, env: NodeJS.ProcessEnv = process.env, hasRobot = false): Target | { error: string } {
-  const parts = raw.split("/").map((s) => s.trim());
+  const parts = raw.split("/").map((s) => normName(s));
   const names = listWorkspaces(projects, env, hasRobot).map((w) => w.name);
   const hint = `Valid workspaces: ${names.slice(0, 20).join(", ")}${names.length > 20 ? ", ..." : ""}. List every project with: npx hetzner-mcp projects list`;
   if (parts.length === 1 && parts[0]) {

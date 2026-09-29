@@ -1,6 +1,7 @@
 // The infrastructure audit: what is wrong, why it matters, exact fix steps (Console and MCP) and
 // the money at stake. Pure and cheap, so it runs on every map build without anyone asking.
 import type { InfraGraph, MapNode } from "./types.js";
+import { code, md } from "../text.js";
 
 export type Severity = "critical" | "high" | "medium" | "low";
 export type Category = "security" | "cost" | "reliability" | "hygiene";
@@ -48,7 +49,9 @@ interface Playbook {
   mcp: (n: MapNode) => string[];
 }
 
-const cloudPath = (n: MapNode) => `Cloud Console, project ${n.project ?? "(its project)"}`;
+// Names are rendered as code spans, never inside quoted instructions, so they stay data.
+const nm = (n: MapNode) => code(n.label);
+const cloudPath = (n: MapNode) => `Cloud Console, project ${n.project ? code(n.project) : "(its project)"}`;
 const idOf = (n: MapNode) => n.id.split(":").pop() ?? n.id;
 
 const PLAYBOOK: Record<string, Playbook> = {
@@ -57,151 +60,151 @@ const PLAYBOOK: Record<string, Playbook> = {
     category: "cost",
     title: "Powered-off server is still billed",
     why: "Hetzner bills a server whether it is running or off. Only deleting it stops the cost.",
-    console: (n) => [`Open ${cloudPath(n)}, Servers, ${n.label}.`, "Snapshots tab, Take snapshot, if you may need it again.", "Delete tab, type the server name, Delete."],
-    mcp: (n) => [`Ask: "take a snapshot of ${n.label}, then delete it". The MCP uses cloud_request to POST /servers/${idOf(n)}/actions/create_image, then cloud_delete_server with a typed confirmation.`],
+    console: (n) => [`Open ${cloudPath(n)}, Servers, ${nm(n)}.`, "Snapshots tab, Take snapshot, if you may need it again.", "Delete tab, type the server name, Delete."],
+    mcp: (n) => [`Ask: take a snapshot of ${nm(n)}, then delete it. The MCP uses cloud_request to POST /servers/${idOf(n)}/actions/create_image, then cloud_delete_server with a typed confirmation.`],
   },
   type_retiring: {
     severity: "high",
     category: "reliability",
     title: "Server type is being retired",
     why: "After the cut-off date the type cannot be recreated or rescaled here. A rebuild or a move then happens under time pressure.",
-    console: (n) => [`Open ${cloudPath(n)}, Servers, ${n.label}, Rescale.`, "Power off first, pick a current type of the same size, keep the disk size unless you want to grow it.", "Power on and check the service."],
-    mcp: (n) => [`Ask: "which current server types match ${n.label}?" (cloud_list_server_types), then "rescale ${n.label} to <type>" (cloud_request POST /servers/${idOf(n)}/actions/change_type).`],
+    console: (n) => [`Open ${cloudPath(n)}, Servers, ${nm(n)}, Rescale.`, "Power off first, pick a current type of the same size, keep the disk size unless you want to grow it.", "Power on and check the service."],
+    mcp: (n) => [`Ask: which current server types match ${nm(n)}? (cloud_list_server_types), then rescale ${nm(n)} to <type> (cloud_request POST /servers/${idOf(n)}/actions/change_type).`],
   },
   traffic_overage: {
     severity: "medium",
     category: "cost",
     title: "Outgoing traffic will pass the included allowance",
     why: "Traffic above the allowance is billed per TB at the end of the month.",
-    console: (n) => [`Open ${cloudPath(n)}, Servers, ${n.label}, Graphs, and find what sends the traffic.`, "Put static files behind a CDN, or spread traffic across servers in EU locations, which include more traffic."],
-    mcp: (n) => [`Ask: "show traffic for ${n.label}" (cloud_list_servers with verbose true).`],
+    console: (n) => [`Open ${cloudPath(n)}, Servers, ${nm(n)}, Graphs, and find what sends the traffic.`, "Put static files behind a CDN, or spread traffic across servers in EU locations, which include more traffic."],
+    mcp: (n) => [`Ask: show traffic for ${nm(n)} (cloud_list_servers with verbose true).`],
   },
   traffic_high: {
     severity: "low",
     category: "cost",
     title: "Most of the included traffic is used",
     why: "One busy week can push the server into paid overage.",
-    console: (n) => [`Watch ${cloudPath(n)}, Servers, ${n.label}, Graphs, for the rest of the month.`],
-    mcp: (n) => [`Ask: "how much traffic has ${n.label} used?"`],
+    console: (n) => [`Watch ${cloudPath(n)}, Servers, ${nm(n)}, Graphs, for the rest of the month.`],
+    mcp: (n) => [`Ask: how much traffic has ${nm(n)} used?`],
   },
   volume_unattached: {
     severity: "medium",
     category: "cost",
     title: "Volume not attached to any server",
     why: "Volumes are billed per GB whether anything uses them.",
-    console: (n) => [`Open ${cloudPath(n)}, Volumes, ${n.label}.`, "Attach it to the server that needs it, or Delete it if the data is no longer needed. Copy the data first if unsure."],
-    mcp: (n) => [`Ask: "attach ${n.label} to <server>" (cloud_attach_volume) or "delete volume ${n.label}" (cloud_delete_volume, needs the typed name).`],
+    console: (n) => [`Open ${cloudPath(n)}, Volumes, ${nm(n)}.`, "Attach it to the server that needs it, or Delete it if the data is no longer needed. Copy the data first if unsure."],
+    mcp: (n) => [`Ask: attach ${nm(n)} to <server> (cloud_attach_volume) or delete volume ${nm(n)} (cloud_delete_volume, needs the typed name).`],
   },
   ip_unassigned: {
     severity: "low",
     category: "cost",
     title: "Primary IP not assigned to anything",
     why: "A reserved IPv4 costs money every month even when nothing uses it.",
-    console: (n) => [`Open ${cloudPath(n)}, Primary IPs, ${n.label}.`, "Assign it to a server, or Delete it if you do not need to keep this address."],
-    mcp: (n) => [`Ask: "assign ${n.label} to <server>" (cloud_assign_primary_ip) or "delete primary IP ${n.label}" (cloud_delete_primary_ip).`],
+    console: (n) => [`Open ${cloudPath(n)}, Primary IPs, ${nm(n)}.`, "Assign it to a server, or Delete it if you do not need to keep this address."],
+    mcp: (n) => [`Ask: assign ${nm(n)} to <server> (cloud_assign_primary_ip) or delete primary IP ${nm(n)} (cloud_delete_primary_ip).`],
   },
   fip_unassigned: {
     severity: "low",
     category: "cost",
     title: "Floating IP not assigned",
     why: "Floating IPs are billed monthly, assigned or not.",
-    console: (n) => [`Open ${cloudPath(n)}, Floating IPs, ${n.label}.`, "Assign it, or Delete it if nothing points at it any more."],
-    mcp: (n) => [`Ask: "assign ${n.label} to <server>" (cloud_assign_floating_ip) or "delete floating IP ${n.label}" (cloud_delete_floating_ip).`],
+    console: (n) => [`Open ${cloudPath(n)}, Floating IPs, ${nm(n)}.`, "Assign it, or Delete it if nothing points at it any more."],
+    mcp: (n) => [`Ask: assign ${nm(n)} to <server> (cloud_assign_floating_ip) or delete floating IP ${nm(n)} (cloud_delete_floating_ip).`],
   },
   lb_no_targets: {
     severity: "medium",
     category: "cost",
     title: "Load balancer serves nothing",
     why: "It is billed monthly while sending traffic nowhere, and any DNS pointing at it returns errors.",
-    console: (n) => [`Open ${cloudPath(n)}, Load Balancers, ${n.label}, Targets.`, "Add the servers it should serve, or Delete it."],
-    mcp: (n) => [`Ask: "add <server> as a target of ${n.label}" (cloud_request POST /load_balancers/${idOf(n)}/actions/add_target) or "delete ${n.label}" (cloud_delete_load_balancer).`],
+    console: (n) => [`Open ${cloudPath(n)}, Load Balancers, ${nm(n)}, Targets.`, "Add the servers it should serve, or Delete it."],
+    mcp: (n) => [`Ask: add <server> as a target of ${nm(n)} (cloud_request POST /load_balancers/${idOf(n)}/actions/add_target) or delete ${nm(n)} (cloud_delete_load_balancer).`],
   },
   lb_single_target: {
     severity: "medium",
     category: "reliability",
     title: "Load balancer has only one target",
     why: "With one server behind it, the load balancer adds cost but no redundancy. If that server fails, the site is down.",
-    console: (n) => [`Open ${cloudPath(n)}, Load Balancers, ${n.label}, Targets, and add a second server.`, "Put both servers in a spread placement group so they land on different hosts."],
-    mcp: (n) => [`Ask: "create a second server like the one behind ${n.label} and add it as a target".`],
+    console: (n) => [`Open ${cloudPath(n)}, Load Balancers, ${nm(n)}, Targets, and add a second server.`, "Put both servers in a spread placement group so they land on different hosts."],
+    mcp: (n) => [`Ask: create a second server like the one behind ${nm(n)} and add it as a target.`],
   },
   fw_unused: {
     severity: "low",
     category: "hygiene",
     title: "Firewall is not applied to anything",
     why: "It is free, but a firewall that protects nothing gives a false sense of safety.",
-    console: (n) => [`Open ${cloudPath(n)}, Firewalls, ${n.label}, Apply to, and pick the servers it was meant for. Or delete it.`],
-    mcp: (n) => [`Ask: "apply ${n.label} to <server>" (cloud_request POST /firewalls/${idOf(n)}/actions/apply_to_resources) or "delete firewall ${n.label}" (cloud_delete_firewall).`],
+    console: (n) => [`Open ${cloudPath(n)}, Firewalls, ${nm(n)}, Apply to, and pick the servers it was meant for. Or delete it.`],
+    mcp: (n) => [`Ask: apply ${nm(n)} to <server> (cloud_request POST /firewalls/${idOf(n)}/actions/apply_to_resources) or delete firewall ${nm(n)} (cloud_delete_firewall).`],
   },
   fw_open_ports: {
     severity: "critical",
     category: "security",
     title: "Admin ports open to the whole internet",
     why: "SSH and database ports open to everyone are scanned within minutes. One weak password or unpatched service is enough.",
-    console: (n) => [`Open ${cloudPath(n)}, Firewalls, ${n.label}, Rules.`, "Change the source of each flagged rule from Any to your own IP addresses, or remove it and reach the server through a private network or VPN.", "Save. Rules apply immediately."],
-    mcp: (n) => [`Ask: "limit SSH on ${n.label} to <your IP>" (cloud_request POST /firewalls/${idOf(n)}/actions/set_rules).`],
+    console: (n) => [`Open ${cloudPath(n)}, Firewalls, ${nm(n)}, Rules.`, "Change the source of each flagged rule from Any to your own IP addresses, or remove it and reach the server through a private network or VPN.", "Save. Rules apply immediately."],
+    mcp: (n) => [`Ask: limit SSH on ${nm(n)} to <your IP> (cloud_request POST /firewalls/${idOf(n)}/actions/set_rules).`],
   },
   no_firewall: {
     severity: "high",
     category: "security",
     title: "Public server with no Hetzner firewall",
     why: "Everything the server listens on is reachable from the internet. A firewall in front is a second lock if the server's own setup slips.",
-    console: (n) => [`Open ${cloudPath(n)}, Firewalls, Create firewall.`, "Allow only what the server serves, for example 80 and 443, and SSH from your own IP.", `Apply it to ${n.label}.`],
-    mcp: (n) => [`Ask: "create a firewall that allows 80 and 443, SSH from <your IP>, and apply it to ${n.label}" (cloud_create_firewall).`],
+    console: (n) => [`Open ${cloudPath(n)}, Firewalls, Create firewall.`, "Allow only what the server serves, for example 80 and 443, and SSH from your own IP.", `Apply it to ${nm(n)}.`],
+    mcp: (n) => [`Ask: create a firewall that allows 80 and 443, SSH from <your IP>, and apply it to ${nm(n)} (cloud_create_firewall).`],
   },
   snapshot_orphan: {
     severity: "low",
     category: "cost",
     title: "Snapshot of a server that no longer exists",
     why: "Snapshots are billed per GB each month. Old ones from deleted servers are easy to forget.",
-    console: (n) => [`Open ${cloudPath(n)}, Snapshots, ${n.label}. Delete it unless you plan to restore it.`],
-    mcp: (n) => [`Ask: "delete snapshot ${n.label}" (cloud_request DELETE /images/${idOf(n)}).`],
+    console: (n) => [`Open ${cloudPath(n)}, Snapshots, ${nm(n)}. Delete it unless you plan to restore it.`],
+    mcp: (n) => [`Ask: delete snapshot ${nm(n)} (cloud_request DELETE /images/${idOf(n)}).`],
   },
   snapshot_old: {
     severity: "low",
     category: "cost",
     title: "Old snapshot",
     why: "If newer snapshots or daily backups exist, an old snapshot mostly adds cost.",
-    console: (n) => [`Open ${cloudPath(n)}, Snapshots, ${n.label}. Keep it only if it is a restore point you need.`],
-    mcp: (n) => [`Ask: "delete snapshot ${n.label}" (cloud_request DELETE /images/${idOf(n)}).`],
+    console: (n) => [`Open ${cloudPath(n)}, Snapshots, ${nm(n)}. Keep it only if it is a restore point you need.`],
+    mcp: (n) => [`Ask: delete snapshot ${nm(n)} (cloud_request DELETE /images/${idOf(n)}).`],
   },
   cert_expired: {
     severity: "critical",
     category: "reliability",
     title: "Certificate has expired",
     why: "Browsers refuse the connection. Anything using this certificate is effectively down for visitors.",
-    console: (n) => [`Open ${cloudPath(n)}, Load Balancers, Certificates, ${n.label}.`, "Managed certificate: check DNS points at the load balancer, then retry. Uploaded: upload the renewed certificate and swap it on the HTTPS service."],
-    mcp: (n) => [`Ask: "retry certificate ${n.label}" (cloud_request POST /certificates/${idOf(n)}/actions/retry).`],
+    console: (n) => [`Open ${cloudPath(n)}, Load Balancers, Certificates, ${nm(n)}.`, "Managed certificate: check DNS points at the load balancer, then retry. Uploaded: upload the renewed certificate and swap it on the HTTPS service."],
+    mcp: (n) => [`Ask: retry certificate ${nm(n)} (cloud_request POST /certificates/${idOf(n)}/actions/retry).`],
   },
   cert_expiring: {
     severity: "high",
     category: "reliability",
     title: "Certificate expires soon",
     why: "If it lapses, visitors see a security error and most will leave.",
-    console: (n) => [`Open ${cloudPath(n)}, Load Balancers, Certificates, ${n.label}.`, "Managed: check DNS still points at the load balancer so renewal can succeed. Uploaded: upload the renewed one now."],
-    mcp: (n) => [`Ask: "show certificate ${n.label}" (cloud_list_certificates).`],
+    console: (n) => [`Open ${cloudPath(n)}, Load Balancers, Certificates, ${nm(n)}.`, "Managed: check DNS still points at the load balancer so renewal can succeed. Uploaded: upload the renewed one now."],
+    mcp: (n) => [`Ask: show certificate ${nm(n)} (cloud_list_certificates).`],
   },
   backup_surcharge: {
     severity: "low",
     category: "cost",
     title: "Automatic backups on a server",
     why: "Backups add 20% to the server price. Right for production, often not needed for test or throwaway servers.",
-    console: (n) => [`If ${n.label} is not important, open ${cloudPath(n)}, Servers, ${n.label}, Backups, and disable them.`],
-    mcp: (n) => [`Ask: "disable backups on ${n.label}" (cloud_request POST /servers/${idOf(n)}/actions/disable_backup).`],
+    console: (n) => [`If ${nm(n)} is not important, open ${cloudPath(n)}, Servers, ${nm(n)}, Backups, and disable them.`],
+    mcp: (n) => [`Ask: disable backups on ${nm(n)} (cloud_request POST /servers/${idOf(n)}/actions/disable_backup).`],
   },
   no_backups_prod: {
     severity: "medium",
     category: "reliability",
     title: "Production server without automatic backups",
     why: "A bad deploy, a deleted file or a disk fault has no recent restore point. Backups cost 20% of the server price.",
-    console: (n) => [`Open ${cloudPath(n)}, Servers, ${n.label}, Backups, Enable backups.`],
-    mcp: (n) => [`Ask: "enable backups on ${n.label}" (cloud_request POST /servers/${idOf(n)}/actions/enable_backup).`],
+    console: (n) => [`Open ${cloudPath(n)}, Servers, ${nm(n)}, Backups, Enable backups.`],
+    mcp: (n) => [`Ask: enable backups on ${nm(n)} (cloud_request POST /servers/${idOf(n)}/actions/enable_backup).`],
   },
   single_location: {
     severity: "low",
     category: "reliability",
     title: "All servers of the project in one location",
     why: "A data center outage takes the whole project down at once.",
-    console: (n) => [`For the parts that must stay up in ${n.label}, run a second server in another EU location, for example Nuremberg or Helsinki, behind a load balancer.`],
+    console: (n) => [`For the parts that must stay up in ${nm(n)}, run a second server in another EU location, for example Nuremberg or Helsinki, behind a load balancer.`],
     mcp: () => ['Ask: "create a copy of <server> in nbg1" (cloud_create_server).'],
   },
   no_placement_group: {
@@ -209,7 +212,7 @@ const PLAYBOOK: Record<string, Playbook> = {
     category: "reliability",
     title: "Several servers but no placement group",
     why: "Without a spread placement group, two servers can land on the same physical host and fail together.",
-    console: (n) => [`Open Cloud Console, project ${n.label}, Placement groups, create a spread group, and add servers when you next create or rebuild them.`],
+    console: (n) => [`Open Cloud Console, project ${nm(n)}, Placement groups, create a spread group, and add servers when you next create or rebuild them.`],
     mcp: () => ['Ask: "create a spread placement group" (cloud_create_placement_group).'],
   },
   robot_cancelled: {
@@ -217,15 +220,15 @@ const PLAYBOOK: Record<string, Playbook> = {
     category: "hygiene",
     title: "Dedicated server is cancelled",
     why: "It stops at the paid-until date. Anything still running on it goes down then.",
-    console: (n) => [`Robot, Servers, ${n.label}. Move anything still needed before the paid-until date.`],
-    mcp: (n) => [`Ask: "show dedicated server ${n.label}" (robot_list_servers).`],
+    console: (n) => [`Robot, Servers, ${nm(n)}. Move anything still needed before the paid-until date.`],
+    mcp: (n) => [`Ask: show dedicated server ${nm(n)} (robot_list_servers).`],
   },
   project_unreadable: {
     severity: "high",
     category: "hygiene",
     title: "Project could not be read",
     why: "Nothing in this project is on the map or in this audit, so problems there stay invisible.",
-    console: (n) => [`Cloud Console, project ${n.label}, Security, API tokens. Create a new Read token and replace the old one.`],
+    console: (n) => [`Cloud Console, project ${nm(n)}, Security, API tokens. Create a new Read token and replace the old one.`],
     mcp: () => ["Run: npx hetzner-mcp doctor to see which token fails, then npx hetzner-mcp setup."],
   },
   fallback: {
@@ -233,8 +236,8 @@ const PLAYBOOK: Record<string, Playbook> = {
     category: "hygiene",
     title: "Worth a look",
     why: "Raised by the map while reading your estate.",
-    console: (n) => [`Open ${n.label} in the Hetzner Console and review it.`],
-    mcp: (n) => [`Ask: "show me ${n.label}".`],
+    console: (n) => [`Open ${nm(n)} in the Hetzner Console and review it.`],
+    mcp: (n) => [`Ask: show me ${nm(n)}.`],
   },
 };
 
@@ -346,24 +349,23 @@ export function audit(graph: Pick<InfraGraph, "nodes">, now = new Date()): Audit
   };
 }
 
-// Names come from people and env vars; a pipe or a newline must not break the table.
-// Backslashes are escaped first, so a name's own backslash cannot unescape the pipe.
-// eslint-disable-next-line no-control-regex
-const cell = (v: string) => v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+// Names come from people, env vars and Hetzner. md() makes them one escaped line, so a pipe,
+// a newline, a link or a tag in a name can neither break the table nor form Markdown.
+const cell = (v: string) => md(v);
 
 const SEV_LABEL: Record<Severity, string> = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
 
 /** One finding as Markdown: what, why, and numbered fix steps. */
 export function findingMarkdown(f: AuditFinding, n: number, currency = "EUR"): string {
   const money = (v: number) => new Intl.NumberFormat("en-IE", { style: "currency", currency }).format(v);
-  const where = [f.resource.account, f.resource.project].filter(Boolean).join(" / ");
+  const where = [f.resource.account, f.resource.project].filter(Boolean).map((s) => md(s)).join(" / ");
   const lines = [
     `## ${n}. ${SEV_LABEL[f.severity]}: ${f.title}`,
     "",
-    `**Resource:** ${f.resource.label} (${f.resource.kind.replace("_", " ")}), ${where}${f.resource.location ? `, ${f.resource.location}` : ""}`,
+    `**Resource:** ${md(f.resource.label)} (${f.resource.kind.replace("_", " ")}), ${where}${f.resource.location ? `, ${md(f.resource.location)}` : ""}`,
     `**Category:** ${f.category}${f.monthlySaving ? `. **Saves:** ${money(f.monthlySaving)} a month` : ""}`,
     "",
-    `**What:** ${f.what}`,
+    `**What:** ${md(f.what, 300)}`,
     "",
     `**Why it matters:** ${f.why}`,
     "",
