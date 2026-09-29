@@ -62,5 +62,24 @@ assert("F6: GET is not destructive", !classifyDestructive("GET", "/servers/9").d
 assert("normalizeCostPath strips query", normalizeCostPath("/servers?page=2") === "/servers");
 assert("normalizeCostPath adds slash", normalizeCostPath("servers") === "/servers");
 
+// Path-spelling bypasses (the Sentinel finding, 26 duplicate PRs). Each must still be billed.
+for (const p of [
+  "servers",
+  "/servers?x=1",
+  "/servers#frag",
+  "/servers//",
+  "//servers",
+  "/SERVERS",
+  "/%73ervers",
+  "/%2573ervers",
+  " /servers ",
+  "/servers/9/actions/enable_backup/",
+  "/servers/9//actions/create_image",
+]) {
+  assert(`bypass closed: POST ${JSON.stringify(p)} is billed`, classifyCost("cloud", "POST", p).billed);
+}
+assert("bypass closed: DELETE via odd spelling still destructive", classifyDestructive("POST", "/servers/9/actions/%70oweroff").destructive);
+assert("GET of a billed path stays free", !classifyCost("cloud", "GET", "/servers?x=1").billed);
+
 process.stdout.write(`\n${passed}/${total} safety-guard checks passed\n`);
 if (passed !== total) process.exitCode = 1;

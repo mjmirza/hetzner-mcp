@@ -49,11 +49,25 @@ export interface DestructiveDecision {
   reason?: string;
 }
 
-/** Strip query/hash and ensure a leading slash so guard regexes stay reliable. */
+/**
+ * Canonical form of a path for guard matching, so no spelling of a billed endpoint slips
+ * past a regex. Strips query and hash, decodes percent-encoding, collapses repeated and
+ * trailing slashes, adds the leading slash, and lowercases.
+ */
 export function normalizeCostPath(path: string): string {
-  let clean = (path || "").split("?")[0].split("#")[0].trim();
+  let clean = String(path ?? "").split("?")[0].split("#")[0].trim();
+  for (let i = 0; i < 3; i++) {
+    try {
+      const next = decodeURIComponent(clean);
+      if (next === clean) break;
+      clean = next.split("?")[0].split("#")[0];
+    } catch {
+      break;
+    }
+  }
+  clean = clean.replace(/\/+/g, "/").replace(/\/+$/, "");
   if (!clean.startsWith("/")) clean = "/" + clean;
-  return clean;
+  return clean.toLowerCase();
 }
 
 export function classifyCost(surface: SurfaceName, method: string, path: string): CostDecision {

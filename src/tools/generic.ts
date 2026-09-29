@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig, SurfaceName } from "../config.js";
 import { hetznerRequest } from "../http.js";
-import { classifyCost, classifyDestructive, cloudServerPriceNote } from "../cost.js";
+import { classifyCost, classifyDestructive, cloudServerPriceNote, normalizeCostPath } from "../cost.js";
 import { isWrite, normalizeMethod } from "../security.js";
 import { formatResult } from "../format.js";
 
@@ -102,7 +102,7 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
             }
             if (args.confirm !== true) {
               let note = "";
-              if (surface === "cloud" && /^\/servers\/?$/i.test(args.path)) {
+              if (surface === "cloud" && normalizeCostPath(args.path) === "/servers") {
                 const body = bodyVal as { server_type?: string } | undefined;
                 const priced = await cloudServerPriceNote(cfg, body?.server_type);
                 if (priced) note = " " + priced;
