@@ -18,6 +18,9 @@ import {
   type ServerEntryEnv,
 } from "./clients.js";
 import { validateCloudToken } from "./validate.js";
+import { loadConfig } from "../config.js";
+import { collectGraph } from "../map/collect.js";
+import { auditSummary } from "../map/audit-cli.js";
 import { bold, dim, green, red, cyan } from "./style.js";
 
 interface Flags {
@@ -313,6 +316,8 @@ export async function runSetup(argv: string[]): Promise<number> {
     out(dim(`  ${appWord === "app" ? "app's" : "apps'"} own config on this computer, never anywhere else, and any file that was`));
     out(dim("  already there was copied to a .bak backup first, so nothing was lost."));
     out("");
+    // A first audit right away, so the value shows before anyone asks. Never fails setup.
+    if (!argv.includes("--no-audit") && !flags.noVerify) await firstAudit(token, out);
     return 0;
   } catch (err) {
     // A closed stdin (Ctrl+D) or interrupt lands here. Nothing was written yet at the
@@ -347,7 +352,25 @@ function printSetupHelp(): void {
   out("    --yes, -y              Non-interactive. Requires --token.");
   out("    --print                Print the JSON block instead of writing.");
   out("    --no-verify            Skip the live token check.");
+  out("    --no-audit             Skip the first infrastructure audit at the end.");
   out("    --allow-billed         Let the assistant create paid resources, each still needs confirm.");
   out("    --no-billed            Keep paid resources blocked (the default).");
   out("");
+}
+
+async function firstAudit(token: string, out: (line: string) => void): Promise<void> {
+  try {
+    const graph = await Promise.race([
+      collectGraph(loadConfig({ ...process.env, HETZNER_CLOUD_TOKEN: token })),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20_000)),
+    ]);
+    if (!graph.audit) return;
+    out("  " + bold("First look at your infrastructure:"));
+    for (const line of auditSummary(graph.audit, graph.currency, 3).split("\n")) out("  " + line);
+    out("  " + dim("Full report with fix steps: ") + cyan("npx hetzner-mcp audit --out audit.md"));
+    out("");
+  } catch {
+    out("  " + dim("Skipped the first audit. Run it any time: ") + cyan("npx hetzner-mcp audit"));
+    out("");
+  }
 }

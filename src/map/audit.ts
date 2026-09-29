@@ -347,6 +347,32 @@ export function audit(graph: Pick<InfraGraph, "nodes">, now = new Date()): Audit
 
 const SEV_LABEL: Record<Severity, string> = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
 
+/** One finding as Markdown: what, why, and numbered fix steps. */
+export function findingMarkdown(f: AuditFinding, n: number, currency = "EUR"): string {
+  const money = (v: number) => new Intl.NumberFormat("en-IE", { style: "currency", currency }).format(v);
+  const where = [f.resource.account, f.resource.project].filter(Boolean).join(" / ");
+  const lines = [
+    `## ${n}. ${SEV_LABEL[f.severity]}: ${f.title}`,
+    "",
+    `**Resource:** ${f.resource.label} (${f.resource.kind.replace("_", " ")}), ${where}${f.resource.location ? `, ${f.resource.location}` : ""}`,
+    `**Category:** ${f.category}${f.monthlySaving ? `. **Saves:** ${money(f.monthlySaving)} a month` : ""}`,
+    "",
+    `**What:** ${f.what}`,
+    "",
+    `**Why it matters:** ${f.why}`,
+    "",
+    "**Fix in the Hetzner Console:**",
+    "",
+    ...f.console.map((s, j) => `${j + 1}. ${s}`),
+    "",
+    "**Fix with this MCP:**",
+    "",
+    ...f.mcp.map((s) => `- ${s}`),
+    "",
+  ];
+  return lines.join("\n");
+}
+
 /** The report as Markdown, for the CLI, the MCP tool and the downloadable file. */
 export function auditMarkdown(r: AuditReport, currency = "EUR"): string {
   const money = (v: number) => new Intl.NumberFormat("en-IE", { style: "currency", currency }).format(v);
@@ -365,17 +391,7 @@ export function auditMarkdown(r: AuditReport, currency = "EUR"): string {
     lines.push("");
   }
   if (!r.findings.length) lines.push("Nothing to fix right now.", "");
-  r.findings.forEach((f, i) => {
-    const where = [f.resource.account, f.resource.project].filter(Boolean).join(" / ");
-    lines.push(`## ${i + 1}. ${SEV_LABEL[f.severity]}: ${f.title}`, "");
-    lines.push(`**Resource:** ${f.resource.label} (${f.resource.kind.replace("_", " ")}), ${where}${f.resource.location ? `, ${f.resource.location}` : ""}`);
-    lines.push(`**Category:** ${f.category}${f.monthlySaving ? `. **Saves:** ${money(f.monthlySaving)} a month` : ""}`, "");
-    lines.push(`**What:** ${f.what}`, "", `**Why it matters:** ${f.why}`, "", "**Fix in the Hetzner Console:**", "");
-    f.console.forEach((s, j) => lines.push(`${j + 1}. ${s}`));
-    lines.push("", "**Fix with this MCP:**", "");
-    f.mcp.forEach((s) => lines.push(`- ${s}`));
-    lines.push("");
-  });
+  r.findings.forEach((f, i) => lines.push(findingMarkdown(f, i + 1, currency)));
   lines.push("## What this audit cannot see", "");
   r.limits.forEach((l) => lines.push(`- ${l}`));
   return lines.join("\n") + "\n";

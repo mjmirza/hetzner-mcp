@@ -16,8 +16,10 @@ import { registerWriteTools } from "./tools/write.js";
 import { registerCloudWriteTools } from "./tools/write-cloud.js";
 import { registerContributeTool } from "./tools/contribute.js";
 import { registerMapTool } from "./tools/map.js";
+import { registerAuditTool } from "./tools/audit.js";
 import { registerCapacityTool } from "./tools/capacity.js";
 import { runMap } from "./map/cli.js";
+import { runAudit } from "./map/audit-cli.js";
 import { runSetup } from "./setup/wizard.js";
 import { runDoctor } from "./setup/doctor.js";
 import { VERSION } from "./version.js";
@@ -37,6 +39,8 @@ function printHelp(): void {
       "    doctor      Read-only status check. Token health, surfaces, which clients are wired.",
       "    map         Interactive map of every project, resource, and its monthly cost.",
       "                Flags. --port N, --open, --demo. Default http://127.0.0.1:43390",
+      "    audit       Security, cost and reliability audit with fix steps.",
+      "                Flags. --out report.md, --json, --demo, --fail-on critical|high",
       "    help        Show this help.",
       "    version     Print the version.",
       "",
@@ -57,6 +61,7 @@ async function runServer(): Promise<void> {
   registerCloudWriteTools(server, cfg);
   registerContributeTool(server);
   registerMapTool(server, cfg);
+  registerAuditTool(server, cfg);
   registerCapacityTool(server, cfg);
 
   // Diagnostics go to stderr so they never corrupt the stdio protocol on stdout.
@@ -83,6 +88,10 @@ async function main(): Promise<void> {
   }
   if (cmd === "map" || cmd === "--map") {
     process.exitCode = await runMap(argv.slice(1));
+    return;
+  }
+  if (cmd === "audit") {
+    process.exitCode = await runAudit(argv.slice(1));
     return;
   }
   if (cmd === "version" || cmd === "--version" || cmd === "-v") {
