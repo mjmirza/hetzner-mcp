@@ -17,12 +17,17 @@ import { invalidateGraphs, onInvalidate } from "./graph-cache.js";
 import type { StatusSnapshot } from "./status.js";
 import { ActionError, apply, catalog, connectProject, deleteNode, deletePlan, disconnectProject, meta, plan, projectById, publicCatalog, type ActionEnv } from "./actions.js";
 import type { InfraGraph } from "./types.js";
+import { spendReport, type SpendInvoice } from "./spend.js";
+import { sampleInvoices } from "./sample-spend.js";
+import { InvoiceError, addInvoice, readInvoices, removeInvoice } from "./spend-store.js";
 
 /** 43390 is unassigned in the IANA registry and not a common dev-tool port. */
 export const DEFAULT_MAP_PORT = 43390;
 const HOST = "127.0.0.1";
 const MIN_REFRESH_MS = 10_000;
 const MAX_BODY = 16 * 1024;
+/** An invoice with many line items is larger than any other request. */
+const MAX_INVOICE_BODY = 1024 * 1024;
 const MAX_CACHED_WORKSPACES = 12;
 /** A request waits this long for a map or status read, then gets a clear error while the read goes on. */
 const JOB_DEADLINE_MS = 45_000;
@@ -66,9 +71,9 @@ function listen(server: Server, port: number): Promise<number> {
   });
 }
 
-function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+function readJson(req: IncomingMessage, max = MAX_BODY): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    if (Number(req.headers["content-length"] ?? 0) > MAX_BODY) {
+    if (Number(req.headers["content-length"] ?? 0) > max) {
       req.resume();
       reject(new ActionError(413, "Request too large."));
       return;
@@ -77,10 +82,10 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => {
       size += c.length;
-      if (size <= MAX_BODY) chunks.push(c);
+      if (size <= max) chunks.push(c);
     });
     req.on("end", () => {
-      if (size > MAX_BODY) return reject(new ActionError(413, "Request too large."));
+      if (size > max) return reject(new ActionError(413, "Request too large."));
       try {
         const v = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
         resolve(v && typeof v === "object" && !Array.isArray(v) ? v : {});
@@ -96,6 +101,8 @@ export async function startMapServer(
   cfg: HetznerConfig,
   opts: { port?: number; demo?: boolean; env?: NodeJS.ProcessEnv; collect?: (workspace: string | undefined) => Promise<InfraGraph>;
     statuses?: (workspace: string | undefined) => Promise<StatusSnapshot>;
+    /** Extra invoices shown next to the stored ones, for example a demo estate. */
+    invoices?: (workspace: string | undefined) => SpendInvoice[];
     deadlineMs?: number;
   } = {},
 ): Promise<MapServerHandle> {
@@ -254,6 +261,15 @@ export async function startMapServer(
           if (asked !== null && !list.some((w) => w.name === asked)) throw new ActionError(400, "Unknown workspace. GET /api/workspaces lists the valid names.");
           return json(200, await liveStatus(asked ?? list[0]?.name));
         }
+        if (url.pathname === "/api/spend") {
+          const list = workspaces();
+          const asked = url.searchParams.get("workspace");
+          if (asked !== null && !list.some((w) => w.name === asked)) throw new ActionError(400, "Unknown workspace. GET /api/workspaces lists the valid names.");
+          const ws = asked ?? list[0]?.name;
+          const graph = await load(ws, false);
+          const invoices = opts.demo ? sampleInvoices(graph) : [...(opts.invoices?.(ws) ?? []), ...readInvoices(env, ws, list[0]?.name)];
+          return json(200, spendReport(graph, invoices));
+        }
         if (url.pathname === "/api/meta") return json(200, meta(actx));
         if (url.pathname === "/api/catalog") {
           if (opts.demo) throw new ActionError(403, "This is sample data. Start the live map to create real resources.");
@@ -266,7 +282,8 @@ export async function startMapServer(
         return;
       }
       if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) throw new ActionError(415, "Send JSON.");
-      const body = await readJson(req);
+      const body = await readJson(req, url.pathname === "/api/spend/invoices" ? MAX_INVOICE_BODY : MAX_BODY);
+      if (opts.demo && url.pathname.startsWith("/api/spend/")) throw new ActionError(403, "This is sample data. Start the live map to add your own invoices.");
       if (opts.demo && url.pathname !== "/api/projects") throw new ActionError(403, "This is sample data. Start the live map to change real resources.");
       const done = (message: string) => {
         invalidateGraphs();
@@ -288,11 +305,21 @@ export async function startMapServer(
           return json(200, await deletePlan(actx, body.nodeId));
         case "/api/delete":
           return done(await deleteNode(actx, body.nodeId, body.typed));
+        case "/api/spend/invoices": {
+          const list = workspaces();
+          const ws = body.workspace === undefined ? list[0]?.name : body.workspace;
+          if (typeof ws !== "string" || !list.some((w) => w.name === ws)) throw new ActionError(400, "Unknown workspace. GET /api/workspaces lists the valid names.");
+          const inv = await addInvoice(env, body.invoice, ws === list[0]?.name ? undefined : ws);
+          return json(200, { ok: true, message: `Invoice ${inv.number} added.` });
+        }
+        case "/api/spend/invoices/remove":
+          if (!(await removeInvoice(env, body.number))) throw new ActionError(404, "That invoice is not stored.");
+          return json(200, { ok: true, message: "Invoice removed." });
         default:
           return json(404, { error: "Not found" });
       }
     } catch (err) {
-      if (err instanceof ActionError) return json(err.status, { error: err.message });
+      if (err instanceof ActionError || err instanceof InvoiceError) return json(err.status, { error: err.message });
       return json(502, { error: err instanceof Error ? err.message : String(err) });
     }
   });
