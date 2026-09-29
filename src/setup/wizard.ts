@@ -154,6 +154,7 @@ export async function runSetup(argv: string[]): Promise<number> {
         HETZNER_CLOUD_TOKEN: flags.token?.trim() || "<paste-your-token-here>",
         HETZNER_ROBOT_USER: flags.robotUser?.trim() || undefined,
         HETZNER_ROBOT_PASSWORD: flags.robotPassword || undefined,
+        HETZNER_MCP_ALLOW_BILLED: flags.allowBilled ? "1" : undefined,
       };
       const entry0 = buildServerEntry(printCreds, t0.needsType);
       out("");
@@ -161,6 +162,10 @@ export async function runSetup(argv: string[]): Promise<number> {
       out("");
       out(JSON.stringify({ [t0.configKey]: { hetzner: entry0 } }, null, 2));
       out("");
+      if (!flags.allowBilled) {
+        out(dim("  Paid resources stay blocked. Add --allow-billed to include HETZNER_MCP_ALLOW_BILLED=1."));
+        out("");
+      }
       return 0;
     }
 

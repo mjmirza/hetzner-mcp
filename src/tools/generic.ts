@@ -10,7 +10,7 @@ import { hetznerRequest } from "../http.js";
 import { classifyCost, classifyDestructive, cloudServerPriceNote, normalizeCostPath } from "../cost.js";
 import { isWrite, normalizeMethod } from "../security.js";
 import { formatResult } from "../format.js";
-import { waitForActions, describeActions, anyActionFailed } from "../actions.js";
+import { waitForActions, actionBlocks, anyActionFailed } from "../actions.js";
 
 interface ToolText {
   [key: string]: unknown;
@@ -131,7 +131,7 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
         });
         const actions = surface === "cloud" && isWrite(method) ? await waitForActions(cfg, result) : [];
         return {
-          content: [{ type: "text", text: formatResult(result, args.verbose ?? false) + describeActions(actions) }],
+          content: [{ type: "text" as const, text: formatResult(result, args.verbose ?? false) }, ...actionBlocks(actions)],
           isError: anyActionFailed(actions),
         };
       } catch (err) {
