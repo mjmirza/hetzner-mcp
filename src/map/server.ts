@@ -222,7 +222,12 @@ export async function startMapServer(
 
       // A cross-site page cannot add this header without a preflight, and cannot know the secret.
       if (!authorized(req.headers["x-hzmap"])) {
-        res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end("This map link is out of date. Open the link the map printed when it started.");
+        // No key means the page was opened without the full link; a wrong key means the map restarted.
+        const sent = req.headers["x-hzmap"];
+        const why = !sent || sent === "1"
+          ? "This page was opened without its access key. Open the full link the map printed when it started (it ends in #k=...)."
+          : "This map link is out of date because the map restarted. Open the new link it printed.";
+        res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end(why);
         return;
       }
       const origin = req.headers.origin;

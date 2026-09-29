@@ -152,6 +152,8 @@ async function checkNewKey(browser: Browser): Promise<string[]> {
     if (handle.token === oldKey) out.push("a restarted map kept the same key");
     const stale = await page.evaluate(async (k) => (await fetch("/api/meta", { headers: { "X-Hzmap": k } })).text(), oldKey);
     if (!/out of date/.test(stale)) out.push(`an old key does not say the link is out of date (got: ${stale.slice(0, 60)})`);
+    const missing = await page.evaluate(async () => (await fetch("/api/meta", { headers: { "X-Hzmap": "" } })).text());
+    if (!/without its access key/.test(missing)) out.push(`a missing key does not say the key is missing (got: ${missing.slice(0, 60)})`);
     await page.goto(handle.url);
     await page.waitForFunction(() => document.querySelectorAll(".react-flow__node").length > 0 && !location.hash, null, { timeout: 8000 })
       .catch(() => out.push("pasting the new link into an open tab does not load the map"));
