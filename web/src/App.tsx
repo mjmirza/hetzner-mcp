@@ -19,6 +19,7 @@ import {
   ArrowDataTransferHorizontalIcon,
   ArrowDataTransferVerticalIcon,
   ChartRelationshipIcon,
+  Coins02Icon,
   HierarchySquare02Icon,
   ListViewIcon,
   Loading03Icon,
@@ -49,6 +50,7 @@ import { RelationEdge } from "@/components/RelationEdge";
 import { Inspector } from "@/components/Inspector";
 import { ListView } from "@/components/ListView";
 import { AuditView } from "@/components/AuditView";
+import { SpendView } from "@/components/SpendView";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { AddProjectDialog } from "@/components/AddProjectDialog";
 import { CreateDialog } from "@/components/CreateDialog";
@@ -66,7 +68,7 @@ import { activeWorkspace, loadSequencer, pickWorkspace } from "@/lib/workspace";
 import { CREATABLE, KIND_LABEL } from "@/lib/format";
 import type { InfraGraph, MapNode, Meta, NodeKind, WorkspaceSummary } from "@/lib/types";
 
-type ViewMode = "hierarchy" | "connections" | "list" | "audit";
+type ViewMode = "hierarchy" | "connections" | "list" | "audit" | "spend";
 /** Above this many resources the canvas opens with every project folded, so it stays responsive. */
 const LARGE_ESTATE = 400;
 const isLarge = (g: InfraGraph | null) => (g?.nodes.length ?? 0) > LARGE_ESTATE;
@@ -448,7 +450,7 @@ export function App() {
     if (!q || !graph) return;
     const hit = graph.nodes.find((n) => n.label.toLowerCase().includes(q) || ["ip", "ipv4", "ipv6"].some((k) => String(n.details[k] ?? "").toLowerCase().includes(q)));
     if (hit) {
-      if (view === "list" || view === "audit") setView("hierarchy");
+      if (view === "list" || view === "audit" || view === "spend") setView("hierarchy");
       select(hit.id);
       setSearchOpen(false);
     }
@@ -509,22 +511,26 @@ export function App() {
             {graph && <span className="hidden text-[12px] text-muted-foreground 2xl:inline">Updated {ago(graph.generatedAt)}</span>}
           </div>
 
+          {/* Five tabs fit a 375 px phone only with slightly tighter padding below sm. */}
           <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)} className="mx-auto shrink-0">
             <TabsList className="rounded-lg">
-              <TabsTrigger value="hierarchy" className="rounded-md" aria-label="Hierarchy">
+              <TabsTrigger value="hierarchy" className="rounded-md max-sm:px-1.5" aria-label="Hierarchy">
                 <HierarchySquare02Icon size={15} /> <span className="hidden lg:inline">Hierarchy</span>
               </TabsTrigger>
-              <TabsTrigger value="connections" className="rounded-md" aria-label="Connections">
+              <TabsTrigger value="connections" className="rounded-md max-sm:px-1.5" aria-label="Connections">
                 <ChartRelationshipIcon size={15} /> <span className="hidden lg:inline">Connections</span>
               </TabsTrigger>
-              <TabsTrigger value="list" className="rounded-md" aria-label="List">
+              <TabsTrigger value="list" className="rounded-md max-sm:px-1.5" aria-label="List">
                 <ListViewIcon size={15} /> <span className="hidden lg:inline">List</span>
               </TabsTrigger>
-              <TabsTrigger value="audit" className="rounded-md" aria-label="Audit">
+              <TabsTrigger value="audit" className="rounded-md max-sm:px-1.5" aria-label="Audit">
                 <SecurityCheckIcon size={15} /> <span className="hidden lg:inline">Audit</span>
                 {graph?.audit && graph.audit.counts.critical + graph.audit.counts.high > 0 && (
                   <span aria-label={`${graph.audit.counts.critical + graph.audit.counts.high} urgent findings`} className="hidden rounded-full bg-risk px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground tabular-nums sm:inline">{graph.audit.counts.critical + graph.audit.counts.high}</span>
                 )}
+              </TabsTrigger>
+              <TabsTrigger value="spend" className="rounded-md max-sm:px-1.5" aria-label="Spend">
+                <Coins02Icon size={15} /> <span className="hidden lg:inline">Spend</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -697,9 +703,10 @@ export function App() {
                 }}
               />
             )}
-            {notice && view !== "audit" && (
+            {notice && view !== "audit" && view !== "spend" && (
               <FirstRunNotice key={notice.id} notice={notice} placement={view === "list" ? "bottom" : "top"} />
             )}
+            {graph && view === "spend" && <SpendView workspace={graph.workspace} generatedAt={graph.generatedAt} demo={meta?.mode === "demo"} />}
             {graph && isLarge(graph) && (view === "hierarchy" || view === "connections") && (
               <p role="status" className="pointer-events-none absolute top-2 left-1/2 z-10 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full bg-card px-3 py-1 text-[12px] text-muted-foreground shadow-[var(--shadow)]">
                 Large estate, {graph.nodes.length.toLocaleString()} resources. Projects open folded, use + on a project to show it.

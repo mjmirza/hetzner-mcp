@@ -1,4 +1,5 @@
 import type { StatusSnapshot } from "../../../src/map/status";
+import type { SpendInvoice, SpendReport } from "../../../src/map/spend";
 import type { Catalog, InfraGraph, Meta, Plan, WorkspaceSummary } from "./types";
 
 const KEY = "hzmap-key";
@@ -95,4 +96,7 @@ export const api = {
   apply: (d: { project: string; kind: string; params: Record<string, unknown>; confirm: true }) => post<{ ok: true; message: string }>("/api/apply", d),
   deletePlan: (nodeId: string) => post<{ name: string; label: string; notes: string[]; blocked?: string }>("/api/delete-plan", { nodeId }),
   remove: (nodeId: string, typed: string) => post<{ ok: true; message: string }>("/api/delete", { nodeId, typed }),
+  spend: (workspace?: string) => call<SpendReport>(`/api/spend${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`),
+  addInvoice: (invoice: SpendInvoice, workspace?: string) => post<{ ok: true; message: string }>("/api/spend/invoices", { invoice, workspace }),
+  removeInvoice: (number: string) => post<{ ok: true; message: string }>("/api/spend/invoices/remove", { number }),
 };

@@ -7,6 +7,7 @@ import { sampleGraph } from "../src/map/sample.js";
 import { chromium, type Browser, type Page } from "playwright";
 import { loadConfig } from "../src/config.js";
 import { startMapServer } from "../src/map/server.js";
+import { invoicePdf } from "./invoice-pdf.js";
 
 const probe = readFileSync(new URL("./layout-probe.js", import.meta.url), "utf8");
 const SIZES = [375, 768, 1024, 1280, 1440, 1920].flatMap((width) => [500, 900].map((height) => ({ width, height })));
@@ -54,6 +55,21 @@ async function checkSize(browser: Browser, url: string, width: number, height: n
     await probePage(page, `${tag} audit`, out);
     const summary = page.locator("[aria-label='Audit summary']");
     if (!(await summary.isVisible()) || !/Grade [A-E]/.test(await summary.innerText())) out.failures.push(`${tag} audit: the audit report did not render`);
+  }
+  const spendTab = page.locator("[role=tab][aria-label=Spend]");
+  if (await spendTab.isVisible()) {
+    await spendTab.click();
+    const summary = page.locator("[aria-label='Spend summary']");
+    await summary.waitFor({ timeout: 5000 }).catch(() => undefined);
+    await probePage(page, `${tag} spend`, out);
+    const text = (await summary.isVisible()) ? await summary.innerText() : "";
+    if (!/This month so far/.test(text) || !/12 invoices, all totals check out/.test(text)) out.failures.push(`${tag} spend: the spend summary did not render`);
+    const month = page.locator("[aria-label=Months] li button[aria-expanded]").nth(1);
+    await month.click();
+    await probePage(page, `${tag} spend month open`, out);
+    for (const s of ["Matches", "Invoice higher", "Invoice missing"]) {
+      if (!(await page.getByText(s, { exact: true }).first().isVisible())) out.failures.push(`${tag} spend: no "${s}" month shown`);
+    }
   }
   await page.close();
   return out;
@@ -213,6 +229,34 @@ async function checkKeyEntry(browser: Browser): Promise<string[]> {
   return out.map((p) => `key entry: ${p}`);
 }
 
+// Adding an invoice PDF runs the real reader in the browser: parse, checks, save, duplicate, remove.
+async function checkInvoiceImport(browser: Browser): Promise<string[]> {
+  const out: string[] = [];
+  const env: NodeJS.ProcessEnv = { HETZNER_CLOUD_TOKEN: "t".repeat(64), XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), "hz-layout-spend-")) };
+  const handle = await startMapServer(loadConfig(env), { env, port: 0, collect: async (ws) => ({ ...sampleGraph(), workspace: ws }) });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const file = (name: string, buffer: Buffer) => ({ name, mimeType: "application/pdf", buffer });
+  const status = () => page.locator("[role=status] li").first().innerText({ timeout: 20000 }).catch(() => "");
+  try {
+    await page.goto(handle.url);
+    await page.locator("[role=tab][aria-label=Spend]").click();
+    await page.locator("[aria-label='Spend summary']").waitFor({ timeout: 8000 });
+    await page.setInputFiles("input[type=file]", file("broken.pdf", invoicePdf({ itemNet: "70,0000 €" })));
+    if (!/do not add up.*line items add up to €80\.00, but the subtotal is €90\.00/.test(await status())) out.push("an invoice whose items do not add up is not refused with its numbers");
+    await page.setInputFiles("input[type=file]", file("good.pdf", invoicePdf()));
+    await page.getByText("Invoice 900000000042 added.").waitFor({ timeout: 20000 }).catch(() => out.push("a valid synthetic invoice was not added"));
+    await page.getByText(/^1 invoice, all totals check out/).waitFor({ timeout: 8000 }).catch(() => out.push("the validation summary does not count the added invoice"));
+    await page.setInputFiles("input[type=file]", file("again.pdf", invoicePdf()));
+    await page.getByText(/was already added/).waitFor({ timeout: 20000 }).catch(() => out.push("adding the same invoice twice is not refused"));
+    await page.getByRole("button", { name: "Remove invoice 900000000042" }).click();
+    await page.getByText(/^No invoices added yet/).waitFor({ timeout: 8000 }).catch(() => out.push("removing an invoice does not update the page"));
+  } finally {
+    await page.close();
+    await handle.close();
+  }
+  return out.map((p) => `invoice import: ${p}`);
+}
+
 async function main(): Promise<void> {
   const handle = await startMapServer(loadConfig(), { demo: true, port: 43480 });
   const browser = await chromium.launch();
@@ -228,6 +272,7 @@ async function main(): Promise<void> {
     results.push({ layouts: 1, cards: 0, failures: await checkNewKey(browser) });
     results.push({ layouts: 1, cards: 0, failures: await checkKeyEntry(browser) });
     results.push({ layouts: 1, cards: 0, failures: await checkBlockedStorage(browser) });
+    results.push({ layouts: 1, cards: 0, failures: await checkInvoiceImport(browser) });
   } finally {
     await browser.close();
   }
