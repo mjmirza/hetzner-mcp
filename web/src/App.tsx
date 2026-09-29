@@ -49,6 +49,7 @@ import { RelationEdge } from "@/components/RelationEdge";
 import { Inspector } from "@/components/Inspector";
 import { ListView } from "@/components/ListView";
 import { AuditView } from "@/components/AuditView";
+import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { AddProjectDialog } from "@/components/AddProjectDialog";
 import { CreateDialog } from "@/components/CreateDialog";
 import { DeleteDialog } from "@/components/DeleteDialog";
@@ -56,7 +57,7 @@ import { api } from "@/lib/api";
 import { buildFlow, type CardData, type Direction } from "@/lib/layout";
 import { relationsByNode } from "@/lib/relations";
 import { CREATABLE, KIND_LABEL } from "@/lib/format";
-import type { InfraGraph, MapNode, Meta, NodeKind } from "@/lib/types";
+import type { InfraGraph, MapNode, Meta, NodeKind, WorkspaceSummary } from "@/lib/types";
 
 type ViewMode = "hierarchy" | "connections" | "list" | "audit";
 type Pos = { x: number; y: number };
@@ -247,6 +248,9 @@ export function App() {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(0);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [workspace, setWorkspace] = useState<string | null>(() => stored<string | null>("hzmap-ws", null));
+  useEffect(() => store("hzmap-ws", workspace), [workspace]);
   const [addProject, setAddProject] = useState(false);
   const [creating, setCreating] = useState<NodeKind | null>(null);
   const [deleting, setDeleting] = useState<MapNode | null>(null);
@@ -279,7 +283,12 @@ export function App() {
   const load = useCallback(async (refresh = false) => {
     setRefreshing(true);
     try {
-      const [g, m] = await Promise.all([api.graph(refresh), api.meta()]);
+      const ws = await api.workspaces().catch(() => ({ default: "", workspaces: [] as WorkspaceSummary[] }));
+      setWorkspaces(ws.workspaces);
+      // A remembered workspace that no longer exists falls back to the default.
+      const target = workspace && ws.workspaces.some((w) => w.name === workspace) ? workspace : undefined;
+      if (!target && workspace) setWorkspace(null);
+      const [g, m] = await Promise.all([api.graph(refresh, target), api.meta()]);
       setGraph(g);
       setMeta(m);
       setError(null);
@@ -288,7 +297,7 @@ export function App() {
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [workspace]);
   useEffect(() => {
     load();
   }, [load]);
@@ -373,6 +382,21 @@ export function App() {
         if (!desktop) setPanelOpen(false);
       }}
       updated={ago(graph.generatedAt)}
+      header={
+        workspaces.length > 1 ? (
+          <WorkspaceSwitcher
+            workspaces={workspaces}
+            active={graph.workspace ?? workspaces[0]!.name}
+            onChange={(name) => {
+              setWorkspace(name);
+              setFocus(null);
+              setSelected(null);
+              setCollapsed(new Set());
+              if (!desktop) setPanelOpen(false);
+            }}
+          />
+        ) : undefined
+      }
     />
   );
 

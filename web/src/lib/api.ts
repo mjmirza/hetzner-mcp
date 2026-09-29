@@ -1,4 +1,4 @@
-import type { Catalog, InfraGraph, Meta, Plan } from "./types";
+import type { Catalog, InfraGraph, Meta, Plan, WorkspaceSummary } from "./types";
 
 /** Every call carries X-Hzmap, which a cross-site page cannot add without a preflight we never answer. */
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -23,7 +23,14 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 const post = <T>(path: string, data: unknown) => call<T>(path, { method: "POST", body: JSON.stringify(data) });
 
 export const api = {
-  graph: (refresh = false) => call<InfraGraph>(`/api/graph${refresh ? "?refresh=1" : ""}`),
+  graph: (refresh = false, workspace?: string) => {
+    const q = new URLSearchParams();
+    if (workspace) q.set("workspace", workspace);
+    if (refresh) q.set("refresh", "1");
+    const s = q.toString();
+    return call<InfraGraph>(`/api/graph${s ? `?${s}` : ""}`);
+  },
+  workspaces: () => call<{ default: string; workspaces: WorkspaceSummary[] }>("/api/workspaces"),
   meta: () => call<Meta>("/api/meta"),
   catalog: (project: string) => call<Catalog>(`/api/catalog?project=${encodeURIComponent(project)}`),
   addProject: (d: { name: string; account: string; token: string }) => post<{ ok: true; message: string }>("/api/projects", d),

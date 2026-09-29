@@ -8,7 +8,7 @@ import type { InfraGraph } from "@/lib/types";
 
 const SEV_WORD = { critical: "Critical", high: "High", medium: "Medium", low: "Low" } as const;
 
-export function ProjectsPanel({ graph, focus, onFocus, onAddProject, onOpenAudit, updated }: {
+export function ProjectsPanel({ graph, focus, onFocus, onAddProject, onOpenAudit, updated, header }: {
   graph: InfraGraph;
   focus: string | null;
   onFocus: (projectNodeId: string | null) => void;
@@ -16,6 +16,8 @@ export function ProjectsPanel({ graph, focus, onFocus, onAddProject, onOpenAudit
   /** Opens the Audit tab with this finding (0-based) expanded. */
   onOpenAudit: (finding: number) => void;
   updated: string;
+  /** Shown above the totals, for example the workspace switcher. */
+  header?: React.ReactNode;
 }) {
   const currency = graph.currency;
   const accounts = graph.nodes.filter((n) => n.kind === "account");
@@ -27,6 +29,7 @@ export function ProjectsPanel({ graph, focus, onFocus, onAddProject, onOpenAudit
   return (
     <ScrollArea className="h-full">
       <div className="flex flex-col gap-4 p-4">
+        {header}
         <div>
           <div className="text-[12px] text-muted-foreground">Estimated monthly, gross</div>
           <div className="text-[28px] leading-9 font-semibold tabular-nums">{money(graph.totals.monthly, currency)}</div>
