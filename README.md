@@ -29,6 +29,28 @@ Manage your entire Hetzner platform from any AI assistant. Cloud servers, networ
 
 Can't see the player? [Watch the video](https://github.com/mjmirza/hetzner-mcp/blob/main/assets/video/explainer.mp4).
 
+## What you get
+
+- **Answers from your real account, in plain words.** Ask "what am I running and what does it cost?" and get the list with the monthly price, no Console clicking and no API to learn.
+- **No surprise bills.** Reading is always free. Anything that costs money shows its live price and waits for your yes, and it stays off until you turn it on.
+- **One page for everything.** A local map shows every project, server, network, volume and IP with its cost, plus a short list of what is worth fixing.
+- **Setup that checks itself.** One command asks for your token, confirms with Hetzner that it works, and connects your assistant for you. A second command tells you if anything stopped working.
+
+## From zero to your first answer
+
+About five minutes, and you need Node 18 or newer.
+
+1. **Make a token.** In the [Hetzner Console](https://console.hetzner.com/), open your project, then Security, then API tokens, then Generate API token. Choose Read & Write, and copy it right away, Hetzner shows it only once.
+2. **Connect your assistant.** Run the command below and paste the token when asked. It checks the token with Hetzner and sets up Claude Desktop, Claude Code, Cursor, Windsurf or VS Code for you.
+   ```
+   npx hetzner-mcp setup
+   ```
+3. **Restart that app.** Setup prints the exact step for each one.
+4. **Ask your first question.** For example, "List my Hetzner servers and show this month cost."
+5. **See it all at once.** Run `npx hetzner-mcp map --open`. It uses the token you just saved, so there is nothing else to set up. Just curious? `npx hetzner-mcp map --demo --open` shows a sample first, no account needed.
+
+Something not working? `npx hetzner-mcp doctor` checks the token saved in each app and says what to fix.
+
 ## Please sponsor this project
 
 This is built and maintained in the open, for free, under a license that only asks for attribution. If your team relies on it, [becoming a sponsor](https://github.com/sponsors/mjmirza) directly buys the time to cover more endpoints, keep the endpoint audit current as Hetzner changes, and respond to issues and pull requests faster. Even a small monthly amount makes a real difference. Thank you.
@@ -65,7 +87,7 @@ npx hetzner-mcp setup
 
 It asks for your Hetzner API token, checks it against the live Hetzner API on the spot, then writes the config for whichever assistant you use. It detects and wires Claude Desktop, Claude Code, Cursor, Windsurf, and VS Code, and backs up any existing config first.
 
-No token yet? The wizard links you straight to the page that creates one. In the Hetzner Cloud Console, open your project, then Security, then API Tokens, then Generate, and choose Read and Write. The same token also covers Storage Boxes.
+No token yet? The wizard lists the exact steps. In the [Hetzner Console](https://console.hetzner.com/), open your project, then Security, then API tokens, then Generate API token, and choose Read & Write. The same token also covers Storage Boxes. Dedicated (Robot) servers are optional and need separate webservice credentials, which setup explains when you say yes to them.
 
 Check it anytime.
 
@@ -73,7 +95,7 @@ Check it anytime.
 npx hetzner-mcp doctor
 ```
 
-Doctor verifies your token against the live API and shows which assistants are wired, all read only, writing nothing.
+Doctor checks the token saved in each connected assistant against the live API, one free read request, and says in one line what to fix. It writes nothing. Run setup again at any time to replace a token; the previous config is kept as a `.bak` file.
 
 ### Where your token is stored
 
@@ -147,6 +169,8 @@ Open a live map of every project, server, network, volume, firewall, load balanc
 npx hetzner-mcp map --open        # your account, at http://127.0.0.1:43390
 npx hetzner-mcp map --demo --open # a labelled sample estate, nothing needed
 ```
+
+With no token in your terminal, the map uses the one `setup` saved for your assistant and says which app it came from, so it works straight after setup. A token in the environment always wins.
 
 The address it prints ends in a one-time key (`#k=...`) made fresh at every launch. Only a page opened with that key can call the map's API, so other users on the same computer and other web pages cannot. The key stays in the tab after you open it, so reloading works.
 
