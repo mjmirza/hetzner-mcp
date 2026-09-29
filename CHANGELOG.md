@@ -3,6 +3,44 @@
 All notable changes to hetzner-mcp are documented here. The format is based on Keep a
 Changelog, and this project follows semantic versioning.
 
+## [Unreleased]
+
+### Added
+- Automatic audit. Every map build scores the estate out of 100 with findings for security,
+  cost, reliability, and hygiene. Each finding has what, why, numbered Hetzner Console steps,
+  the sentence to ask your AI, and the monthly saving. Before, the map listed flags with a
+  one-line note and no steps. Available as the Audit tab, `hetzner-mcp audit` (with `--out`,
+  `--json`, `--fail-on`), the `infra_audit` tool, and a first audit at the end of setup.
+- Plain names for codes. Locations read "Falkenstein, Germany" instead of "fsn1", server
+  cards show vCPU, RAM and disk, and the side panel explains every code.
+- One Reset that puts every card back, shows hidden items, clears focus and selection, and
+  refits the map. Before, Tidy up only undid drags and stayed greyed out until you dragged.
+- Optional Flow mode that animates dots along every line. Off when Reduce motion is on.
+- `HETZNER_MCP_TOOLS=lean` skips the 27 list shortcuts, cutting the tool list from about
+  9,400 to 5,900 tokens.
+
+### Changed
+- List view is now a flat list grouped by project, most urgent first, with plain status words
+  and filters. Before, it was a nested tree that was hard to scan.
+- Compact responses collapse nested objects to their name and drop empty fields, and no JSON
+  is indented. Measured live: server types 49% smaller, locations 47%, images 40%.
+- Read tools use shorter descriptions, and the Mermaid diagram and full audit are bounded.
+- Cards grow to fit their content and the layout uses their real height, so text never spills
+  and cards never overlap. Line labels that sat on top of cards are gone; the card text says it.
+- On phones, layout, Flow, Refresh, Reset and dark mode sit in a More menu so the header never
+  runs off screen.
+
+### Fixed
+- Header text such as "Updated 10 min ago" wrapped onto three lines at medium widths.
+- The location card showed its code twice.
+
+### Tests
+- `test/layout.ts`, a browser gate in CI across 12 screen sizes and every view, that fails on
+  wrapped header text, content spilling out of a card, overlapping cards, and a Reset that
+  does not restore the layout.
+- `test/audit.ts` and `test/token-budget.ts`, the latter failing when the tool list or the
+  common answers grow past their budget.
+
 ## [0.5.0] - 2026-09-29
 
 Thanks to Kevin Laurier (@caoimhin07) for the independent safety audit in #91, whose fixes
