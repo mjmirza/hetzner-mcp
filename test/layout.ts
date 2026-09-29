@@ -162,6 +162,29 @@ async function checkNewKey(browser: Browser): Promise<string[]> {
   return out.map((p) => `new key: ${p}`);
 }
 
+// With storage blocked the key cannot be saved, so it must stay in the link for a reload.
+async function checkBlockedStorage(browser: Browser): Promise<string[]> {
+  const out: string[] = [];
+  const handle = await startMapServer(loadConfig(), { demo: true, port: 43492 });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  try {
+    await page.addInitScript(() => {
+      Storage.prototype.setItem = () => {
+        throw new DOMException("blocked", "SecurityError");
+      };
+    });
+    await page.goto(handle.url);
+    await page.waitForSelector(".react-flow__node", { timeout: 8000 });
+    if (!page.url().includes("#k=")) out.push("the key was removed from the address bar although it could not be saved");
+    await page.reload();
+    await page.waitForSelector(".react-flow__node", { timeout: 8000 }).catch(() => out.push("the map does not load again after a reload"));
+  } finally {
+    await page.close();
+    await handle.close();
+  }
+  return out.map((p) => `blocked storage: ${p}`);
+}
+
 async function main(): Promise<void> {
   const handle = await startMapServer(loadConfig(), { demo: true, port: 43480 });
   const browser = await chromium.launch();
@@ -175,6 +198,7 @@ async function main(): Promise<void> {
   try {
     results.push({ layouts: 1, cards: 0, failures: await checkWorkspaces(browser) });
     results.push({ layouts: 1, cards: 0, failures: await checkNewKey(browser) });
+    results.push({ layouts: 1, cards: 0, failures: await checkBlockedStorage(browser) });
   } finally {
     await browser.close();
   }

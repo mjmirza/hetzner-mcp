@@ -44,11 +44,17 @@ type Inspected = { state: "missing" | "ok" | "corrupt" | "untrusted"; projects: 
 function inspect(env: NodeJS.ProcessEnv): Inspected {
   const target = file(env);
   let raw: string;
+  let notice: string | undefined;
   try {
     const uid = myUid();
     const st = statSync(target);
     if (uid !== undefined && (st.uid !== uid || st.mode & 0o022)) {
       return { state: "untrusted", projects: [], caveat: `${target} is not owned by you or is writable by others, so it was ignored.` };
+    }
+    // Readable by others but ours: it holds tokens, so make it owner-only before using it.
+    if (uid !== undefined && st.mode & 0o077) {
+      chmodSync(target, 0o600);
+      notice = `${target} was readable by other users. It is now owner-only (0600).`;
     }
     raw = readFileSync(target, "utf8");
   } catch (err) {
@@ -62,9 +68,9 @@ function inspect(env: NodeJS.ProcessEnv): Inspected {
       (p): p is StoredProject =>
         !!p && typeof p.name === "string" && typeof p.account === "string" && typeof p.token === "string" && p.token.length > 0 && (p.workspace === undefined || typeof p.workspace === "string"),
     );
-    return { state: "ok", projects };
+    return notice ? { state: "ok", projects, caveat: notice } : { state: "ok", projects };
   } catch {
-    return { state: "corrupt", projects: [], caveat: `${target} is not valid JSON, so it was ignored. It is kept aside on the next save.` };
+    return { state: "corrupt", projects: [], caveat: [notice, `${target} is not valid JSON, so it was ignored. It is kept aside on the next save.`].filter(Boolean).join(" ") };
   }
 }
 
@@ -92,25 +98,36 @@ function write(env: NodeJS.ProcessEnv, projects: StoredProject[]): void {
 }
 
 // Read, change, write under a lock directory, so two imports at once cannot drop each other's
-// projects. A lock whose owner died, or older than 30 s, is from a crashed run and is taken over.
+// projects. A lock is taken over only when its owner is gone: a dead process on this computer,
+// or a lock from another computer that is older than 30 s. A live owner here is always waited for.
 function lockPath(env: NodeJS.ProcessEnv): string {
   return join(ensureDir(env), ".lock");
 }
 
 const OWNER = "owner.json";
 const thisHost = hostname();
+const STALE_MS = 30_000;
 
-function ownerDead(lock: string, seenOwnerless: Map<string, number>): boolean {
-  let owner: { pid?: unknown; hostname?: unknown } | undefined;
+type Owner = { pid?: unknown; hostname?: unknown; id?: unknown };
+
+function readOwner(lock: string): Owner | undefined {
   try {
-    owner = JSON.parse(readFileSync(join(lock, OWNER), "utf8"));
+    return JSON.parse(readFileSync(join(lock, OWNER), "utf8")) as Owner;
   } catch {
+    return undefined;
+  }
+}
+
+function ownerGone(lock: string, seenOwnerless: Map<string, number>): boolean {
+  const owner = readOwner(lock);
+  if (!owner) {
     // No owner yet: allow one second for it to appear, measured by us, not by the lock's mtime.
     const first = seenOwnerless.get(lock) ?? Date.now();
     seenOwnerless.set(lock, first);
     return Date.now() - first > 1000;
   }
-  if (owner?.hostname !== thisHost || typeof owner.pid !== "number") return false;
+  // Another computer's process cannot be checked, so only age counts there.
+  if (owner.hostname !== thisHost || typeof owner.pid !== "number") return Date.now() - statSync(lock).mtimeMs > STALE_MS;
   try {
     process.kill(owner.pid, 0);
     return false;
@@ -119,22 +136,29 @@ function ownerDead(lock: string, seenOwnerless: Map<string, number>): boolean {
   }
 }
 
-function tryLock(lock: string, seenOwnerless: Map<string, number>): boolean {
+/** Returns this holder's random id when the lock was taken, undefined when it is busy. */
+function tryLock(lock: string, seenOwnerless: Map<string, number>): string | undefined {
+  const id = randomBytes(16).toString("hex");
   try {
     mkdirSync(lock, { mode: 0o700 });
-    writeFileSync(join(lock, OWNER), JSON.stringify({ pid: process.pid, hostname: thisHost, created: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
-    return true;
+    writeFileSync(join(lock, OWNER), JSON.stringify({ pid: process.pid, hostname: thisHost, id, created: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
+    return id;
   } catch {
     try {
-      if (Date.now() - statSync(lock).mtimeMs > 30_000 || ownerDead(lock, seenOwnerless)) {
+      if (ownerGone(lock, seenOwnerless)) {
         rmSync(lock, { recursive: true, force: true });
         seenOwnerless.delete(lock);
       }
     } catch {
       // The lock vanished between the two calls; retry.
     }
-    return false;
+    return undefined;
   }
+}
+
+/** Removes the lock only while it is still ours, so a later holder's lock is never deleted. */
+export function releaseLock(lock: string, id: string): void {
+  if (readOwner(lock)?.id === id) rmSync(lock, { recursive: true, force: true });
 }
 
 const busy = () => new Error("The project store is busy. Try again in a moment.");
@@ -144,14 +168,15 @@ function locked<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
   const lock = lockPath(env);
   const until = Date.now() + 5000;
   const seen = new Map<string, number>();
-  while (!tryLock(lock, seen)) {
+  let id: string | undefined;
+  while (!(id = tryLock(lock, seen))) {
     if (Date.now() > until) throw busy();
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
   }
   try {
     return fn();
   } finally {
-    rmSync(lock, { recursive: true, force: true });
+    releaseLock(lock, id);
   }
 }
 
@@ -160,14 +185,15 @@ async function lockedAsync<T>(env: NodeJS.ProcessEnv, fn: () => T): Promise<T> {
   const lock = lockPath(env);
   const until = Date.now() + 5000;
   const seen = new Map<string, number>();
-  while (!tryLock(lock, seen)) {
+  let id: string | undefined;
+  while (!(id = tryLock(lock, seen))) {
     if (Date.now() > until) throw busy();
     await new Promise((r) => setTimeout(r, 25)); // polling a lock, one wait per attempt
   }
   try {
     return fn();
   } finally {
-    rmSync(lock, { recursive: true, force: true });
+    releaseLock(lock, id);
   }
 }
 

@@ -6,6 +6,7 @@ import { settleWithLimit } from "./limit.js";
 import { readStored } from "./store.js";
 import { sampleGraph } from "./sample.js";
 import { targetHealth, type LiveEntry, type StatusSnapshot } from "./status.js";
+import { onInvalidate } from "./graph-cache.js";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 type Lister = (cfg: HetznerConfig, path: "/servers" | "/load_balancers", key: "servers" | "load_balancers") => Promise<Json[]>;
@@ -70,6 +71,9 @@ export async function collectStatuses(
 export function resetStatusMemory(): void {
   remembered.clear();
 }
+
+// A change can alter any server or load balancer, so the next poll reads every project again.
+onInvalidate(resetStatusMemory);
 
 /** The sample estate's statuses, with no network call. */
 export function sampleStatuses(workspace?: string): StatusSnapshot {

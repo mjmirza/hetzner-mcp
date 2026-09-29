@@ -40,9 +40,18 @@ export async function cachedGraph(key: string, load: () => Promise<InfraGraph>, 
   return settled;
 }
 
-/** Drops every cached graph. Call after anything that changes infrastructure or projects. */
+const listeners = new Set<() => void>();
+
+/** Runs listener after every invalidation. Returns a function that stops it. */
+export function onInvalidate(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+}
+
+/** Drops every cached graph and tells other caches to do the same. Call after anything that changes infrastructure or projects. */
 export function invalidateGraphs(): void {
   generation++;
   cache.clear();
   inflight.clear();
+  for (const listener of [...listeners]) listener();
 }

@@ -109,7 +109,11 @@ function limitKey(surface: SurfaceName, cfg: HetznerConfig): string {
 
 async function readCapped(res: Response): Promise<string> {
   const declared = Number(res.headers?.get("content-length") ?? 0);
-  if (declared > MAX_RESPONSE_BYTES) throw new Error("too_large");
+  if (declared > MAX_RESPONSE_BYTES) {
+    // Cancel the unread body so the connection closes now instead of staying open.
+    await res.body?.cancel().catch(() => undefined);
+    throw new Error("too_large");
+  }
   if (!res.body) {
     const text = await res.text();
     if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES) throw new Error("too_large");

@@ -128,6 +128,9 @@ const lstatOrNull = (p: string): fs.Stats | null => {
 /** Atomically merge the hetzner entry into a client config, backing up the original first. */
 export function writeClientConfig(target: ClientTarget, creds: ServerEntryEnv): WriteResult {
   const shown = tilde(target.configPath);
+  // A linked folder (such as a .vscode link in a cloned project) would carry the token somewhere else.
+  const dir = path.dirname(target.configPath);
+  if (lstatOrNull(dir)?.isSymbolicLink()) throw new Error(`${tilde(dir)} is a symbolic link. Refusing to write the config through it; replace it with a regular folder.`);
   // A link here could copy another file into the backup, or send our write somewhere else.
   const st = lstatOrNull(target.configPath);
   if (st?.isSymbolicLink()) throw new Error(`${shown} is a symbolic link. Refusing to follow it; replace it with a regular file.`);

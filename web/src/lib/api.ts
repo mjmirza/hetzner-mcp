@@ -3,16 +3,19 @@ import type { Catalog, InfraGraph, Meta, Plan, WorkspaceSummary } from "./types"
 
 const KEY = "hzmap-key";
 
-/** The per-launch key arrives in the URL fragment. Keep it for reloads, then hide it from the address bar. */
+/** The per-launch key arrives in the URL fragment. It is hidden from the address bar only once
+ * saved for reloads; when storage is blocked the fragment stays, so a reload still has the key. */
 function launchKey(): string {
   const m = /(?:^#|&)k=([0-9a-f]{64})(?:&|$)/.exec(window.location.hash);
   if (m) {
+    let saved = false;
     try {
       sessionStorage.setItem(KEY, m[1]!);
+      saved = true;
     } catch {
-      // Storage can be blocked; the key still works for this page load.
+      // Storage is blocked; keep the fragment instead.
     }
-    history.replaceState(null, "", window.location.pathname + window.location.search);
+    if (saved) history.replaceState(null, "", window.location.pathname + window.location.search);
     return m[1]!;
   }
   try {
