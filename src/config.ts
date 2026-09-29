@@ -33,6 +33,8 @@ export interface HetznerConfig {
   timeoutMs: number;
   /** Hard cap on auto-pagination to bound cost and memory. */
   maxPages: number;
+  /** How long a write waits for its Hetzner actions to finish. 0 disables waiting. */
+  actionWaitMs: number;
 }
 
 function positiveInt(value: string | undefined, fallback: number): number {
@@ -51,6 +53,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HetznerConfig 
     allowBilled: env.HETZNER_MCP_ALLOW_BILLED === "1",
     timeoutMs: positiveInt(env.HETZNER_MCP_TIMEOUT_MS, 30000),
     maxPages: positiveInt(env.HETZNER_MCP_MAX_PAGES, 20),
+    actionWaitMs: env.HETZNER_MCP_ACTION_WAIT_MS === "0" ? 0 : positiveInt(env.HETZNER_MCP_ACTION_WAIT_MS, 120000),
   };
 }
 

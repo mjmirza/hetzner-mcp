@@ -5,6 +5,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
 import { classifyCost } from "../cost.js";
+import { waitForActions, describeActions, anyActionFailed } from "../actions.js";
 
 function text(value: string, isError = false) {
   return { content: [{ type: "text" as const, text: value }], isError };
@@ -45,7 +46,8 @@ async function guarded(
   }
   try {
     const res = await hetznerRequest(cfg, { surface: "cloud", method: opts.method, path: opts.path, body: opts.body });
-    return text(JSON.stringify(res, null, 2));
+    const actions = await waitForActions(cfg, res);
+    return text(JSON.stringify(res, null, 2) + describeActions(actions), anyActionFailed(actions));
   } catch (err) {
     return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
   }

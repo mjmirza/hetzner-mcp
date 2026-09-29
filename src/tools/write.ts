@@ -9,6 +9,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
 import { cloudServerPriceNote } from "../cost.js";
+import { waitForActions, describeActions, anyActionFailed } from "../actions.js";
 
 function text(value: string, isError = false) {
   return { content: [{ type: "text" as const, text: value }], isError };
@@ -73,7 +74,8 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
           root_password: res.root_password ?? null,
           note: "Server is billed while it exists. Delete it with cloud_delete_server when done. A root password is returned only when no SSH key was attached.",
         };
-        return text(JSON.stringify(summary, null, 2));
+        const actions = await waitForActions(cfg, res);
+        return text(JSON.stringify(summary, null, 2) + describeActions(actions), anyActionFailed(actions));
       } catch (err) {
         return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
       }
@@ -100,8 +102,10 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
         );
       }
       try {
-        await hetznerRequest(cfg, { surface: "cloud", method: "DELETE", path: `/servers/${encodeURIComponent(String(args.id))}` });
-        return text(`Server ${args.id} deleted. Billing stopped. Auto-created primary IPs release shortly after.`);
+        const res = await hetznerRequest(cfg, { surface: "cloud", method: "DELETE", path: `/servers/${encodeURIComponent(String(args.id))}` });
+        const actions = await waitForActions(cfg, res);
+        if (anyActionFailed(actions)) return text(`Delete of server ${args.id} did not finish.` + describeActions(actions), true);
+        return text(`Server ${args.id} deleted. Billing stopped. Auto-created primary IPs release shortly after.` + describeActions(actions));
       } catch (err) {
         return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
       }

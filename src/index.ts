@@ -7,7 +7,6 @@
  * With no arguments it runs the MCP server (how clients launch it). The setup, doctor,
  * help, and version subcommands provide a guided onboarding and a status check.
  */
-import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig, availableSurfaces } from "./config.js";
@@ -18,9 +17,9 @@ import { registerCloudWriteTools } from "./tools/write-cloud.js";
 import { registerContributeTool } from "./tools/contribute.js";
 import { runSetup } from "./setup/wizard.js";
 import { runDoctor } from "./setup/doctor.js";
+import { VERSION } from "./version.js";
 
-const require = createRequire(import.meta.url);
-const pkg = require("../package.json") as { version: string };
+const pkg = { version: VERSION };
 
 function printHelp(): void {
   process.stdout.write(
