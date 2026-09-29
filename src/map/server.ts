@@ -13,7 +13,7 @@ import { DEFAULT_WORKSPACE, defaultWorkspace, discoverProjects, listWorkspaces, 
 import { readStored } from "./store.js";
 import { sampleGraph } from "./sample.js";
 import { collectStatuses, sampleStatuses } from "./live.js";
-import { invalidateGraphs } from "./graph-cache.js";
+import { invalidateGraphs, onInvalidate } from "./graph-cache.js";
 import type { StatusSnapshot } from "./status.js";
 import { ActionError, apply, catalog, connectProject, deleteNode, deletePlan, disconnectProject, meta, plan, projectById, publicCatalog, type ActionEnv } from "./actions.js";
 import type { InfraGraph } from "./types.js";
@@ -263,10 +263,6 @@ export async function startMapServer(
       const body = await readJson(req);
       if (opts.demo && url.pathname !== "/api/projects") throw new ActionError(403, "This is sample data. Start the live map to change real resources.");
       const done = (message: string) => {
-        generation++;
-        inflight.clear();
-        cache.clear();
-        statusCache.clear();
         invalidateGraphs();
         json(200, { ok: true, message });
       };
@@ -318,6 +314,14 @@ export async function startMapServer(
     return withinDeadline(job, "live status");
   };
 
+  // Any change, from this server or from a tool in the same process, drops this server's copies too.
+  const stopListening = onInvalidate(() => {
+    generation++;
+    inflight.clear();
+    cache.clear();
+    statusCache.clear();
+  });
+
   // Try the chosen port, then the next nine, so a busy port never blocks the map.
   const first = opts.port ?? mapPortFromEnv(env);
   let lastErr: unknown;
@@ -331,6 +335,7 @@ export async function startMapServer(
         close: () =>
           new Promise<void>((resolve) => {
             running = undefined;
+            stopListening();
             server.close(() => resolve());
           }),
       };
@@ -340,5 +345,6 @@ export async function startMapServer(
       if ((err as NodeJS.ErrnoException).code !== "EADDRINUSE") break;
     }
   }
+  stopListening();
   throw new Error(`Could not start the map server near port ${first}. ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
 }

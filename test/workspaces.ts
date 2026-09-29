@@ -10,7 +10,7 @@ import { settleWithLimit } from "../src/map/limit.js";
 import { discoverProjects, listWorkspaces, resolveTarget } from "../src/map/projects.js";
 import { importProjects, maskToken, parseImport, runProjects } from "../src/map/projects-cli.js";
 import { startMapServer } from "../src/map/server.js";
-import { readStored, saveStored, saveStoredAsync, storeDir } from "../src/map/store.js";
+import { readStored, releaseLock, saveStored, saveStoredAsync, storeDir } from "../src/map/store.js";
 import { mkdirSync, rmSync, utimesSync } from "node:fs";
 import { sampleGraph } from "../src/map/sample.js";
 import { toMermaid } from "../src/map/summary.js";
@@ -285,6 +285,38 @@ assert("a file with bad rows exits 1", (await runProjects(["import", file], ienv
   }
   rmSync(join(storeDir(oenv), ".lock"), { recursive: true, force: true });
   assert("a lock held by a live process is respected", held && readStored(oenv).length === 3);
+
+  // A live owner on this computer keeps its lock however long it holds it.
+  plant(oenv, { pid: process.pid, hostname: hostname(), id: "live-owner", created: new Date().toISOString() });
+  const longAgo = new Date(Date.now() - 40_000);
+  utimesSync(join(storeDir(oenv), ".lock"), longAgo, longAgo);
+  let waited = "";
+  await saveStoredAsync(oenv, { name: "o5", account: "A", token: tok("s") }).catch((e: unknown) => (waited = String(e)));
+  const lockOwner = () => {
+    try {
+      return readFileSync(join(storeDir(oenv), ".lock", "owner.json"), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const ownerLeft = lockOwner().includes("live-owner");
+  assert("an old lock whose owner here is still running is never taken over", /busy/.test(waited) && ownerLeft && readStored(oenv).length === 3, waited);
+  // Releasing only removes a lock that is still ours, never the next holder's.
+  if (!ownerLeft) plant(oenv, { pid: process.pid, hostname: hostname(), id: "live-owner", created: new Date().toISOString() });
+  releaseLock(join(storeDir(oenv), ".lock"), "earlier-holder");
+  assert("releasing does not remove a lock that now belongs to another holder", lockOwner().includes("live-owner"));
+  releaseLock(join(storeDir(oenv), ".lock"), "live-owner");
+  saveStored(oenv, { name: "o6", account: "A", token: tok("t") });
+  assert("the holder's own release frees the lock for the next write", readStored(oenv).length === 4);
+
+  // A store file others can read, but that is ours, is made owner-only before it is used.
+  const renv: NodeJS.ProcessEnv = { XDG_CONFIG_HOME: home() };
+  mkdirSync(storeDir(renv), { recursive: true, mode: 0o700 });
+  const readable = join(storeDir(renv), "projects.json");
+  writeFileSync(readable, JSON.stringify({ projects: [{ name: "r", account: "A", token: tok("r"), addedAt: "" }] }));
+  chmodSync(readable, 0o644);
+  const readBack = readStored(renv);
+  assert("a readable store file we own is tightened to 0600 on read", readBack.length === 1 && (statSync(readable).mode & 0o777) === 0o600, (statSync(readable).mode & 0o777).toString(8));
 
   // Names with a pipe or a newline cannot break the Markdown table or the Mermaid diagram.
   const g = sampleGraph();

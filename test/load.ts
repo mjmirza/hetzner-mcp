@@ -92,7 +92,16 @@ const baseEnv = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({ XDG_CON
     (err: unknown) => (err instanceof HetznerApiError ? err.code : "other"),
   );
   assert("an answer over the size cap fails with response_too_large", code === "response_too_large");
+  let cancelled = false;
+  const endless = new ReadableStream({ pull: () => new Promise(() => undefined), cancel: () => void (cancelled = true) });
+  globalThis.fetch = (async () => new Response(endless, { status: 200, headers: { "content-length": String(MAX_RESPONSE_BYTES + 1) } })) as typeof fetch;
+  const declared = await hetznerRequest(cfg, { surface: "cloud", path: "/servers" }).then(() => "", (err: unknown) => (err instanceof HetznerApiError ? err.code : "other"));
+  assert("an answer declared over the size cap is cancelled unread", declared === "response_too_large" && cancelled);
+  stubHetzner();
+  const freed = await Promise.all(Array.from({ length: MAX_IN_FLIGHT_PER_TOKEN }, () => hetznerRequest(cfg, { surface: "cloud", path: "/servers" }).then(() => true, () => false)));
+  assert("a cancelled answer frees its request slot", freed.every(Boolean));
 }
+
 
 // 3. The page limit is reported, never silent.
 {
@@ -250,6 +259,34 @@ const emptyGraph = (workspace?: string): InfraGraph => ({ source: "live", genera
     await first;
     const cached = await get(h.port, "/api/status?workspace=ws-1");
     assert("the finished poll is reused for the next request", statusJobs === 1 && cached.status === 200);
+  } finally {
+    await h.close();
+  }
+}
+
+// 11. A write drops the map server's own copies and the remembered live status too.
+{
+  const stats = stubHetzner({ sizes: { "/servers": 120, "/load_balancers": 1 } });
+  const env = baseEnv({ HETZNER_CLOUD_TOKEN: tokenA });
+  const cfg = loadConfig(env);
+  resetStatusMemory();
+  const t0 = 2_000_000;
+  await collectStatuses(cfg, env, { now: t0 });
+  await hetznerRequest(cfg, { surface: "cloud", method: "POST", path: "/servers/1/actions/poweron" }).catch(() => undefined);
+  const beforePoll = stats.calls;
+  const polled = await collectStatuses(cfg, env, { now: t0 + POLL_MS_PER_PAGE });
+  assert("after a write the next status poll reads a large project again", stats.calls > beforePoll && !polled.deferredProjects);
+
+  let reads = 0;
+  const h = await startMapServer(cfg, { port: 43490, env, collect: async (ws) => (reads++, emptyGraph(ws)) });
+  mapKey = h.token;
+  try {
+    await get(h.port, "/api/graph");
+    await get(h.port, "/api/graph");
+    const cachedReads = reads;
+    await hetznerRequest(cfg, { surface: "cloud", method: "POST", path: "/servers/1/actions/poweron" }).catch(() => undefined);
+    await get(h.port, "/api/graph");
+    assert("a write from a tool in the same process drops the map server's cached graph", cachedReads === 1 && reads === 2, `reads=${reads}`);
   } finally {
     await h.close();
   }

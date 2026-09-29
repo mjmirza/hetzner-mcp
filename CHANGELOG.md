@@ -46,6 +46,10 @@ Changelog, and this project follows semantic versioning.
   and refuses one owned by someone else, ignores a `projects.json` others can write, moves an
   unreadable one aside to `projects.json.corrupt-<time>` instead of overwriting its tokens,
   uses an unguessable temp file, and takes over a lock whose owning process has exited.
+- A `projects.json` that other users can read is now made owner-only (0600) the moment it is
+  read, with a one-time note. Before, a readable file was used as is.
+- Setup refuses to write a client config through a linked folder, such as a `.vscode` link in
+  a cloned project. Before, the config and its token landed wherever the link pointed.
 
 ### Changed
 - Large estates stay responsive. At most 16 Hetzner requests run at once (4 per token), `infra_map` and `infra_audit` reuse one read for a minute (`refresh: true` reads again, any change drops it), and a list cut short by the page limit now says so instead of silently dropping resources. Before, 50 parallel maps put 2,200 requests in flight and every audit page re-read the whole estate.
@@ -72,6 +76,12 @@ Changelog, and this project follows semantic versioning.
 - IPv6-only servers without a firewall, and firewall rules on port "any", are now flagged.
 - Header text such as "Updated 10 min ago" wrapped onto three lines at medium widths.
 - The location card showed its code twice.
+- A change made with an MCP tool now shows on an open map straight away. Before, the map kept
+  showing the old graph for up to a minute, and a large project's live status for up to 15.
+- The project store lock is never taken from a process on this computer that is still running,
+  and finishing a write never removes a lock someone else now holds.
+- An answer too large to read is closed at once instead of leaving its connection open.
+- When the browser blocks storage, the map link keeps its key, so a reload still works.
 
 ### Tests
 - `test/layout.ts`, a browser gate in CI across 12 screen sizes and every view, that fails on

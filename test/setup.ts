@@ -110,6 +110,18 @@ async function main(): Promise<void> {
     refused = String(e);
   }
   assert("a symlinked backup path is refused and its target is untouched", /symbolic link/.test(refused) && readFileSync(victim, "utf8") === '{"secret":"keep"}' && readFileSync(real, "utf8") === '{"mcpServers":{}}');
+  // A linked config folder, such as a .vscode link in a cloned project, is refused.
+  const project = mkdtempSync(join(tmpdir(), "hz-proj-"));
+  const elsewhere = mkdtempSync(join(tmpdir(), "hz-elsewhere-"));
+  symlinkSync(elsewhere, join(project, ".vscode"));
+  const vsLinked = clientTargets(process.platform, project, project).find((t) => t.id === "vscode")!;
+  refused = "";
+  try {
+    writeClientConfig(vsLinked, { HETZNER_CLOUD_TOKEN: "t" });
+  } catch (e) {
+    refused = String(e);
+  }
+  assert("a symlinked .vscode folder is refused and nothing is written through it", /symbolic link/.test(refused) && readdirSync(elsewhere).length === 0);
   rmSync(`${real}.bak`);
   writeFileSync(`${real}.bak`, "older backup");
   const res = writeClientConfig(target(real), { HETZNER_CLOUD_TOKEN: "t" });
