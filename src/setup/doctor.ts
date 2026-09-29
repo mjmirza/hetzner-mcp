@@ -9,6 +9,7 @@ import { loadConfig, availableSurfaces } from "../config.js";
 import { clientTargets, hasHetznerServer, tilde } from "./clients.js";
 import { validateCloudToken } from "./validate.js";
 import { bold, dim, green, red, cyan } from "./style.js";
+import { readStdinLine, warnVisibleSecrets } from "./prompt.js";
 
 function out(s: string): void {
   stdout.write(s + "\n");
@@ -24,13 +25,15 @@ function flagToken(argv: string[]): string | undefined {
 
 export async function runDoctor(argv: string[]): Promise<number> {
   const cfg = loadConfig();
+  const fromArgv = flagToken(argv)?.trim();
+  if (fromArgv) warnVisibleSecrets(["--token"]);
   out("");
   out("  " + bold(cyan("hetzner-mcp doctor")));
   out("  " + dim("A read-only health check. It looks, and changes nothing."));
   out("");
 
-  // Token health. Prefer an explicit flag, else the environment.
-  const token = flagToken(argv)?.trim() || cfg.cloudToken;
+  // Token health. Prefer stdin or an explicit flag, else the environment.
+  const token = (argv.includes("--token-stdin") ? await readStdinLine() : fromArgv) || cfg.cloudToken;
   if (token) {
     out(dim("  Checking your token with Hetzner..."));
     const check = await validateCloudToken(token);
@@ -38,7 +41,8 @@ export async function runDoctor(argv: string[]): Promise<number> {
   } else {
     out(`  ${dim("-")}  ${bold("Token")}. Not set in this terminal, which is normal.`);
     out(dim("     It lives inside each app's config, not in your shell."));
-    out(dim("     To check one here, run. npx hetzner-mcp doctor --token <token>"));
+    out(dim("     To check one here, run. npx hetzner-mcp doctor --token-stdin"));
+    out(dim("     then paste the token and press Enter, then Ctrl+D."));
   }
 
   // Surfaces available from the current environment.

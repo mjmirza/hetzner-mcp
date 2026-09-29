@@ -1,14 +1,15 @@
 /**
  * Local web server for the infrastructure map. Loopback only, strict Host and Origin checks,
- * a custom header on every API call, a strict CSP, and no token ever sent to the browser.
+ * a per-launch secret on every API call, a strict CSP, and no Hetzner token ever sent to the browser.
  */
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join, extname } from "node:path";
 import type { HetznerConfig } from "../config.js";
 import { collectGraph } from "./collect.js";
-import { defaultWorkspace, discoverProjects, listWorkspaces, type WorkspaceSummary } from "./projects.js";
+import { DEFAULT_WORKSPACE, defaultWorkspace, discoverProjects, listWorkspaces, type WorkspaceSummary } from "./projects.js";
 import { readStored } from "./store.js";
 import { sampleGraph } from "./sample.js";
 import { collectStatuses, sampleStatuses } from "./live.js";
@@ -30,7 +31,10 @@ const TYPES: Record<string, string> = { ".js": "text/javascript; charset=utf-8",
 export const CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 export interface MapServerHandle {
+  /** Opens the map. Carries the per-launch key in the fragment, which is never sent to the server. */
   url: string;
+  /** The per-launch key every /api call must send as X-Hzmap. */
+  token: string;
   port: number;
   close: () => Promise<void>;
 }
@@ -103,7 +107,7 @@ export async function startMapServer(
     if (opts.demo) {
       const g = sampleGraph();
       const count = (k: string) => g.nodes.filter((n) => n.kind === k).length;
-      return [{ name: defaultWorkspace(env), accounts: count("account"), projects: count("project") }];
+      return [{ name: DEFAULT_WORKSPACE, accounts: count("account"), projects: count("project") }];
     }
     return listWorkspaces(discoverProjects(cfg, env, readStored(env)), env, !!(cfg.robotUser && cfg.robotPassword));
   };
@@ -134,8 +138,18 @@ export async function startMapServer(
     return graph;
   };
 
+  // A fresh secret each launch, so another local user or a page cannot call the API.
+  const token = randomBytes(32).toString("hex");
+  const expected = Buffer.from(token);
+  const authorized = (v: unknown): boolean => {
+    if (typeof v !== "string") return false;
+    const got = Buffer.from(v);
+    return got.length === expected.length && timingSafeEqual(got, expected);
+  };
+
   let boundPort = 0;
-  const server = createServer(async (req, res) => {
+  // A slow client cannot hold a connection open for long; timeouts are checked every second.
+  const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000, connectionsCheckingInterval: 1_000 }, async (req, res) => {
     const origins = [`${HOST}:${boundPort}`, `localhost:${boundPort}`];
     if (!origins.includes(String(req.headers.host ?? ""))) {
       res.writeHead(421, { "Content-Type": "text/plain" }).end("Misdirected request");
@@ -184,8 +198,8 @@ export async function startMapServer(
         return;
       }
 
-      // A cross-site page cannot add this header without a preflight, which is never answered.
-      if (req.headers["x-hzmap"] !== "1") {
+      // A cross-site page cannot add this header without a preflight, and cannot know the secret.
+      if (!authorized(req.headers["x-hzmap"])) {
         res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end("Forbidden");
         return;
       }
@@ -198,7 +212,7 @@ export async function startMapServer(
       if (method === "GET") {
         if (url.pathname === "/api/workspaces") {
           const list = workspaces();
-          return json(200, { default: list[0]?.name ?? defaultWorkspace(env), workspaces: list });
+          return json(200, { default: list[0]?.name ?? (opts.demo ? DEFAULT_WORKSPACE : defaultWorkspace(env)), workspaces: list });
         }
         if (url.pathname === "/api/graph") {
           const list = workspaces();
@@ -277,9 +291,9 @@ export async function startMapServer(
   for (let p = first; p < first + 10; p++) {
     try {
       boundPort = await listen(server, p); // BESTPRACTICE_OK: ports are tried in order, each depends on the previous failing
-      const url = `http://${HOST}:${boundPort}/`;
       running = {
-        url,
+        url: `http://${HOST}:${boundPort}/#k=${token}`,
+        token,
         port: boundPort,
         close: () =>
           new Promise<void>((resolve) => {

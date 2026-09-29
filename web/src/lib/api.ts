@@ -1,11 +1,33 @@
 import type { StatusSnapshot } from "../../../src/map/status";
 import type { Catalog, InfraGraph, Meta, Plan, WorkspaceSummary } from "./types";
 
-/** Every call carries X-Hzmap, which a cross-site page cannot add without a preflight we never answer. */
+const KEY = "hzmap-key";
+
+/** The per-launch key arrives in the URL fragment. Keep it for reloads, then hide it from the address bar. */
+function launchKey(): string {
+  const m = /(?:^#|&)k=([0-9a-f]{64})(?:&|$)/.exec(window.location.hash);
+  if (m) {
+    try {
+      sessionStorage.setItem(KEY, m[1]!);
+    } catch {
+      // Storage can be blocked; the key still works for this page load.
+    }
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    return m[1]!;
+  }
+  try {
+    return sessionStorage.getItem(KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+const key = launchKey();
+
+/** Every call carries the key as X-Hzmap, which a cross-site page cannot add or know. */
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
     ...init,
-    headers: { "X-Hzmap": "1", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers ?? {}) },
+    headers: { "X-Hzmap": key, ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers ?? {}) },
   });
   const text = await res.text();
   let body: unknown = null;

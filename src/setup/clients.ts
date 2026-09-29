@@ -1,9 +1,12 @@
 /**
- * MCP client detection and config shaping. Pure, no IO, so it is fully unit-testable.
+ * MCP client detection and config shaping. Pure apart from locating this installed copy.
  * The wizard and doctor commands consume these to write or inspect a client's config.
  */
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { VERSION } from "../version.js";
 
 /** Where a known MCP client stores its server config, and how that config is shaped. */
 export interface ClientTarget {
@@ -29,7 +32,7 @@ export interface ServerEntryEnv {
   HETZNER_MCP_ALLOW_BILLED?: string;
 }
 
-/** A single mcpServers entry pointing at the published package via npx. */
+/** A single mcpServers entry that launches this package. */
 export interface ServerEntry {
   command: string;
   args: string[];
@@ -105,14 +108,47 @@ export function clientTargets(
   ];
 }
 
+/** How a client should start the server. */
+export interface Launcher {
+  command: string;
+  args: string[];
+}
+
+// An absolute path, so a node_modules in the client's working directory is never run with the token.
+// An npx cache can vanish, so from there pin the exact version; a global install gives the path.
+export function launcherFor(entryFile: string | undefined, execPath: string = process.execPath, version: string = VERSION): Launcher {
+  const ephemeral = !entryFile || entryFile.split(/[\\/]/).includes("_npx");
+  return ephemeral ? { command: "npx", args: ["-y", `hetzner-mcp@${version}`] } : { command: execPath, args: [entryFile] };
+}
+
+/** The launcher for the copy running now. Run from source (no build), it falls back to npx. */
+function currentLauncher(): Launcher {
+  const entry = fileURLToPath(new URL("../index.js", import.meta.url));
+  return launcherFor(fs.existsSync(entry) ? entry : undefined);
+}
+
+/** True when a .gitignore keeps .vscode/mcp.json out of git. A best-effort check, not a full parser. */
+export function ignoresVscodeMcp(gitignore: string): boolean {
+  const hits = new Set([".vscode", ".vscode/", ".vscode/*", ".vscode/**", ".vscode/mcp.json", ".vscode/*.json", "mcp.json", "**/.vscode", "**/.vscode/", "**/mcp.json"]);
+  let ignored = false;
+  for (const raw of gitignore.split(/\r?\n/)) {
+    const line = raw.trim().replace(/^\//, "");
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("!")) {
+      if (hits.has(line.slice(1).replace(/^\//, ""))) ignored = false;
+    } else if (hits.has(line)) ignored = true;
+  }
+  return ignored;
+}
+
 /** Build the server entry for a target, shaped to that client's convention. */
-export function buildServerEntry(creds: ServerEntryEnv, needsType = false): ServerEntry {
+export function buildServerEntry(creds: ServerEntryEnv, needsType = false, launcher: Launcher = currentLauncher()): ServerEntry {
   const env: Record<string, string> = {};
   if (creds.HETZNER_CLOUD_TOKEN) env.HETZNER_CLOUD_TOKEN = creds.HETZNER_CLOUD_TOKEN;
   if (creds.HETZNER_ROBOT_USER) env.HETZNER_ROBOT_USER = creds.HETZNER_ROBOT_USER;
   if (creds.HETZNER_ROBOT_PASSWORD) env.HETZNER_ROBOT_PASSWORD = creds.HETZNER_ROBOT_PASSWORD;
   if (creds.HETZNER_MCP_ALLOW_BILLED === "1") env.HETZNER_MCP_ALLOW_BILLED = "1";
-  const entry: ServerEntry = { command: "npx", args: ["-y", "hetzner-mcp"], env };
+  const entry: ServerEntry = { command: launcher.command, args: [...launcher.args], env };
   if (needsType) entry.type = "stdio";
   return entry;
 }

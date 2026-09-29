@@ -1,14 +1,31 @@
 /** `hetzner-mcp map` starts the local canvas and keeps it running until Ctrl+C. */
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { win32 } from "node:path";
 import { loadConfig } from "../config.js";
 import { discoverProjects } from "./projects.js";
 import { readStored } from "./store.js";
 import { startMapServer } from "./server.js";
 
-function openBrowser(url: string): void {
-  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+export interface Opener {
+  cmd: string;
+  args: string[];
+}
+
+/** An absolute path to the system opener, so a hostile PATH cannot swap in its own program. */
+export function openerFor(url: string, platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync): Opener | undefined {
+  if (platform === "darwin") return { cmd: "/usr/bin/open", args: [url] };
+  if (platform === "win32") return { cmd: win32.join(env.SystemRoot || "C:" + win32.sep + "Windows", "System32", "cmd.exe"), args: ["/c", "start", "", url] };
+  return exists("/usr/bin/xdg-open") ? { cmd: "/usr/bin/xdg-open", args: [url] } : undefined;
+}
+
+export function openBrowser(url: string, opener: Opener | undefined = openerFor(url)): void {
+  if (!opener) return;
   try {
-    spawn(cmd, [url], { stdio: "ignore", detached: true }).unref();
+    const child = spawn(opener.cmd, opener.args, { stdio: "ignore", detached: true });
+    // A missing opener must not take the map down; the URL is printed either way.
+    child.on("error", () => {});
+    child.unref();
   } catch {
     // Opening is a convenience; the URL is printed either way.
   }

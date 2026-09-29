@@ -111,6 +111,9 @@ async function checkWorkspaces(browser: Browser): Promise<string[]> {
     await page.goto(handle.url);
     const trigger = page.locator("button[aria-label^='Workspace ']");
     await trigger.waitFor({ timeout: 8000 });
+    if (page.url().includes("#k=")) out.push("the launch key stays visible in the address bar");
+    await page.reload();
+    await trigger.waitFor({ timeout: 8000 }).catch(() => out.push("the map does not load again after a reload"));
     if (!(await trigger.innerText()).includes("Personal")) out.push("default workspace is not selected first");
     await trigger.click();
     const find = page.locator("input[aria-label='Find a workspace']");

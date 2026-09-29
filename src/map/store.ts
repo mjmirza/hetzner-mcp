@@ -2,9 +2,10 @@
  * Projects connected from the map. Saved only on this computer, owner-only (0600 file, 0700 dir).
  * Tokens are read back only by this process and never sent to the browser.
  */
+import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { homedir, hostname } from "node:os";
+import { isAbsolute, join } from "node:path";
 
 export interface StoredProject {
   name: string;
@@ -16,50 +17,119 @@ export interface StoredProject {
 }
 
 export function storeDir(env: NodeJS.ProcessEnv = process.env): string {
-  const base = env.XDG_CONFIG_HOME?.trim() || join(homedir(), ".config");
+  // A relative XDG_CONFIG_HOME would put the tokens in whatever directory we run from.
+  const xdg = env.XDG_CONFIG_HOME?.trim();
+  const base = xdg && isAbsolute(xdg) ? xdg : join(homedir(), ".config");
   return join(base, "hetzner-mcp");
 }
 
 const file = (env: NodeJS.ProcessEnv) => join(storeDir(env), "projects.json");
+const posix = process.platform !== "win32";
+const myUid = (): number | undefined => (posix && typeof process.getuid === "function" ? process.getuid() : undefined);
 
-export function readStored(env: NodeJS.ProcessEnv = process.env): StoredProject[] {
+/** Creates the store directory owner-only, tightens a loose one we own, refuses one we do not. */
+function ensureDir(env: NodeJS.ProcessEnv): string {
+  const dir = storeDir(env);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const uid = myUid();
+  if (uid === undefined) return dir;
+  const st = statSync(dir);
+  if (st.uid !== uid) throw new Error(`${dir} belongs to another user. Refusing to store tokens there.`);
+  if (st.mode & 0o077) chmodSync(dir, 0o700);
+  return dir;
+}
+
+type Inspected = { state: "missing" | "ok" | "corrupt" | "untrusted"; projects: StoredProject[]; caveat?: string };
+
+function inspect(env: NodeJS.ProcessEnv): Inspected {
+  const target = file(env);
+  let raw: string;
   try {
-    const raw = JSON.parse(readFileSync(file(env), "utf8")) as { projects?: unknown };
-    if (!Array.isArray(raw.projects)) return [];
-    return raw.projects.filter(
+    const uid = myUid();
+    const st = statSync(target);
+    if (uid !== undefined && (st.uid !== uid || st.mode & 0o022)) {
+      return { state: "untrusted", projects: [], caveat: `${target} is not owned by you or is writable by others, so it was ignored.` };
+    }
+    raw = readFileSync(target, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { state: "missing", projects: [] };
+    return { state: "corrupt", projects: [], caveat: `${target} could not be read, so it was ignored.` };
+  }
+  try {
+    const parsed = JSON.parse(raw) as { projects?: unknown };
+    if (!Array.isArray(parsed.projects)) throw new Error("no projects array");
+    const projects = parsed.projects.filter(
       (p): p is StoredProject =>
         !!p && typeof p.name === "string" && typeof p.account === "string" && typeof p.token === "string" && p.token.length > 0 && (p.workspace === undefined || typeof p.workspace === "string"),
     );
+    return { state: "ok", projects };
   } catch {
-    return [];
+    return { state: "corrupt", projects: [], caveat: `${target} is not valid JSON, so it was ignored. It is kept aside on the next save.` };
   }
 }
 
+const warned = new Set<string>();
+
+export function readStored(env: NodeJS.ProcessEnv = process.env): StoredProject[] {
+  const r = inspect(env);
+  if (r.caveat && !warned.has(r.caveat)) {
+    warned.add(r.caveat);
+    process.stderr.write(`hetzner-mcp: ${r.caveat}\n`);
+  }
+  return r.projects;
+}
+
 function write(env: NodeJS.ProcessEnv, projects: StoredProject[]): void {
-  const dir = storeDir(env);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  ensureDir(env);
   const target = file(env);
-  const tmp = `${target}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify({ projects }, null, 2), { mode: 0o600 });
+  // Never overwrite a file we could not trust or parse: move it aside so no token is lost.
+  const now = inspect(env);
+  if (now.state === "corrupt" || now.state === "untrusted") renameSync(target, `${target}.${now.state}-${Date.now()}`);
+  const tmp = `${target}.${randomBytes(8).toString("hex")}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ projects }, null, 2), { mode: 0o600, flag: "wx" });
   renameSync(tmp, target);
   chmodSync(target, 0o600);
 }
 
 // Read, change, write under a lock directory, so two imports at once cannot drop each other's
-// projects. A lock older than 30 s is from a crashed run and is taken over.
+// projects. A lock whose owner died, or older than 30 s, is from a crashed run and is taken over.
 function lockPath(env: NodeJS.ProcessEnv): string {
-  const dir = storeDir(env);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return join(dir, ".lock");
+  return join(ensureDir(env), ".lock");
 }
 
-function tryLock(lock: string): boolean {
+const OWNER = "owner.json";
+const thisHost = hostname();
+
+function ownerDead(lock: string, seenOwnerless: Map<string, number>): boolean {
+  let owner: { pid?: unknown; hostname?: unknown } | undefined;
   try {
-    mkdirSync(lock);
+    owner = JSON.parse(readFileSync(join(lock, OWNER), "utf8"));
+  } catch {
+    // No owner yet: allow one second for it to appear, measured by us, not by the lock's mtime.
+    const first = seenOwnerless.get(lock) ?? Date.now();
+    seenOwnerless.set(lock, first);
+    return Date.now() - first > 1000;
+  }
+  if (owner?.hostname !== thisHost || typeof owner.pid !== "number") return false;
+  try {
+    process.kill(owner.pid, 0);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ESRCH";
+  }
+}
+
+function tryLock(lock: string, seenOwnerless: Map<string, number>): boolean {
+  try {
+    mkdirSync(lock, { mode: 0o700 });
+    writeFileSync(join(lock, OWNER), JSON.stringify({ pid: process.pid, hostname: thisHost, created: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
     return true;
   } catch {
     try {
-      if (Date.now() - statSync(lock).mtimeMs > 30_000) rmSync(lock, { recursive: true, force: true });
+      if (Date.now() - statSync(lock).mtimeMs > 30_000 || ownerDead(lock, seenOwnerless)) {
+        rmSync(lock, { recursive: true, force: true });
+        seenOwnerless.delete(lock);
+      }
     } catch {
       // The lock vanished between the two calls; retry.
     }
@@ -73,7 +143,8 @@ const busy = () => new Error("The project store is busy. Try again in a moment."
 function locked<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
   const lock = lockPath(env);
   const until = Date.now() + 5000;
-  while (!tryLock(lock)) {
+  const seen = new Map<string, number>();
+  while (!tryLock(lock, seen)) {
     if (Date.now() > until) throw busy();
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
   }
@@ -88,7 +159,8 @@ function locked<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
 async function lockedAsync<T>(env: NodeJS.ProcessEnv, fn: () => T): Promise<T> {
   const lock = lockPath(env);
   const until = Date.now() + 5000;
-  while (!tryLock(lock)) {
+  const seen = new Map<string, number>();
+  while (!tryLock(lock, seen)) {
     if (Date.now() > until) throw busy();
     await new Promise((r) => setTimeout(r, 25)); // BESTPRACTICE_OK: polling a lock, one wait per attempt
   }

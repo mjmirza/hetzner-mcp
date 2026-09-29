@@ -7,7 +7,8 @@ import { startMapServer, mapPortFromEnv, DEFAULT_MAP_PORT } from "../src/map/ser
 import { summarize, toMermaid } from "../src/map/summary.js";
 import { mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
+import { openBrowser, openerFor } from "../src/map/cli.js";
 import { CSP } from "../src/map/server.js";
 import { readStored, saveStored, removeStored } from "../src/map/store.js";
 import { connectProject, ActionError } from "../src/map/actions.js";
@@ -112,7 +113,7 @@ assert("API POST without the page header refused", (await get("/api/apply", okHo
 assert("page POST refused", (await get("/", okHost, "POST")).status === 405);
 const post = (path: string, headers: Record<string, string>, body: string) =>
   new Promise<number>((resolve, reject) => {
-    const h = { Host: okHost, "X-Hzmap": "1", "Content-Type": "application/json", ...headers };
+    const h = { Host: okHost, "X-Hzmap": handle.token, "Content-Type": "application/json", ...headers };
     const r = request({ host: "127.0.0.1", port: handle.port, path, method: "POST", headers: h }, (res) => {
       res.resume();
       res.on("end", () => resolve(res.statusCode ?? 0));
@@ -128,7 +129,7 @@ assert("oversized body refused", (await post("/api/plan", {}, JSON.stringify({ x
 assert("non-JSON body refused", (await post("/api/plan", { "Content-Type": "text/plain" }, "hi")) === 415);
 assert("graph refused without the page header (cross-origin quota burn)", (await get("/api/graph?refresh=1", okHost)).status === 403);
 const api = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-  const r = request({ host: "127.0.0.1", port: handle.port, path: "/api/graph", headers: { Host: okHost, "X-Hzmap": "1" } }, (res) => {
+  const r = request({ host: "127.0.0.1", port: handle.port, path: "/api/graph", headers: { Host: okHost, "X-Hzmap": handle.token } }, (res) => {
     let body = "";
     res.on("data", (c) => (body += c));
     res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
@@ -139,7 +140,7 @@ const api = await new Promise<{ status: number; body: string }>((resolve, reject
 assert("graph endpoint returns the graph", api.status === 200 && JSON.parse(api.body).source === "sample");
 assert("localhost Host also accepted", (await get("/healthz", `localhost:${handle.port}`)).status === 200);
 const apiGet = (path: string) => new Promise<{ code: number; body: string }>((resolve, reject) => {
-  const r = request({ host: "127.0.0.1", port: handle.port, path, headers: { Host: okHost, "X-Hzmap": "1" } }, (res) => {
+  const r = request({ host: "127.0.0.1", port: handle.port, path, headers: { Host: okHost, "X-Hzmap": handle.token } }, (res) => {
     let body = "";
     res.on("data", (c) => (body += c));
     res.on("end", () => resolve({ code: res.statusCode ?? 0, body }));
@@ -155,7 +156,45 @@ assert("/api/status refused without the page header", (await get("/api/status", 
 assert("/api/status rejects an unknown workspace", (await apiGet("/api/status?workspace=nope")).code === 400);
 const again = await startMapServer(loadConfig({}), { demo: true });
 assert("second start reuses the running server", again.port === handle.port);
+const withKey = (key: string) => new Promise<number>((resolve, reject) => {
+  const r = request({ host: "127.0.0.1", port: handle.port, path: "/api/meta", headers: { Host: okHost, "X-Hzmap": key } }, (res) => {
+    res.resume();
+    res.on("end", () => resolve(res.statusCode ?? 0));
+  });
+  r.on("error", reject);
+  r.end();
+});
+assert("the map URL carries the per-launch key in its fragment", /^[0-9a-f]{64}$/.test(handle.token) && handle.url.endsWith(`/#k=${handle.token}`));
+assert("the old fixed header value 1 is refused", (await withKey("1")) === 403);
+assert("a wrong key of the right length is refused", (await withKey("0".repeat(64))) === 403);
+assert("the per-launch key is accepted", (await withKey(handle.token)) === 200);
 await handle.close();
+
+// Sample data never shows the names of the real workspace, accounts or projects.
+{
+  const denv: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), "hz-demo-")),
+    HETZNER_CLOUD_TOKEN: "t".repeat(64),
+    HETZNER_WORKSPACE_NAME: "SecretWorkspace",
+    HETZNER_ACCOUNT_NAME: "SecretAccount",
+    HETZNER_CLOUD_TOKEN_ZZ: "z".repeat(64),
+  };
+  saveStored(denv, { name: "secretproject", account: "SecretStored", workspace: "SecretWs2", token: "s".repeat(64) });
+  const dh = await startMapServer(loadConfig(denv), { demo: true, env: denv, port: 43462 });
+  const dget = (path: string) => new Promise<string>((resolve, reject) => {
+    const r = request({ host: "127.0.0.1", port: dh.port, path, headers: { Host: `127.0.0.1:${dh.port}`, "X-Hzmap": dh.token } }, (res) => {
+      let body = "";
+      res.on("data", (c) => (body += c));
+      res.on("end", () => resolve(body));
+    });
+    r.on("error", reject);
+    r.end();
+  });
+  const bodies = [await dget("/api/meta"), await dget("/api/workspaces"), await dget("/api/graph")];
+  assert("demo meta, workspaces and graph carry no real names", bodies.every((b) => b.length > 20 && !/secret/i.test(b)));
+  assert("demo meta lists the sample projects", (JSON.parse(bodies[0]!) as { projects: Array<{ name: string }> }).projects.some((p) => p.name === "production"));
+  await dh.close();
+}
 
 // Every location and server type code on the map has a plain-language name.
 for (const code of ["fsn1", "nbg1", "hel1", "ash", "hil", "sin"]) assert(`location ${code} has a place name`, placeName(code) !== null && explainLocation(code) !== null);
@@ -209,6 +248,23 @@ const polled = await collectStatuses(loadConfig({}), {}, {
 assert("status poll reads only servers and load balancers", [...polledPaths].sort().join() === "/load_balancers,/servers");
 assert("status poll maps ids like the graph", polled.entries["p:A/ok/srv:1"]?.status === "running" && polled.entries["p:A/ok/lb:2"]?.health?.unhealthy === 1);
 assert("a failing project is reported, not silently live", polled.failedProjects.includes("p:A/broken") && !polled.entries["p:A/broken/srv:1"]);
+
+// The browser opener is an absolute path, and a missing one never crashes the map.
+{
+  const u = "http://127.0.0.1:1/#k=x";
+  const mac = openerFor(u, "darwin", {}, () => true);
+  const lin = openerFor(u, "linux", {}, () => true);
+  const win = openerFor(u, "win32", { SystemRoot: "D:" + win32.sep + "Win" }, () => true);
+  assert("openers are absolute paths, never looked up on PATH", mac?.cmd === "/usr/bin/open" && lin?.cmd === "/usr/bin/xdg-open" && win32.isAbsolute(win?.cmd ?? "") && win!.cmd.endsWith("cmd.exe"));
+  assert("no xdg-open on Linux means no opener, not a PATH lookup", openerFor(u, "linux", {}, () => false) === undefined);
+  let crashed = false;
+  const onCrash = () => (crashed = true);
+  process.once("uncaughtException", onCrash);
+  openBrowser(u, { cmd: join(tmpdir(), "hz-no-such-opener"), args: [u] });
+  await new Promise((r) => setTimeout(r, 300));
+  process.off("uncaughtException", onCrash);
+  assert("a missing opener does not crash the map", !crashed);
+}
 
 process.stdout.write(`\n${passed}/${total} map checks passed\n`);
 if (passed !== total) process.exitCode = 1;

@@ -79,7 +79,7 @@ Your token goes nowhere except Hetzner. The wizard saves it locally, inside your
 | Claude Code | `~/.claude.json` |
 | Cursor | `~/.cursor/mcp.json` |
 | Windsurf | the Windsurf `mcp_config.json` |
-| VS Code | `.vscode/mcp.json` in your project |
+| VS Code | `.vscode/mcp.json` in your project (setup warns you, since this file sits in the project and could be committed) |
 
 ### Using a different assistant?
 
@@ -88,6 +88,8 @@ hetzner-mcp is a standard MCP server, so it works with any MCP client. For an as
 ```
 npx hetzner-mcp setup --print
 ```
+
+The block shows placeholders, so it is safe to share or screenshot. Add `--print-secrets` to include the credentials you pass in. For scripts, pipe the token in with `--token-stdin` (or set `HETZNER_CLOUD_TOKEN`) rather than `--token`, which other users on the same computer can see in the process list. The interactive prompts never echo the token or the Robot password.
 
 A note on ChatGPT. OpenAI's MCP support is built around remote connectors rather than a local config file, so the desktop assistants above are the most direct fit for a local server like this. Any client that speaks MCP over stdio needs only the printed block.
 
@@ -139,6 +141,8 @@ Open a live map of every project, server, network, volume, firewall, load balanc
 npx hetzner-mcp map --open        # your account, at http://127.0.0.1:43390
 npx hetzner-mcp map --demo --open # a labelled sample estate, nothing needed
 ```
+
+The address it prints ends in a one-time key (`#k=...`) made fresh at every launch. Only a page opened with that key can call the map's API, so other users on the same computer and other web pages cannot. The key stays in the tab after you open it, so reloading works.
 
 What you get:
 - Where the money goes. Monthly cost per account, per project, per resource type, and the top cost drivers.
