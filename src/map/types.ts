@@ -29,12 +29,20 @@ export interface MapNode {
   account: string;
   location?: string;
   status?: string;
+  /** Load balancers only: Hetzner target health checks, counted per target and port. */
+  health?: TargetHealth;
   /** Estimated monthly gross price in the pricing currency, null when unknown. */
   monthly: number | null;
   costNote?: string;
   /** Things worth a look, in plain language. */
   flags: Flag[];
   details: Record<string, string | number | boolean | null>;
+}
+
+export interface TargetHealth {
+  healthy: number;
+  unhealthy: number;
+  unknown: number;
 }
 
 /**

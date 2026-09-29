@@ -55,6 +55,8 @@ import { CreateDialog } from "@/components/CreateDialog";
 import { DeleteDialog } from "@/components/DeleteDialog";
 import { api } from "@/lib/api";
 import { buildFlow, type CardData, type Direction } from "@/lib/layout";
+import { useLiveStatus, type LiveLookup } from "@/lib/live";
+import { CheckedAgo } from "@/components/LiveStatus";
 import { relationsByNode } from "@/lib/relations";
 import { CREATABLE, KIND_LABEL } from "@/lib/format";
 import type { InfraGraph, MapNode, Meta, NodeKind, WorkspaceSummary } from "@/lib/types";
@@ -98,8 +100,9 @@ function ago(iso: string): string {
   return `${Math.round(s / 3600)} h ago`;
 }
 
-function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect, onToggle, positions, setPositions, fitKey, animate }: {
+function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect, onToggle, positions, setPositions, fitKey, animate, live }: {
   animate: boolean;
+  live: LiveLookup;
   graph: InfraGraph;
   view: "hierarchy" | "connections";
   direction: Direction;
@@ -183,7 +186,7 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
     });
   }, []);
 
-  const ctx = useMemo(() => ({ select: (id: string) => onSelect(id), toggle: onToggle, currency: graph.currency }), [onSelect, onToggle, graph.currency]);
+  const ctx = useMemo(() => ({ select: (id: string) => onSelect(id), toggle: onToggle, currency: graph.currency, live }), [onSelect, onToggle, graph.currency, live]);
 
   return (
     <CardContext.Provider value={ctx}>
@@ -254,6 +257,7 @@ export function App() {
   const [addProject, setAddProject] = useState(false);
   const [creating, setCreating] = useState<NodeKind | null>(null);
   const [deleting, setDeleting] = useState<MapNode | null>(null);
+  const live = useLiveStatus(graph);
 
   const layoutKey = `hzmap-pos:${view}:${direction}:${focus ?? "all"}`;
   const [positions, setPositionsState] = useState<Map<string, Pos>>(() => new Map(stored<Array<[string, Pos]>>(layoutKey, [])));
@@ -376,6 +380,7 @@ export function App() {
         if (!desktop) setPanelOpen(false);
       }}
       onAddProject={() => setAddProject(true)}
+      liveNote={<CheckedAgo at={live.checkedAt} failed={live.failed} />}
       onOpenAudit={(i) => {
         setAuditOpen(i);
         setView("audit");
@@ -613,6 +618,7 @@ export function App() {
                   setPositions={setPositions}
                   fitKey={`${view}:${direction}:${focus}:${collapsed.size}:${graph.generatedAt}:${positions.size === 0}:${resets}`}
                   animate={animate}
+                  live={live}
                 />
               </ReactFlowProvider>
             )}
