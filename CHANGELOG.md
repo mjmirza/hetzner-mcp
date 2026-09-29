@@ -54,6 +54,12 @@ are included here, and to @jooola for reporting #83 and #84.
   record-set PUT, `change_primary_nameservers`, network and load balancer removals, and
   turning protection off.
 - Security. Bumped the MCP SDK to 1.31.0 and resolved a high severity `fast-uri` advisory.
+- `setup --print --allow-billed` now includes `HETZNER_MCP_ALLOW_BILLED=1` in the printed
+  config. Action status from a write comes back as its own content block, so the first
+  block stays plain JSON for scripts that parse it.
+- README explains how to install the `@mjmirza/hetzner-mcp` copy from GitHub Packages. The
+  command on GitHub's package page fails as pasted, because GitHub requires a login.
+- New `test/cli.ts` runs every documented command against the built package in CI.
 - Requests now send a `hetzner-mcp/<version>` User-Agent (#83).
 - Writes wait for their Hetzner actions to finish and report failures, bounded by
   `HETZNER_MCP_ACTION_WAIT_MS` (default 120000, 0 disables) (#84).
