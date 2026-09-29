@@ -5,6 +5,9 @@ Changelog, and this project follows semantic versioning.
 
 ## [0.5.0] - 2026-09-29
 
+Thanks to Kevin Laurier (@caoimhin07) for the independent safety audit in #91, whose fixes
+are included here, and to @jooola for reporting #83 and #84.
+
 ### Security
 - Cost guard now matches Hetzner's real `enable_backup` action (singular). The previous
   `enable_backups` typo let backup enables bypass the spend confirm. Plural form is still
