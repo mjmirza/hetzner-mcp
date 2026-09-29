@@ -13,6 +13,9 @@ and it never spends money without showing the price and getting an explicit yes.
 
 Confirm the MCP is connected and the Cloud token is present. A quick cloud_list_servers
 proves it. If the user wants dedicated servers, confirm the Robot credentials are set.
+Paid resources are off until HETZNER_MCP_ALLOW_BILLED=1 is set. If a billed step is refused
+for that reason, tell the user to rerun npx hetzner-mcp setup and answer yes, or add the
+variable, then restart the client.
 
 ## The order of operations, free things first
 
@@ -21,10 +24,12 @@ and reversible before any charge happens.
 
 1. Gather the requirement. purpose, rough size, region, operating system, how many servers.
 2. Read the catalog, all free.
-   - cloud_list_server_types to pick a size, for example cx22 for a small box.
-   - cloud_list_locations to pick a region, for example nbg1, fsn1, hel1.
+   - find_capacity to see which sizes can actually be ordered right now and where, with the
+     monthly price, for example min_cores 2 and a preferred location. It hides sold out
+     combinations and types that are being retired, so the create does not fail.
+   - cloud_list_locations if the user cares about a specific region, for example nbg1, fsn1, hel1.
    - cloud_list_images to pick an OS, for example ubuntu-24.04.
-   - cloud_get_pricing to know the exact cost of the chosen type.
+   - cloud_get_pricing if you need the hourly price as well.
 3. Create the free building blocks.
    - An SSH key with cloud_request POST /ssh_keys, or reference an existing one. Free.
    - A private network with cloud_request POST /networks if the design needs one. Free.
@@ -35,16 +40,18 @@ and reversible before any charge happens.
 5. Create the server, the one billed step, only after the user confirms.
    - cloud_request POST /servers with confirm true, passing server_type, image, location,
      ssh_keys, networks, firewalls, and user_data for cloud-init if provided.
-6. Wait and verify. poll the server with cloud_request GET /servers/{id} until status is
-   running, then report the public IP and how to connect.
+6. Wait and verify. The create waits for Hetzner to finish and reports any failed action.
+   Confirm with cloud_request GET /servers/{id} that status is running, then report the
+   public IP and how to connect.
 7. Hand back a summary. what was created, the IP, the monthly cost, and the exact teardown
-   command for later.
+   command for later. Offer infra_map so the user sees the new setup and its cost on a canvas.
 
 ## Cost and safety rules this skill always follows
 
 - Never call a billed create without confirm true, and never set confirm true on the user's
   behalf without showing the price and getting a clear yes in the conversation.
-- Prefer the smallest server type that meets the need. cx22 is a fine default for a demo.
+- Prefer the smallest server type that meets the need and that find_capacity lists as
+  orderable. cx23 is a fine default for a demo where it is available.
 - Reads and free creates do not need confirmation. Do those freely.
 - For a throwaway test, create then immediately delete, and tell the user the few cents of
   cost if it ran for minutes.
@@ -53,8 +60,10 @@ and reversible before any charge happens.
 
 Deletion is free and stops billing, but it destroys data, so DELETE needs confirm true.
 Tear down in reverse order. server first, then unused volumes, load balancers, floating and
-primary IPs, then the free pieces if no longer needed. Confirm the server is gone with a
-final cloud_list_servers. Remind the user that a deleted server cannot be recovered.
+primary IPs, then the free pieces if no longer needed. Asking cloud_delete_server without
+confirm first lists what keeps billing after the delete, use that list as the checklist.
+Finish with infra_map. its Money you can save list should be empty for what you built.
+Remind the user that a deleted server cannot be recovered.
 
 ## Dedicated servers and storage boxes
 
