@@ -11,6 +11,7 @@ import { defaultAccount, defaultWorkspace, discoverProjects, type ProjectRef } f
 import { settleWithLimit } from "./limit.js";
 import { readStored } from "./store.js";
 import { finalize } from "./totals.js";
+import { targetHealth } from "./status.js";
 import type { Flag, InfraGraph, MapEdge, MapNode } from "./types.js";
 
 const waste = (code: string, text: string, monthly: number | null): Flag => ({ kind: "waste", code, text, monthly });
@@ -36,7 +37,7 @@ const DAY_MS = 86_400_000;
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-async function listAll(cfg: HetznerConfig, surface: "cloud" | "storagebox", path: string, key: string): Promise<Json[]> {
+export async function listAll(cfg: HetznerConfig, surface: "cloud" | "storagebox", path: string, key: string): Promise<Json[]> {
   const out: Json[] = [];
   const [bare, qs] = path.split("?");
   const extra = Object.fromEntries(new URLSearchParams(qs ?? ""));
@@ -261,7 +262,7 @@ export function buildProject(
     const net = lb.private_net?.[0]?.network as number | undefined;
     nodes.push({
       id, kind: "load_balancer", label: lb.name, parent: net && netIds.has(net) ? netIds.get(net)! : locNode(loc), location: loc,
-      monthly: lbPrice, costNote: `${type ?? "load balancer"} list price.`, flags,
+      monthly: lbPrice, costNote: `${type ?? "load balancer"} list price.`, flags, health: targetHealth(targets),
       details: { type: type ?? null, ipv4: lb.public_net?.ipv4?.ip ?? null, targets: targets.length, services: lb.services?.length ?? 0 },
       ...base,
     });

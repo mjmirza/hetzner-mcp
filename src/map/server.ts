@@ -11,6 +11,8 @@ import { collectGraph } from "./collect.js";
 import { defaultWorkspace, discoverProjects, listWorkspaces, type WorkspaceSummary } from "./projects.js";
 import { readStored } from "./store.js";
 import { sampleGraph } from "./sample.js";
+import { collectStatuses, sampleStatuses } from "./live.js";
+import type { StatusSnapshot } from "./status.js";
 import { ActionError, apply, catalog, connectProject, deleteNode, deletePlan, disconnectProject, meta, plan, projectById, publicCatalog, type ActionEnv } from "./actions.js";
 import type { InfraGraph } from "./types.js";
 
@@ -202,6 +204,12 @@ export async function startMapServer(
           if (asked !== null && !list.some((w) => w.name === asked)) throw new ActionError(400, "Unknown workspace. GET /api/workspaces lists the valid names.");
           return json(200, await load(asked ?? list[0]?.name, url.searchParams.get("refresh") === "1"));
         }
+        if (url.pathname === "/api/status") {
+          const list = workspaces();
+          const asked = url.searchParams.get("workspace");
+          if (asked !== null && !list.some((w) => w.name === asked)) throw new ActionError(400, "Unknown workspace. GET /api/workspaces lists the valid names.");
+          return json(200, await liveStatus(asked ?? list[0]?.name));
+        }
         if (url.pathname === "/api/meta") return json(200, meta(actx));
         if (url.pathname === "/api/catalog") {
           if (opts.demo) throw new ActionError(403, "This is sample data. Start the live map to create real resources.");
@@ -220,6 +228,7 @@ export async function startMapServer(
         generation++;
         inflight.clear();
         cache.clear();
+        statusCache.clear();
         json(200, { ok: true, message });
       };
       switch (url.pathname) {
@@ -246,6 +255,19 @@ export async function startMapServer(
       return json(502, { error: err instanceof Error ? err.message : String(err) });
     }
   });
+
+  // Several open tabs share one poll, so the rate limit never pays per tab.
+  const statusCache = new Map<string, { at: number; job: Promise<StatusSnapshot> }>();
+  const liveStatus = (workspace: string | undefined): Promise<StatusSnapshot> => {
+    if (opts.demo) return Promise.resolve(sampleStatuses(workspace));
+    const key = workspace ?? "";
+    const hit = statusCache.get(key);
+    if (hit && Date.now() - hit.at < MIN_REFRESH_MS * 2) return hit.job;
+    const job = collectStatuses(cfg, env, { workspace });
+    job.catch(() => statusCache.delete(key));
+    statusCache.set(key, { at: Date.now(), job });
+    return job;
+  };
 
   // Try the chosen port, then the next nine, so a busy port never blocks the map.
   const first = opts.port ?? mapPortFromEnv(env);

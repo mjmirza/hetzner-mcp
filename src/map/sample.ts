@@ -47,7 +47,7 @@ export function sampleGraph(): InfraGraph {
     networks: [{ id: 1, name: "prod-net", ip_range: "10.0.0.0/16", subnets: [{ network_zone: "eu-central" }], servers: [11, 12, 13, 14] }],
     servers: [
       srv(11, "web-1", "cpx31", "fsn1", { private_net: [{ network: 1 }], backup_window: "22-02", public_net: fwOn("203.0.113.11", [41]), outgoing_traffic: 17e12 }),
-      srv(12, "web-2", "cpx31", "nbg1", { private_net: [{ network: 1 }], backup_window: "22-02", public_net: fwOn("203.0.113.12", [41]) }),
+      srv(12, "web-2", "cpx31", "nbg1", { status: "migrating", private_net: [{ network: 1 }], backup_window: "22-02", public_net: fwOn("203.0.113.12", [41]) }),
       srv(13, "db-primary", "ccx23", "fsn1", { private_net: [{ network: 1 }], backup_window: "02-06", public_net: fwOn("203.0.113.13", [42]) }),
       srv(14, "worker", "cpx11", "fsn1", {
         private_net: [{ network: 1 }],
@@ -58,7 +58,11 @@ export function sampleGraph(): InfraGraph {
       { id: 21, name: "db-data", size: 200, server: 13, format: "ext4", status: "available", ...loc("fsn1") },
       { id: 22, name: "uploads", size: 100, server: 11, format: "xfs", status: "available", ...loc("fsn1") },
     ],
-    loadBalancers: [{ id: 31, name: "prod-lb", load_balancer_type: { name: "lb11" }, ...loc("fsn1"), public_net: { ipv4: { ip: "203.0.113.200" } }, targets: [{ type: "server", server: { id: 11 } }, { type: "server", server: { id: 12 } }], services: [{}, {}], private_net: [{ network: 1 }] }],
+    loadBalancers: [{ id: 31, name: "prod-lb", load_balancer_type: { name: "lb11" }, ...loc("fsn1"), public_net: { ipv4: { ip: "203.0.113.200" } }, targets: [
+      { type: "server", server: { id: 11 }, health_status: [{ listen_port: 443, status: "healthy" }] },
+      // web-2 is mid-migration, so its health check fails. Shows the interrupted state in the demo.
+      { type: "server", server: { id: 12 }, health_status: [{ listen_port: 443, status: "unhealthy" }] },
+    ], services: [{}, {}], private_net: [{ network: 1 }] }],
     firewalls: [
       { id: 41, name: "web-fw", rules: [
         { direction: "in", protocol: "tcp", port: "443", source_ips: ["0.0.0.0/0", "::/0"] },

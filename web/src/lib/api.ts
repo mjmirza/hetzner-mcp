@@ -1,3 +1,4 @@
+import type { StatusSnapshot } from "../../../src/map/status";
 import type { Catalog, InfraGraph, Meta, Plan, WorkspaceSummary } from "./types";
 
 /** Every call carries X-Hzmap, which a cross-site page cannot add without a preflight we never answer. */
@@ -30,6 +31,7 @@ export const api = {
     const s = q.toString();
     return call<InfraGraph>(`/api/graph${s ? `?${s}` : ""}`);
   },
+  status: (workspace?: string) => call<StatusSnapshot>(`/api/status${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`),
   workspaces: () => call<{ default: string; workspaces: WorkspaceSummary[] }>("/api/workspaces"),
   meta: () => call<Meta>("/api/meta"),
   catalog: (project: string) => call<Catalog>(`/api/catalog?project=${encodeURIComponent(project)}`),

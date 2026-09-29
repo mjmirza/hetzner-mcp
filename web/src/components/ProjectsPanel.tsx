@@ -8,7 +8,7 @@ import type { InfraGraph } from "@/lib/types";
 
 const SEV_WORD = { critical: "Critical", high: "High", medium: "Medium", low: "Low" } as const;
 
-export function ProjectsPanel({ graph, focus, onFocus, onAddProject, onOpenAudit, updated, header }: {
+export function ProjectsPanel({ graph, focus, onFocus, onAddProject, onOpenAudit, updated, header, liveNote }: {
   graph: InfraGraph;
   focus: string | null;
   onFocus: (projectNodeId: string | null) => void;
@@ -18,6 +18,8 @@ export function ProjectsPanel({ graph, focus, onFocus, onAddProject, onOpenAudit
   updated: string;
   /** Shown above the totals, for example the workspace switcher. */
   header?: React.ReactNode;
+  /** When server and load balancer statuses were last checked. */
+  liveNote?: React.ReactNode;
 }) {
   const currency = graph.currency;
   const accounts = graph.nodes.filter((n) => n.kind === "account");
@@ -39,6 +41,7 @@ export function ProjectsPanel({ graph, focus, onFocus, onAddProject, onOpenAudit
             <span>{resources} resources</span>
           </div>
           <div className="mt-0.5 text-[12px] text-muted-foreground">Updated {updated}</div>
+          {liveNote}
         </div>
 
         <Separator />

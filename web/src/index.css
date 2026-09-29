@@ -30,6 +30,7 @@
   --risk: oklch(0.58 0.2 25);
   --risk-soft: oklch(0.96 0.025 25);
   --ok: oklch(0.6 0.12 155);
+  --warn: oklch(0.7 0.14 70);
   --shadow: 0 1px 2px oklch(0 0 0 / 0.05), 0 4px 16px oklch(0 0 0 / 0.06);
   --shadow-lg: 0 8px 32px oklch(0 0 0 / 0.12);
 }
@@ -59,6 +60,7 @@
   --risk: oklch(0.72 0.17 25);
   --risk-soft: oklch(0.29 0.05 25);
   --ok: oklch(0.72 0.12 155);
+  --warn: oklch(0.8 0.13 75);
   --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 4px 16px oklch(0 0 0 / 0.3);
   --shadow-lg: 0 8px 32px oklch(0 0 0 / 0.5);
 }
@@ -91,6 +93,7 @@
   --color-risk: var(--risk);
   --color-risk-soft: var(--risk-soft);
   --color-ok: var(--ok);
+  --color-warn: var(--warn);
   --color-edge: var(--edge);
 }
 
@@ -179,6 +182,18 @@
 .react-flow__edge.animated .react-flow__edge-path {
   stroke-dasharray: 0.1 6.9;
   animation: hz-flow 0.8s linear infinite;
+}
+/* A running server's dot breathes. Transform and opacity only, and only when motion is allowed. */
+@keyframes hz-live {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
 }
 @keyframes hz-flow {
   to {

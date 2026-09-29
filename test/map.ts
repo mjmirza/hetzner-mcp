@@ -11,6 +11,8 @@ import { join } from "node:path";
 import { CSP } from "../src/map/server.js";
 import { readStored, saveStored, removeStored } from "../src/map/store.js";
 import { connectProject, ActionError } from "../src/map/actions.js";
+import { serverState, robotState, healthState, targetHealth, liveOf, liveLookup, rollup, type StatusSnapshot } from "../src/map/status.js";
+import { collectStatuses } from "../src/map/live.js";
 import { placeName, explainLocation, explainType, familyOf } from "../web/src/lib/glossary.js";
 
 let passed = 0;
@@ -136,6 +138,21 @@ const api = await new Promise<{ status: number; body: string }>((resolve, reject
 });
 assert("graph endpoint returns the graph", api.status === 200 && JSON.parse(api.body).source === "sample");
 assert("localhost Host also accepted", (await get("/healthz", `localhost:${handle.port}`)).status === 200);
+const apiGet = (path: string) => new Promise<{ code: number; body: string }>((resolve, reject) => {
+  const r = request({ host: "127.0.0.1", port: handle.port, path, headers: { Host: okHost, "X-Hzmap": "1" } }, (res) => {
+    let body = "";
+    res.on("data", (c) => (body += c));
+    res.on("end", () => resolve({ code: res.statusCode ?? 0, body }));
+  });
+  r.on("error", reject);
+  r.end();
+});
+const status = await apiGet("/api/status");
+const snapDemo = JSON.parse(status.body) as StatusSnapshot;
+assert("demo /api/status returns sample statuses", status.code === 200 && snapDemo.entries["p:Acme GmbH/production/srv:12"]?.status === "migrating");
+assert("demo /api/status carries load balancer health", snapDemo.entries["p:Acme GmbH/production/lb:31"]?.health?.unhealthy === 1);
+assert("/api/status refused without the page header", (await get("/api/status", okHost)).status === 403);
+assert("/api/status rejects an unknown workspace", (await apiGet("/api/status?workspace=nope")).code === 400);
 const again = await startMapServer(loadConfig({}), { demo: true });
 assert("second start reuses the running server", again.port === handle.port);
 await handle.close();
@@ -148,6 +165,50 @@ assert("unknown location stays null", placeName("zzz9") === null);
 for (const n of g.nodes.filter((x) => x.kind === "location")) assert(`sample location ${n.label} is named`, placeName(n.label) !== null);
 const srv = g.nodes.find((x) => x.kind === "server" && typeof x.details.type === "string")!;
 assert("server type explains itself in a sentence", /^\w+ is .+\.$/.test(explainType(srv) ?? ""));
+
+// Live status: only what Hetzner returns, never a fresh-looking Live on missing or failed data.
+for (const [s, want] of [["running", "live"], ["initializing", "changing"], ["starting", "changing"], ["stopping", "changing"], ["migrating", "changing"], ["rebuilding", "changing"], ["off", "off"], ["deleting", "interrupted"], ["unknown", "unknown"], ["weird", "unknown"]] as const) {
+  assert(`server status ${s} maps to ${want}`, serverState(s) === want);
+}
+assert("absent server status is unknown, never live", serverState(undefined) === "unknown");
+assert("robot ready is live, in process is changing, else unknown", robotState("ready") === "live" && robotState("in process") === "changing" && robotState(undefined) === "unknown");
+assert("all healthy targets is live", healthState({ healthy: 2, unhealthy: 0, unknown: 0 }) === "live");
+assert("one unhealthy target interrupts", healthState({ healthy: 3, unhealthy: 1, unknown: 0 }) === "interrupted");
+assert("no targets or unknown checks is unknown", healthState({ healthy: 0, unhealthy: 0, unknown: 0 }) === "unknown" && healthState({ healthy: 1, unhealthy: 0, unknown: 1 }) === "unknown" && healthState(undefined) === "unknown");
+const th = targetHealth([{ health_status: [{ status: "healthy" }, { status: "unhealthy" }] }, { type: "label_selector", targets: [{ health_status: [{ status: "unknown" }] }] }]);
+assert("target health counts ports and label selector targets", th.healthy === 1 && th.unhealthy === 1 && th.unknown === 1);
+assert("sample load balancer carries its target health", byLabel("prod-lb").health?.unhealthy === 1 && byLabel("prod-lb").health?.healthy === 1);
+const lk = liveLookup(g.nodes, null, false);
+assert("sample shows every state", ["live", "changing", "off", "interrupted"].every((st) => [...lk.views.values()].some((v) => v.state === st)));
+assert("production roll-up counts the migrating server", lk.rollups.get("p:Acme GmbH/production")?.text === "3 of 4 live · 1 changing");
+assert("staging roll-up counts off separately, not as interrupted", lk.rollups.get("p:Acme GmbH/staging")?.text === "1 of 2 live · 1 off" && lk.rollups.get("p:Acme GmbH/staging")?.tone === "live");
+assert("all running reads Live", lk.rollups.get("p:Side projects/blog")?.text === "Live");
+const noStatus = { ...byLabel("web-1"), status: undefined };
+assert("server with no status shows Unknown", liveOf(noStatus, null, false)?.state === "unknown");
+const failedView = liveOf(byLabel("web-1"), null, true)!;
+assert("failed poll marks stale and keeps last known", failedView.state === "stale" && failedView.known === "live" && failedView.stale);
+const staleRoll = rollup([failedView]);
+assert("stale roll-up is labelled last known", staleRoll?.tone === "stale" && staleRoll.text === "Last known: Live");
+const badRoll = rollup([liveOf(byLabel("web-1"), null, false)!, liveOf(noStatus, null, false)!]);
+assert("unknown server counts as interrupted in the roll-up", badRoll?.text === "1 of 2 interrupted" && badRoll.tone === "interrupted");
+const snap: StatusSnapshot = { checkedAt: new Date().toISOString(), entries: { [byLabel("web-1").id]: { status: "off" } }, failedProjects: [] };
+assert("poll value overrides the graph", liveOf(byLabel("web-1"), snap, false)?.state === "off");
+assert("a server missing from a fresh poll is unknown", liveOf(byLabel("db-primary"), snap, false)?.state === "unknown");
+assert("a project that failed to poll is stale", liveOf(byLabel("web-1"), { ...snap, failedProjects: ["p:Acme GmbH/production"] }, false)?.state === "stale");
+const ref = (name: string) => ({ name, account: "A", workspace: "w", source: "env" as const, cfg: loadConfig({}) });
+const okRef = ref("ok");
+const polledPaths = new Set<string>();
+const polled = await collectStatuses(loadConfig({}), {}, {
+  projects: [okRef, ref("broken")],
+  list: async (cfg, path) => {
+    polledPaths.add(path);
+    if (cfg !== okRef.cfg) throw new Error("401 unauthorized");
+    return path === "/servers" ? [{ id: 1, status: "running" }] : [{ id: 2, targets: [{ health_status: [{ status: "unhealthy" }] }] }];
+  },
+});
+assert("status poll reads only servers and load balancers", [...polledPaths].sort().join() === "/load_balancers,/servers");
+assert("status poll maps ids like the graph", polled.entries["p:A/ok/srv:1"]?.status === "running" && polled.entries["p:A/ok/lb:2"]?.health?.unhealthy === 1);
+assert("a failing project is reported, not silently live", polled.failedProjects.includes("p:A/broken") && !polled.entries["p:A/broken/srv:1"]);
 
 process.stdout.write(`\n${passed}/${total} map checks passed\n`);
 if (passed !== total) process.exitCode = 1;

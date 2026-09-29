@@ -20,6 +20,9 @@ import {
   ServerStack03Icon,
 } from "hugeicons-react";
 import { cn } from "@/lib/utils";
+import { STATE_LABEL } from "../../../src/map/status";
+import { StatusDot } from "@/components/LiveStatus";
+import type { LiveLookup } from "@/lib/live";
 import { KIND_LABEL, money } from "@/lib/format";
 import { cityName, explainLocation, explainType, placeName } from "@/lib/glossary";
 import type { CardData } from "@/lib/layout";
@@ -50,15 +53,19 @@ interface CardActions {
   select: (id: string) => void;
   toggle: (id: string) => void;
   currency: string;
+  live: LiveLookup;
 }
 
-export const CardContext = createContext<CardActions>({ select: () => {}, toggle: () => {}, currency: "EUR" });
+const NO_LIVE: LiveLookup = { view: () => undefined, rollup: () => undefined, checkedAt: "", failed: false };
+export const CardContext = createContext<CardActions>({ select: () => {}, toggle: () => {}, currency: "EUR", live: NO_LIVE });
+const LIVE_KINDS = new Set<NodeKind>(["server", "load_balancer", "robot_server"]);
 
 function subtitle(n: MapNode): string {
   const d = n.details;
   if (n.kind === "location") return `Data center ${n.label}`;
   const where = n.location ? cityName(n.location) ?? n.location : null;
-  const bits = [d.type, where, n.status].filter((x) => x != null && x !== "" && x !== n.label);
+  // Live kinds show their status as a dot instead, so it is never printed twice.
+  const bits = [d.type, where, LIVE_KINDS.has(n.kind) ? null : n.status].filter((x) => x != null && x !== "" && x !== n.label);
   if (n.kind === "network" && d.ip_range) return String(d.ip_range);
   if (n.kind === "project") return `${n.account}`;
   return bits.join(" · ");
@@ -110,10 +117,19 @@ function Row({ n }: { n: MapNode }) {
   );
 }
 
+function clock(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "unknown time" : d.toLocaleTimeString("en-GB");
+}
+
 function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
-  const { toggle, currency } = useContext(CardContext);
+  const { toggle, currency, live } = useContext(CardContext);
   const n = data.node;
   const shelf = n.id.endsWith("#shelf");
+  const lv = shelf ? undefined : live.view(n);
+  const roll = n.kind === "project" ? live.rollup(n.id) : undefined;
+  const checked = n.kind === "robot_server" ? "as of the last map refresh" : `checked ${clock(live.checkedAt)}`;
+  const sub = shelf ? "" : subtitle(n);
   const Icon = shelf ? FirewallIcon : KIND_ICON[n.kind];
   const risk = n.flags.filter((f) => f.kind === "risk").length;
   const waste = n.flags.filter((f) => f.kind === "waste").length;
@@ -152,11 +168,20 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
             {!container && n.monthly != null && <span className="ml-auto shrink-0 text-[12px] font-semibold tracking-normal text-foreground normal-case tabular-nums">{money(own, currency)}</span>}
           </div>
           <div className="truncate text-[15px] leading-5 font-semibold" title={shelf ? undefined : title(n)}>{shelf ? `${data.rows.length} shared resources` : title(n)}</div>
-          {!shelf && subtitle(n) && (
-            <div className={cn("truncate text-[12px] text-muted-foreground", n.kind === "account" && "text-background/70")} title={explain(n)}>
-              {subtitle(n)}
+          {(lv || sub) && (
+            <div className={cn("flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground", n.kind === "account" && "text-background/70")}>
+              {lv && (
+                <StatusDot
+                  className="shrink-0"
+                  state={lv.state}
+                  label={lv.stale ? `Last known: ${STATE_LABEL[lv.known]}` : undefined}
+                  title={`${lv.stale ? `Last check failed. Last known: ${STATE_LABEL[lv.known]}` : STATE_LABEL[lv.state]}. Hetzner ${lv.raw}, ${checked}.`}
+                />
+              )}
+              {sub && <span className="truncate" title={explain(n)}>{sub}</span>}
             </div>
           )}
+          {roll && <StatusDot className="max-w-full" state={roll.tone} label={roll.text} title={`${roll.title}. Checked ${clock(live.checkedAt)}.`} />}
           {specs(n) && (
             <div className="truncate text-[12px] text-muted-foreground" title={explain(n)}>
               {specs(n)}
