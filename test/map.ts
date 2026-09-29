@@ -5,7 +5,12 @@ import { sampleGraph } from "../src/map/sample.js";
 import { discoverProjects } from "../src/map/projects.js";
 import { startMapServer, mapPortFromEnv, DEFAULT_MAP_PORT } from "../src/map/server.js";
 import { summarize, toMermaid } from "../src/map/summary.js";
-import { renderPage } from "../src/map/page.js";
+import { mkdtempSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CSP } from "../src/map/server.js";
+import { readStored, saveStored, removeStored } from "../src/map/store.js";
+import { connectProject, ActionError } from "../src/map/actions.js";
 
 let passed = 0;
 let total = 0;
@@ -60,11 +65,27 @@ assert("extra project does not inherit robot credentials", projects.find((p) => 
 assert("default port is 43390", mapPortFromEnv({}) === DEFAULT_MAP_PORT && DEFAULT_MAP_PORT === 43390);
 assert("port env below 1024 is ignored", mapPortFromEnv({ HETZNER_MCP_MAP_PORT: "80" }) === 43390);
 
-// Page: nonce applied, no external origins, no innerHTML sinks.
-const page = renderPage("NONCE123");
-assert("page carries the nonce on script and style", (page.match(/nonce="NONCE123"/g) ?? []).length === 2);
-assert("page makes no external requests", !/https?:\/\/(?!www\.w3\.org)/.test(page));
-assert("page never uses innerHTML", !page.includes("innerHTML"));
+// CSP: same-origin scripts only, no eval, no framing. (RENAME_OK: the old inline page and its test are gone.)
+assert("CSP allows only same-origin scripts", CSP.includes("script-src 'self'") && !CSP.includes("unsafe-eval") && !/script-src[^;]*unsafe-inline/.test(CSP));
+assert("CSP blocks framing and foreign connections", CSP.includes("frame-ancestors 'none'") && CSP.includes("connect-src 'self'"));
+
+// Local project store: owner-only file, env tokens win, removal works.
+const cfgHome = mkdtempSync(join(tmpdir(), "hzmap-"));
+const senv = { XDG_CONFIG_HOME: cfgHome, HETZNER_CLOUD_TOKEN: "a" };
+saveStored(senv, { name: "side", account: "Me", token: "t".repeat(64) });
+saveStored(senv, { name: "dupe", account: "Me", token: "a" });
+assert("store file is owner-only (0600)", (statSync(join(cfgHome, "hetzner-mcp", "projects.json")).mode & 0o777) === 0o600);
+assert("store dir is owner-only (0700)", (statSync(join(cfgHome, "hetzner-mcp")).mode & 0o777) === 0o700);
+const merged = discoverProjects(loadConfig(senv), senv, readStored(senv));
+assert("saved project joins the map as a local project", merged.some((p) => p.name === "side" && p.source === "local"));
+assert("a saved duplicate of an env token is ignored", !merged.some((p) => p.name === "dupe"));
+assert("remove deletes only the named project", removeStored(senv, "Me", "side") && readStored(senv).length === 1);
+const bad = async (body: Record<string, unknown>) =>
+  connectProject({ base: loadConfig(senv), env: senv, demo: false }, body).then(() => 0, (e) => (e instanceof ActionError ? e.status : -1));
+assert("connect rejects a malformed token before any network call", (await bad({ name: "x", token: "not a token" })) === 400);
+assert("connect rejects a name with a slash", (await bad({ name: "a/b", token: "t".repeat(64) })) === 400);
+const demoConnect = await connectProject({ base: loadConfig(senv), env: senv, demo: true }, { name: "x", token: "t".repeat(64) }).then(() => 0, (e) => e.status);
+assert("connect is refused on sample data", demoConnect === 403);
 
 // Server: loopback, host check, read-only, no token in output.
 const handle = await startMapServer(loadConfig({}), { demo: true, port: 43390 + 7 });
@@ -80,9 +101,28 @@ const get = (path: string, host: string, method = "GET") =>
   });
 const okHost = `127.0.0.1:${handle.port}`;
 assert("server binds loopback only", handle.url.startsWith("http://127.0.0.1:"));
-assert("page served with a CSP", String((await get("/", okHost)).headers["content-security-policy"]).includes("default-src 'none'"));
+const home = await get("/", okHost);
+assert("page served with the CSP (or a build hint)", home.status === 503 || String(home.headers["content-security-policy"]) === CSP);
+assert("asset path traversal refused", (await get("/assets/../../package.json", okHost)).status === 404);
 assert("foreign Host header rejected (DNS rebinding)", (await get("/", "evil.example")).status === 421);
-assert("POST refused, read-only", (await get("/api/graph", okHost, "POST")).status === 405);
+assert("API POST without the page header refused", (await get("/api/apply", okHost, "POST")).status === 403);
+assert("page POST refused", (await get("/", okHost, "POST")).status === 405);
+const post = (path: string, headers: Record<string, string>, body: string) =>
+  new Promise<number>((resolve, reject) => {
+    const h = { Host: okHost, "X-Hzmap": "1", "Content-Type": "application/json", ...headers };
+    const r = request({ host: "127.0.0.1", port: handle.port, path, method: "POST", headers: h }, (res) => {
+      res.resume();
+      res.on("end", () => resolve(res.statusCode ?? 0));
+    });
+    r.on("error", reject);
+    r.end(body);
+  });
+assert("POST from a foreign Origin refused", (await post("/api/apply", { Origin: "http://evil.example" }, "{}")) === 403);
+const createBody = JSON.stringify({ project: "p:Acme GmbH/production", kind: "server", params: {}, confirm: true });
+assert("create on sample data refused", (await post("/api/apply", {}, createBody)) === 403);
+assert("delete on sample data refused", (await post("/api/delete", {}, JSON.stringify({ nodeId: "p:Acme GmbH/production/srv:11", typed: "web-1" }))) === 403);
+assert("oversized body refused", (await post("/api/plan", {}, JSON.stringify({ x: "y".repeat(20000) }))) === 413);
+assert("non-JSON body refused", (await post("/api/plan", { "Content-Type": "text/plain" }, "hi")) === 415);
 assert("graph refused without the page header (cross-origin quota burn)", (await get("/api/graph?refresh=1", okHost)).status === 403);
 const api = await new Promise<{ status: number; body: string }>((resolve, reject) => {
   const r = request({ host: "127.0.0.1", port: handle.port, path: "/api/graph", headers: { Host: okHost, "X-Hzmap": "1" } }, (res) => {

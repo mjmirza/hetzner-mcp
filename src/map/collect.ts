@@ -8,6 +8,7 @@
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
 import { discoverProjects, type ProjectRef } from "./projects.js";
+import { readStored } from "./store.js";
 import { finalize } from "./totals.js";
 import type { Flag, InfraGraph, MapEdge, MapNode } from "./types.js";
 
@@ -410,7 +411,7 @@ async function collectRobot(cfg: HetznerConfig, account: string): Promise<MapNod
 }
 
 export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv = process.env): Promise<InfraGraph> {
-  const projects = discoverProjects(base, env);
+  const projects = discoverProjects(base, env, readStored(env));
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
   const errors: Array<{ project: string; account: string; error: string }> = [];
