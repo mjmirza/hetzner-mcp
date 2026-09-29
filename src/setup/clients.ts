@@ -22,6 +22,8 @@ export interface ClientTarget {
   needsType: boolean;
   /** One-line instruction to apply the change in that client. */
   restartHint: string;
+  /** Paths whose presence means the app is installed. Defaults to the config file's folder. */
+  detect?: string[];
 }
 
 /** The credentials a server entry may carry. Empty values are omitted, never written blank. */
@@ -80,6 +82,8 @@ export function clientTargets(
       configKey: "mcpServers",
       needsType: false,
       restartHint: "Run /mcp in Claude Code, then reconnect hetzner.",
+      // The config sits in the home folder, which always exists, so look for Claude Code's own folder.
+      detect: [path.join(home, ".claude")],
     },
     {
       id: "cursor",
@@ -188,4 +192,39 @@ export function hasHetznerServer(
   const servers = (existing as Record<string, unknown>)[configKey];
   if (!servers || typeof servers !== "object" || Array.isArray(servers)) return false;
   return serverName in (servers as Record<string, unknown>);
+}
+
+/** An app is likely installed if its config file, or the folder it uses, already exists. */
+export function isLikelyInstalled(target: ClientTarget, exists: (p: string) => boolean = fs.existsSync): boolean {
+  if (exists(target.configPath)) return true;
+  return (target.detect ?? [path.dirname(target.configPath)]).some((p) => exists(p));
+}
+
+/** The Hetzner credentials an app was set up with, read from its config. Never printed. */
+export interface WiredCredentials {
+  target: ClientTarget;
+  token?: string;
+  robotUser?: string;
+  robotPassword?: string;
+}
+
+/** Reads the hetzner entry of every app that has one. A missing or unreadable config is skipped. */
+export function readWiredCredentials(targets: ClientTarget[] = clientTargets()): WiredCredentials[] {
+  const out: WiredCredentials[] = [];
+  for (const target of targets) {
+    let parsed: unknown;
+    try {
+      const raw = fs.readFileSync(target.configPath, "utf8");
+      if (!raw.trim()) continue;
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (!hasHetznerServer(parsed, target.configKey)) continue;
+    const entry = ((parsed as Record<string, Record<string, unknown>>)[target.configKey]!.hetzner ?? {}) as { env?: Record<string, unknown> };
+    const env = entry.env && typeof entry.env === "object" ? entry.env : {};
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+    out.push({ target, token: str(env.HETZNER_CLOUD_TOKEN), robotUser: str(env.HETZNER_ROBOT_USER), robotPassword: typeof env.HETZNER_ROBOT_PASSWORD === "string" && env.HETZNER_ROBOT_PASSWORD ? env.HETZNER_ROBOT_PASSWORD : undefined });
+  }
+  return out;
 }

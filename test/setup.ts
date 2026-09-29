@@ -10,15 +10,19 @@ import {
   ignoresVscodeMcp,
   launcherFor,
   tilde,
+  isLikelyInstalled,
+  readWiredCredentials,
 } from "../src/setup/clients.js";
+import { checkConnectedApps, doctorVerdict } from "../src/setup/doctor.js";
+import { mapEnvironment } from "../src/map/cli.js";
 import { parseSetupFlags, projectLocalWarning, writeClientConfig } from "../src/setup/wizard.js";
 import { createPrompter } from "../src/setup/prompt.js";
 import { VERSION } from "../src/version.js";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, win32 } from "node:path";
 import { PassThrough, Writable } from "node:stream";
-import { validateCloudToken } from "../src/setup/validate.js";
+import { validateCloudToken, CONSOLE_URL, TOKEN_STEPS } from "../src/setup/validate.js";
 
 let passed = 0;
 let total = 0;
@@ -218,6 +222,47 @@ const f2 = parseSetupFlags(["--token=xyz"]);
   assert("timeout not ok and explained", timedOut.ok === false && timedOut.message.includes("timed out"));
   const netErr = await validateCloudToken("tok", stubFetchThrow("TypeError"));
   assert("network error not ok", netErr.ok === false && netErr.message.includes("Could not reach"));
+
+
+  // First-run onboarding: detection, reading back what setup saved, and the doctor verdict.
+  const obHome = mkdtempSync(join(tmpdir(), "hzmcp-onboard-"));
+  const obTargets = clientTargets("linux", obHome, obHome, {});
+  const claudeCode = obTargets.find((t) => t.id === "claude-code")!;
+  assert("Claude Code is not reported as installed just because the home folder exists", !isLikelyInstalled(claudeCode));
+  mkdirSync(join(obHome, ".claude"));
+  assert("Claude Code is detected once its own folder exists", isLikelyInstalled(claudeCode));
+  const obCursor = obTargets.find((t) => t.id === "cursor")!;
+  assert("Cursor is detected from its folder", !isLikelyInstalled(obCursor) && isLikelyInstalled(obCursor, (p) => p === dirname(obCursor.configPath)));
+  assert("nothing is read back before setup ran", readWiredCredentials(obTargets).length === 0);
+  writeClientConfig(obCursor, { HETZNER_CLOUD_TOKEN: "tokA", HETZNER_ROBOT_USER: "ru", HETZNER_ROBOT_PASSWORD: "rp" });
+  writeClientConfig(claudeCode, { HETZNER_CLOUD_TOKEN: "tokA" });
+  const wired = readWiredCredentials(obTargets);
+  assert("setup's saved credentials are read back per app", wired.length === 2 && wired.every((w) => w.token === "tokA") && wired.some((w) => w.robotUser === "ru" && w.robotPassword === "rp"));
+  mkdirSync(dirname(obTargets.find((t) => t.id === "windsurf")!.configPath), { recursive: true });
+  writeFileSync(obTargets.find((t) => t.id === "windsurf")!.configPath, "{not json");
+  assert("a broken config elsewhere is skipped, not fatal", readWiredCredentials(obTargets).length === 2);
+
+  let calls = 0;
+  const counting = (status: number) => (async () => (calls++, { status })) as unknown as typeof fetch;
+  const apps = await checkConnectedApps(obTargets, counting(200));
+  assert("doctor checks a token shared by two apps only once", calls === 1 && apps.length === 2 && apps.every((a) => a.check?.ok));
+  assert("doctor says all good only when Hetzner accepts the token", doctorVerdict(apps).ok && /accepts the token/.test(doctorVerdict(apps).line));
+  const rejected = doctorVerdict(await checkConnectedApps(obTargets, stubFetch(401)));
+  assert("a rejected saved token is not called all good, and says how to fix it", !rejected.ok && /does not work/.test(rejected.line) && rejected.line.includes("hetzner-mcp setup"));
+  const offline = doctorVerdict(await checkConnectedApps(obTargets, stubFetchThrow("TypeError")));
+  assert("offline, doctor says it could not check instead of guessing", !offline.ok && /Could not reach/.test(offline.line));
+  assert("with no app connected, doctor points at setup", /npx hetzner-mcp setup/.test(doctorVerdict([]).line));
+
+  const fromApp = mapEnvironment({ PATH: "/bin" }, obTargets);
+  assert("map borrows the token an app was set up with when the shell has none", fromApp.env.HETZNER_CLOUD_TOKEN === "tokA" && !!fromApp.from);
+  const own = mapEnvironment({ HETZNER_CLOUD_TOKEN_STAGING: "mine" }, obTargets);
+  assert("a token in the shell always wins over an app's", own.env.HETZNER_CLOUD_TOKEN === undefined && own.from === undefined);
+  assert("map finds nothing when no app was set up", mapEnvironment({}, clientTargets("linux", mkdtempSync(join(tmpdir(), "hzmcp-none-")), "/nonexistent", {})).from === undefined);
+
+  const r401 = await validateCloudToken("bad", stubFetch(401));
+  assert("a rejected token says where to make a new one", r401.message.includes(CONSOLE_URL) && /API tokens/.test(r401.message));
+  assert("the token steps name the page, the menu and the permission", TOKEN_STEPS.join(" ").includes(CONSOLE_URL) && /Read & Write/.test(TOKEN_STEPS.join(" ")) && /only once/.test(TOKEN_STEPS.join(" ")));
+  rmSync(obHome, { recursive: true, force: true });
 
   process.stdout.write(`\n${passed}/${total} checks passed\n`);
   if (passed !== total) process.exitCode = 1;

@@ -10,6 +10,17 @@ export interface TokenCheck {
   message: string;
 }
 
+/** Where a Cloud API token is created. The old console address redirects here. */
+export const CONSOLE_URL = "https://console.hetzner.com/";
+
+/** The exact clicks that create a token, for a user who has never made one. */
+export const TOKEN_STEPS = [
+  `Open ${CONSOLE_URL} and pick the project to manage (or create one).`,
+  "Go to Security, then API tokens, then Generate API token.",
+  "Choose Read & Write so your assistant can also create and delete. Read lets it only look.",
+  "Copy the token right away. Hetzner shows it only once.",
+];
+
 /** A read-only endpoint that costs nothing and proves the token is valid and authorized. */
 const PROBE_URL = "https://api.hetzner.cloud/v1/locations";
 
@@ -33,15 +44,15 @@ export async function validateCloudToken(
       return {
         ok: false,
         status: 401,
-        message: "Token rejected (401). Make sure it is a Read and Write token and was copied in full.",
+        message: `Hetzner did not accept this token (401). It may be mistyped, cut short, or deleted. Copy it again, or make a new one at ${CONSOLE_URL} under your project, Security, API tokens.`,
       };
     if (res.status === 403)
-      return { ok: false, status: 403, message: "Token lacks permission (403). Create a Read and Write token." };
+      return { ok: false, status: 403, message: `This token is not allowed to do that (403). Make a Read & Write token at ${CONSOLE_URL} under your project, Security, API tokens.` };
     return { ok: false, status: res.status, message: `Unexpected ${res.status} from Hetzner. Try again in a moment.` };
   } catch (err) {
     const aborted = err instanceof Error && err.name === "AbortError";
     const detail = aborted ? "request timed out" : err instanceof Error ? err.message : String(err);
-    return { ok: false, message: `Could not reach Hetzner (${detail}). Check your connection and retry.` };
+    return { ok: false, message: `Could not reach Hetzner (${detail}). Check your internet connection, then try again.` };
   } finally {
     clearTimeout(timer);
   }
