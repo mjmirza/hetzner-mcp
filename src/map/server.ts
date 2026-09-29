@@ -87,7 +87,9 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
 
 export async function startMapServer(
   cfg: HetznerConfig,
-  opts: { port?: number; demo?: boolean; env?: NodeJS.ProcessEnv; collect?: (workspace: string | undefined) => Promise<InfraGraph> } = {},
+  opts: { port?: number; demo?: boolean; env?: NodeJS.ProcessEnv; collect?: (workspace: string | undefined) => Promise<InfraGraph>;
+    statuses?: (workspace: string | undefined) => Promise<StatusSnapshot>;
+  } = {},
 ): Promise<MapServerHandle> {
   if (running) return running;
   const env = opts.env ?? process.env;
@@ -263,7 +265,7 @@ export async function startMapServer(
     const key = workspace ?? "";
     const hit = statusCache.get(key);
     if (hit && Date.now() - hit.at < MIN_REFRESH_MS * 2) return hit.job;
-    const job = collectStatuses(cfg, env, { workspace });
+    const job = opts.statuses ? opts.statuses(workspace) : collectStatuses(cfg, env, { workspace });
     job.catch(() => statusCache.delete(key));
     statusCache.set(key, { at: Date.now(), job });
     return job;
