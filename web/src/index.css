@@ -159,19 +159,36 @@
   }
 }
 
-.react-flow__edge.tree .react-flow__edge-path {
-  stroke: var(--edge);
-  stroke-width: 1.5;
-}
+/* Every line is a row of round dots. One period is 7px, so the flow loops without a jump. */
+.react-flow__edge.tree .react-flow__edge-path,
 .react-flow__edge.relation .react-flow__edge-path {
   stroke: var(--edge);
-  stroke-dasharray: 5 5;
-  stroke-width: 1.4;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 6.9;
+}
+.react-flow__edge.relation .react-flow__edge-path {
+  opacity: 0.8;
 }
 .react-flow__edge.relation.hot .react-flow__edge-path {
   stroke: var(--primary);
-  stroke-dasharray: none;
-  stroke-width: 2.2;
+  stroke-width: 3;
+  opacity: 1;
+}
+/* The optional Flow mode: dots travel from parent to child, like a workflow executing. */
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: 0.1 6.9;
+  animation: hz-flow 0.8s linear infinite;
+}
+@keyframes hz-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__edge.animated .react-flow__edge-path {
+    animation: none;
+  }
 }
 .react-flow__edge-textbg {
   fill: var(--card);

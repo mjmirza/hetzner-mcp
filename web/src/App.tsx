@@ -20,6 +20,8 @@ import {
   ListViewIcon,
   Loading03Icon,
   Menu02Icon,
+  PauseCircleIcon,
+  PlayCircle02Icon,
   Moon02Icon,
   Refresh03Icon,
   Search02Icon,
@@ -87,7 +89,8 @@ function ago(iso: string): string {
   return `${Math.round(s / 3600)} h ago`;
 }
 
-function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect, onToggle, positions, setPositions, fitKey }: {
+function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect, onToggle, positions, setPositions, fitKey, animate }: {
+  animate: boolean;
   graph: InfraGraph;
   view: "hierarchy" | "connections";
   direction: Direction;
@@ -101,7 +104,13 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
   fitKey: string;
 }) {
   const flow = useReactFlow();
-  const built = useMemo(() => buildFlow(graph, { view, direction, collapsed, focusProject: focus, selected, positions }), [graph, view, direction, collapsed, focus, selected, positions]);
+  // Cards grow to fit their content. Once the browser measures them, the layout reruns with
+  // the real heights, so a long card never spills into the next one.
+  const [heights, setHeights] = useState<Map<string, number>>(new Map());
+  const built = useMemo(
+    () => buildFlow(graph, { view, direction, collapsed, focusProject: focus, selected, positions, heights, animate }),
+    [graph, view, direction, collapsed, focus, selected, positions, heights, animate],
+  );
   const [nodes, setNodes] = useState<Node<CardData>[]>(built.nodes);
   useEffect(() => setNodes(built.nodes), [built]);
 
@@ -122,8 +131,31 @@ function MapBoard({ graph, view, direction, collapsed, focus, selected, onSelect
     return () => clearTimeout(t);
   }, [selected, flow]);
 
+  const measuredOnce = heights.size > 0;
+  useEffect(() => {
+    if (!measuredOnce || selected) return;
+    const t = setTimeout(() => flow.fitView({ padding: 0.12, duration: 200, maxZoom: 1.1 }), 30);
+    return () => clearTimeout(t);
+    // Refit once, when the first real measurements arrive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measuredOnce]);
+
   const onNodesChange = useCallback((changes: NodeChange<Node<CardData>>[]) => {
     setNodes((ns) => applyNodeChanges(changes.filter((c) => c.type === "position" || c.type === "dimensions"), ns));
+    const measured = changes.filter((c) => c.type === "dimensions" && c.dimensions);
+    if (!measured.length) return;
+    setHeights((old) => {
+      let next: Map<string, number> | null = null;
+      for (const c of measured) {
+        if (c.type !== "dimensions" || !c.dimensions) continue;
+        const h = Math.ceil(c.dimensions.height);
+        if (Math.abs((old.get(c.id) ?? 0) - h) > 1) {
+          next ??= new Map(old);
+          next.set(c.id, h);
+        }
+      }
+      return next ?? old;
+    });
   }, []);
 
   const ctx = useMemo(() => ({ select: (id: string) => onSelect(id), toggle: onToggle, currency: graph.currency }), [onSelect, onToggle, graph.currency]);
@@ -180,6 +212,10 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
+  const reduceMotion = useMedia("(prefers-reduced-motion: reduce)");
+  const [flowOn, setFlowOn] = useState(() => stored<boolean>("hzmap-flow", false));
+  const animate = flowOn && !reduceMotion;
+  useEffect(() => store("hzmap-flow", flowOn), [flowOn]);
   const [query, setQuery] = useState("");
   const [addProject, setAddProject] = useState(false);
   const [creating, setCreating] = useState<NodeKind | null>(null);
@@ -356,6 +392,25 @@ export function App() {
               </TooltipTrigger>
               <TooltipContent>Refresh from Hetzner</TooltipContent>
             </Tooltip>
+            {view !== "list" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={animate ? "secondary" : "ghost"}
+                    size="sm"
+                    className="rounded-lg"
+                    onClick={() => setFlowOn((v) => !v)}
+                    disabled={reduceMotion}
+                    aria-pressed={animate}
+                    aria-label={animate ? "Stop the flow animation" : "Animate the flow along the lines"}
+                  >
+                    {animate ? <PauseCircleIcon size={17} /> : <PlayCircle02Icon size={17} />}
+                    <span className="hidden lg:inline">Flow</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{reduceMotion ? "Off because Reduce motion is on in your system" : animate ? "Stop the running dots" : "Run dots along the lines, like a workflow executing"}</TooltipContent>
+              </Tooltip>
+            )}
             <Button variant="ghost" size="icon-sm" className="rounded-lg" onClick={() => setDark((d) => !d)} aria-label={dark ? "Use light mode" : "Use dark mode"}>
               {dark ? <Sun02Icon size={17} /> : <Moon02Icon size={17} />}
             </Button>
@@ -420,6 +475,7 @@ export function App() {
                   positions={positions}
                   setPositions={setPositions}
                   fitKey={`${view}:${direction}:${focus}:${collapsed.size}:${graph.generatedAt}:${positions.size === 0}`}
+                  animate={animate}
                 />
               </ReactFlowProvider>
             )}

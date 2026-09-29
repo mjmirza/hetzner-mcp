@@ -50,7 +50,18 @@ export interface BuildResult {
  */
 export function buildFlow(
   graph: InfraGraph,
-  opts: { view: View; direction: Direction; collapsed: Set<string>; focusProject: string | null; selected: string | null; positions: Map<string, { x: number; y: number }> },
+  opts: {
+    view: View;
+    direction: Direction;
+    collapsed: Set<string>;
+    focusProject: string | null;
+    selected: string | null;
+    positions: Map<string, { x: number; y: number }>;
+    /** Real card heights measured in the browser. They replace the estimate so nothing overlaps. */
+    heights?: Map<string, number>;
+    /** Run the dots along every line, like a workflow executing. */
+    animate?: boolean;
+  },
 ): BuildResult {
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   const hostOf = new Map<string, string>();
@@ -144,6 +155,7 @@ export function buildFlow(
         labelBgPadding: [6, 3],
         labelBgBorderRadius: 6,
         zIndex: 10,
+        animated: opts.animate === true,
       });
     });
     if (selectedHost) relatedCards.add(selectedHost);
@@ -155,7 +167,8 @@ export function buildFlow(
   const size = new Map<string, { w: number; h: number }>();
   for (const id of visible) {
     const c = cardById.get(id)!;
-    const s = { w: widthOf(c), h: heightOf(c, rows.get(id)?.length ?? 0, c.id.endsWith("#shelf") || c.kind === "account" || c.kind === "project" || c.kind === "location" || c.kind === "network" ? 0 : linksOf(id).length) };
+    const estimate = heightOf(c, rows.get(id)?.length ?? 0, c.id.endsWith("#shelf") || c.kind === "account" || c.kind === "project" || c.kind === "location" || c.kind === "network" ? 0 : linksOf(id).length);
+    const s = { w: widthOf(c), h: opts.heights?.get(id) ?? estimate };
     size.set(id, s);
     g.setNode(id, { width: s.w, height: s.h });
   }
@@ -164,7 +177,7 @@ export function buildFlow(
     const c = cardById.get(id)!;
     if (c.parent && visible.has(c.parent)) {
       g.setEdge(c.parent, id);
-      treeEdges.push({ id: `t-${c.parent}->${id}`, source: c.parent, target: id, type: "smoothstep", className: "tree", selectable: false });
+      treeEdges.push({ id: `t-${c.parent}->${id}`, source: c.parent, target: id, type: "smoothstep", className: "tree", selectable: false, animated: opts.animate === true });
     }
   }
   // In the connections view the layout also weighs the relations, so linked cards sit close
@@ -185,7 +198,6 @@ export function buildFlow(
       type: "card",
       position: manual ?? { x: p.x - s.w / 2, y: p.y - s.h / 2 },
       width: s.w,
-      height: s.h,
       data: {
         node: c,
         rows: rows.get(id) ?? [],

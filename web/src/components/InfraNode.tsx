@@ -55,7 +55,7 @@ export const CardContext = createContext<CardActions>({ select: () => {}, toggle
 
 function subtitle(n: MapNode): string {
   const d = n.details;
-  const bits = [d.type, n.location, n.status].filter((x) => x != null && x !== "");
+  const bits = [d.type, n.location, n.status].filter((x) => x != null && x !== "" && x !== n.label);
   if (n.kind === "network" && d.ip_range) return String(d.ip_range);
   if (n.kind === "project") return `${n.account}`;
   return bits.join(" · ");
@@ -103,7 +103,7 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
   return (
     <div
       className={cn(
-        "group relative h-full w-full rounded-[14px] border bg-card text-card-foreground shadow-[var(--shadow)] transition-[opacity,box-shadow,border-color] duration-200",
+        "group relative flex w-full flex-col gap-2 rounded-[14px] border bg-card p-3 text-card-foreground shadow-[var(--shadow)] transition-[opacity,box-shadow,border-color] duration-200",
         container && "bg-secondary/70",
         n.kind === "account" && "bg-foreground text-background",
         selected && "border-primary ring-4 ring-primary/15",
@@ -115,7 +115,7 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
       <Handle type="target" position={lr ? Position.Left : Position.Top} className="!opacity-0" isConnectable={false} />
       <Handle type="source" position={lr ? Position.Right : Position.Bottom} className="!opacity-0" isConnectable={false} />
 
-      <div className={cn("flex items-start gap-3 p-3", container && "items-center")}>
+      <div className={cn("flex items-start gap-3", container && "items-center")}>
         <div
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-secondary text-foreground",
@@ -136,7 +136,7 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
       </div>
 
       {!container && !shelf && data.links.length > 0 && (
-        <ul className="-mt-1 flex flex-col gap-0.5 px-3 pb-2 text-[12px] text-muted-foreground" aria-label="Connections">
+        <ul className="flex flex-col gap-0.5 text-[12px] text-muted-foreground" aria-label="Connections">
           {data.links.map((l) => (
             <li key={l} className="flex h-[20px] items-center gap-1.5 truncate">
               <span aria-hidden className="size-1 shrink-0 rounded-full bg-edge" />
@@ -147,7 +147,7 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
       )}
 
       {(risk > 0 || waste > 0) && !container && (
-        <div className="-mt-1 flex gap-1.5 px-3 pb-2">
+        <div className="flex flex-wrap gap-1.5">
           {risk > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-risk-soft px-2 py-0.5 text-[11px] font-medium text-risk">
               <Alert02Icon size={12} /> {risk} risk{risk > 1 ? "s" : ""}
@@ -162,7 +162,7 @@ function InfraNodeImpl({ data, selected }: NodeProps<Node<CardData>>) {
       )}
 
       {data.rows.length > 0 && (
-        <div className="flex flex-col gap-1 px-3 pb-3">
+        <div className="flex flex-col gap-1">
           {data.rows.map((r) => (
             <Row key={r.id} n={r} />
           ))}
