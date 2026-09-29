@@ -74,15 +74,14 @@ export function registerReadTools(server: McpServer, cfg: HetznerConfig): void {
     server.registerTool(
       def.name,
       {
-        title: def.name,
-        description: `${def.desc}. Read only, free. Compact by default.`,
+        description: `${def.desc}. Read only.`,
         inputSchema: {
-          id: z.string().optional().describe("Optional resource id to fetch a single item."),
+          id: z.string().optional().describe("Fetch one by id."),
           query: z
             .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
             .optional()
-            .describe("Optional query parameters such as name or label_selector."),
-          verbose: z.boolean().optional().describe("Return full payload instead of the compact view."),
+            .describe("Filters, e.g. name, label_selector."),
+          verbose: z.boolean().optional().describe("Full payload."),
         },
       },
       makeReadHandler(cfg, def),

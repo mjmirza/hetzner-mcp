@@ -76,7 +76,7 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
           note: "Server is billed while it exists. Delete it with cloud_delete_server when done. A root password is returned only when no SSH key was attached.",
         };
         const actions = await waitForActions(cfg, res);
-        return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }, ...actionBlocks(actions)], isError: anyActionFailed(actions) };
+        return { content: [{ type: "text" as const, text: JSON.stringify(summary) }, ...actionBlocks(actions)], isError: anyActionFailed(actions) };
       } catch (err) {
         return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
       }

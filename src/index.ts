@@ -10,14 +10,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig, availableSurfaces } from "./config.js";
-import { registerGenericTools } from "./tools/generic.js";
-import { registerReadTools } from "./tools/resources.js";
-import { registerWriteTools } from "./tools/write.js";
-import { registerCloudWriteTools } from "./tools/write-cloud.js";
-import { registerContributeTool } from "./tools/contribute.js";
-import { registerMapTool } from "./tools/map.js";
-import { registerAuditTool } from "./tools/audit.js";
-import { registerCapacityTool } from "./tools/capacity.js";
+import { registerAllTools, isLean } from "./tools/register.js";
 import { runMap } from "./map/cli.js";
 import { runAudit } from "./map/audit-cli.js";
 import { runSetup } from "./setup/wizard.js";
@@ -55,21 +48,14 @@ async function runServer(): Promise<void> {
   const cfg = loadConfig();
   const server = new McpServer({ name: "hetzner-mcp", version: pkg.version });
 
-  registerGenericTools(server, cfg);
-  registerReadTools(server, cfg);
-  registerWriteTools(server, cfg);
-  registerCloudWriteTools(server, cfg);
-  registerContributeTool(server);
-  registerMapTool(server, cfg);
-  registerAuditTool(server, cfg);
-  registerCapacityTool(server, cfg);
+  registerAllTools(server, cfg);
 
   // Diagnostics go to stderr so they never corrupt the stdio protocol on stdout.
   const surfaces = availableSurfaces(cfg);
   process.stderr.write(
     `hetzner-mcp ${pkg.version} ready. Surfaces available: ` +
       `${surfaces.length ? surfaces.join(", ") : "none. Run: npx hetzner-mcp setup"}.` +
-      `${cfg.readOnly ? " Read-only mode." : ""}\n`,
+      `${cfg.readOnly ? " Read-only mode." : ""}${isLean() ? " Lean tool set." : ""}\n`,
   );
 
   const transport = new StdioServerTransport();

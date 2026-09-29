@@ -49,7 +49,7 @@ async function guarded(
   try {
     const res = await hetznerRequest(cfg, { surface: "cloud", method: opts.method, path: opts.path, body: opts.body });
     const actions = await waitForActions(cfg, res);
-    return { content: [{ type: "text" as const, text: JSON.stringify(res, null, 2) }, ...actionBlocks(actions)], isError: anyActionFailed(actions) };
+    return { content: [{ type: "text" as const, text: JSON.stringify(res) }, ...actionBlocks(actions)], isError: anyActionFailed(actions) };
   } catch (err) {
     return text(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
   }

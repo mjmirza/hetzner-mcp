@@ -19,7 +19,7 @@ interface ToolText {
 }
 
 function textResult(value: unknown, isError = false): ToolText {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const text = typeof value === "string" ? value : JSON.stringify(value);
   return { content: [{ type: "text", text }], isError };
 }
 

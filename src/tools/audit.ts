@@ -18,7 +18,8 @@ export function registerAuditTool(server: McpServer, cfg: HetznerConfig): void {
         "Returns a score, counts and the top findings. Pass finding=N for one finding's full fix steps, or full=true for the whole report.",
       inputSchema: {
         finding: z.number().int().min(1).optional().describe("Number of one finding to expand with fix steps."),
-        full: z.boolean().optional().describe("Return the full Markdown report. Large."),
+        full: z.boolean().optional().describe("Full report with fix steps, 10 findings per page."),
+        page: z.number().int().min(1).optional().describe("Page of the full report. Default 1."),
         top: z.number().int().min(1).max(50).optional().describe("How many findings in the summary. Default 8."),
         demo: z.boolean().optional().describe("Use the labelled sample estate."),
       },
@@ -33,7 +34,12 @@ export function registerAuditTool(server: McpServer, cfg: HetznerConfig): void {
           if (!f) return { content: [{ type: "text" as const, text: `No finding ${a.finding}. There are ${report.findings.length}.` }], isError: true };
           text = findingMarkdown(f, a.finding, graph.currency);
         } else if (a.full) {
-          text = auditMarkdown(report, graph.currency);
+          const per = 10;
+          const pages = Math.max(1, Math.ceil(report.findings.length / per));
+          const page = Math.min(a.page ?? 1, pages);
+          const findings = report.findings.slice((page - 1) * per, page * per);
+          text = auditMarkdown({ ...report, findings }, graph.currency, (page - 1) * per);
+          if (page < pages) text += `\nPage ${page} of ${pages}. Call again with page=${page + 1}.`;
         } else {
           text = auditSummary(report, graph.currency, a.top ?? 8);
         }

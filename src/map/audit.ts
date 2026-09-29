@@ -374,7 +374,7 @@ export function findingMarkdown(f: AuditFinding, n: number, currency = "EUR"): s
 }
 
 /** The report as Markdown, for the CLI, the MCP tool and the downloadable file. */
-export function auditMarkdown(r: AuditReport, currency = "EUR"): string {
+export function auditMarkdown(r: AuditReport, currency = "EUR", offset = 0): string {
   const money = (v: number) => new Intl.NumberFormat("en-IE", { style: "currency", currency }).format(v);
   const lines = [
     "# Hetzner infrastructure audit",
@@ -391,7 +391,7 @@ export function auditMarkdown(r: AuditReport, currency = "EUR"): string {
     lines.push("");
   }
   if (!r.findings.length) lines.push("Nothing to fix right now.", "");
-  r.findings.forEach((f, i) => lines.push(findingMarkdown(f, i + 1, currency)));
+  r.findings.forEach((f, i) => lines.push(findingMarkdown(f, offset + i + 1, currency)));
   lines.push("## What this audit cannot see", "");
   r.limits.forEach((l) => lines.push(`- ${l}`));
   return lines.join("\n") + "\n";

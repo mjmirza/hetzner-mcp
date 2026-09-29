@@ -41,9 +41,23 @@ function projectItem(item: unknown): unknown {
       : obj;
   const picked: Record<string, unknown> = {};
   for (const f of COMPACT_FIELDS) {
-    if (f in inner) picked[f] = inner[f];
+    if (!(f in inner)) continue;
+    const v = flatten(inner[f]);
+    if (v !== undefined) picked[f] = v;
   }
   return Object.keys(picked).length > 0 ? picked : inner;
+}
+
+// A nested object such as server_type carries its full price table. In the compact view it
+// collapses to the one value a reader needs: its name, its ip, or its id. Empty values go.
+function flatten(v: unknown): unknown {
+  if (v === null || v === undefined || v === "") return undefined;
+  if (Array.isArray(v)) return v.length ? v : undefined;
+  if (typeof v !== "object") return v;
+  const o = v as Record<string, unknown>;
+  if (Object.keys(o).length === 0) return undefined;
+  for (const k of ["name", "ip", "id"]) if (typeof o[k] === "string" || typeof o[k] === "number") return o[k];
+  return o;
 }
 
 function compact(value: unknown): unknown {
@@ -51,7 +65,7 @@ function compact(value: unknown): unknown {
     return {
       count: value.length,
       items: value.map(projectItem),
-      hint: "compact view, pass verbose true for full fields",
+      hint: "verbose:true for all fields",
     };
   }
   if (value && typeof value === "object") {
@@ -65,7 +79,7 @@ function compact(value: unknown): unknown {
         collection: arrayKey,
         count: arr.length,
         items: arr.map(projectItem),
-        hint: "compact view, pass verbose true for full fields",
+        hint: "verbose:true for all fields",
       };
       if (pagination?.next_page) result.next_page = pagination.next_page;
       return result;
@@ -77,7 +91,7 @@ function compact(value: unknown): unknown {
 /** Render a value as text for a tool result, compacting and capping unless verbose. */
 export function formatResult(value: unknown, verbose: boolean): string {
   const shaped = verbose ? value : compact(value);
-  let text = typeof shaped === "string" ? shaped : JSON.stringify(shaped, null, 2);
+  let text = typeof shaped === "string" ? shaped : JSON.stringify(shaped);
   if (text.length > MAX_CHARS) {
     text =
       text.slice(0, MAX_CHARS) +

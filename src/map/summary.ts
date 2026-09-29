@@ -33,7 +33,8 @@ export function summarize(g: InfraGraph, url?: string): string {
 
 const safe = (s: string) => s.replace(/["[\]{}()<>|#;`]/g, " ").slice(0, 40);
 
-export function toMermaid(g: InfraGraph): string {
+/** Bounded so a big estate cannot flood the model. The canvas has everything; this is a sketch. */
+export function toMermaid(g: InfraGraph, maxNodes = 150): string {
   const idOf = new Map<string, string>();
   g.nodes.forEach((n, i) => idOf.set(n.id, `n${i}`));
   const byParent = new Map<string, string[]>();
@@ -43,7 +44,10 @@ export function toMermaid(g: InfraGraph): string {
   }
   const byId = new Map(g.nodes.map((n) => [n.id, n]));
   const out = ["flowchart LR"];
+  const shown = new Set<string>();
   const walk = (id: string, depth: number) => {
+    if (shown.size >= maxNodes) return;
+    shown.add(id);
     const n = byId.get(id)!;
     const pad = "  ".repeat(depth);
     const kids = byParent.get(id) ?? [];
@@ -59,6 +63,7 @@ export function toMermaid(g: InfraGraph): string {
   };
   (byParent.get("") ?? []).forEach((id) => walk(id, 1));
   const ref = (id: string) => ((byParent.get(id)?.length && !["account", "project", "location", "network"].includes(byId.get(id)!.kind)) ? `${idOf.get(id)}_self` : idOf.get(id));
-  for (const e of g.edges) out.push(`  ${ref(e.from)} -->|${e.kind}| ${ref(e.to)}`);
+  for (const e of g.edges) if (shown.has(e.from) && shown.has(e.to)) out.push(`  ${ref(e.from)} -->|${e.kind}| ${ref(e.to)}`);
+  if (g.nodes.length > shown.size) out.push(`  %% ${g.nodes.length - shown.size} more resources not drawn. Open the map for all of them.`);
   return out.join("\n");
 }
