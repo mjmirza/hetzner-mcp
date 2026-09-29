@@ -21,7 +21,14 @@ function launchKey(): string {
     return "";
   }
 }
-const key = launchKey();
+let key = launchKey();
+// Pasting a new link into an open tab only changes the fragment, so pick the new key up here.
+window.addEventListener("hashchange", () => {
+  if (/(?:^#|&)k=[0-9a-f]{64}(?:&|$)/.test(window.location.hash)) {
+    key = launchKey();
+    window.location.reload();
+  }
+});
 
 /** Every call carries the key as X-Hzmap, which a cross-site page cannot add or know. */
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -222,7 +222,7 @@ export async function startMapServer(
 
       // A cross-site page cannot add this header without a preflight, and cannot know the secret.
       if (!authorized(req.headers["x-hzmap"])) {
-        res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end("Forbidden");
+        res.writeHead(403, { ...common, "Content-Type": "text/plain" }).end("This map link is out of date. Open the link the map printed when it started.");
         return;
       }
       const origin = req.headers.origin;

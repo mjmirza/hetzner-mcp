@@ -138,6 +138,30 @@ async function checkWorkspaces(browser: Browser): Promise<string[]> {
   return out.map((p) => `workspaces: ${p}`);
 }
 
+// After the map restarts it has a new key. Pasting the new link into an open tab must work.
+async function checkNewKey(browser: Browser): Promise<string[]> {
+  const out: string[] = [];
+  let handle = await startMapServer(loadConfig(), { demo: true, port: 43482 });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  try {
+    await page.goto(handle.url);
+    await page.waitForSelector(".react-flow__node", { timeout: 8000 });
+    const oldKey = handle.token;
+    await handle.close();
+    handle = await startMapServer(loadConfig(), { demo: true, port: 43482 });
+    if (handle.token === oldKey) out.push("a restarted map kept the same key");
+    const stale = await page.evaluate(async (k) => (await fetch("/api/meta", { headers: { "X-Hzmap": k } })).text(), oldKey);
+    if (!/out of date/.test(stale)) out.push(`an old key does not say the link is out of date (got: ${stale.slice(0, 60)})`);
+    await page.goto(handle.url);
+    await page.waitForFunction(() => document.querySelectorAll(".react-flow__node").length > 0 && !location.hash, null, { timeout: 8000 })
+      .catch(() => out.push("pasting the new link into an open tab does not load the map"));
+  } finally {
+    await page.close();
+    await handle.close();
+  }
+  return out.map((p) => `new key: ${p}`);
+}
+
 async function main(): Promise<void> {
   const handle = await startMapServer(loadConfig(), { demo: true, port: 43480 });
   const browser = await chromium.launch();
@@ -150,6 +174,7 @@ async function main(): Promise<void> {
   }
   try {
     results.push({ layouts: 1, cards: 0, failures: await checkWorkspaces(browser) });
+    results.push({ layouts: 1, cards: 0, failures: await checkNewKey(browser) });
   } finally {
     await browser.close();
   }
