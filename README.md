@@ -165,6 +165,17 @@ npx hetzner-mcp projects remove "Client A/Client A GmbH/prod"
 
 Tokens are saved on this computer only, owner-only file, never printed. Account labels must be unique across workspaces. Environment tokens can join a workspace with `HETZNER_WORKSPACE_STAGING=Client A`, and `HETZNER_WORKSPACE_NAME` renames the default one. Ask your assistant to map one client by passing the workspace name as the `target` of `infra_map`, or one project as `Client A/Client A GmbH/prod`. Every other tool still acts on the `HETZNER_CLOUD_TOKEN` project only.
 
+In the map, a workspace switcher sits at the top of the side panel as soon as there is more than one workspace. It searches by client name, loads only the one you pick, and remembers it next time.
+
+| Your situation | What to set up | What you see |
+|---|---|---|
+| One account, one project | `HETZNER_CLOUD_TOKEN` | Everything, no switcher |
+| One account, several projects | One `HETZNER_CLOUD_TOKEN_<NAME>` per project, or Add project in the map | All projects in one workspace |
+| Your own account plus a few clients | `HETZNER_WORKSPACE_<NAME>=Client A` next to each client token | A switcher, one workspace per client |
+| An agency with 100+ client accounts | `npx hetzner-mcp projects import clients.csv --verify` | A searchable switcher; only the active client loads |
+| One token stops working | Nothing, the rest keep loading | That project is marked unreadable and the audit lists it |
+| Dedicated (Robot) servers | `HETZNER_ROBOT_USER` and `HETZNER_ROBOT_PASSWORD` | Listed in the default workspace |
+
 Before you create a server, ask "where can I get a 4 core server right now". The `find_capacity` tool lists what Hetzner can actually sell you today, by location and price, so a create does not fail with resource unavailable.
 
 Your assistant can open it too. Ask it to "map my Hetzner infrastructure" and the `infra_map` tool returns the cost summary, the savings list, and the canvas link, or a Mermaid diagram with `mermaid: true`.
