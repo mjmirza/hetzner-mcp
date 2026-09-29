@@ -58,6 +58,7 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted
 .money{font-variant-numeric:tabular-nums;font-weight:600}
 .finding{border:1px solid var(--acc-mid);background:var(--acc-soft);border-radius:10px;padding:10px 12px;margin:8px 0;cursor:pointer;line-height:1.45}
 .finding b{font-variant-numeric:tabular-nums}
+.finding.soft{border-color:var(--line);background:transparent}
 .detail{border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px}
 .detail dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:10px 0 0;font-size:13px}
 .detail dt{color:var(--muted)}
@@ -101,7 +102,7 @@ g.node{cursor:pointer}
     <div class="total" id="total">&#8230;</div>
     <div class="sub" id="totalSub">Loading your infrastructure</div>
     <div id="detail"></div>
-    <h2>Worth a look</h2><div id="findings"></div>
+    <div id="findings"></div>
     <h2>Cost by project</h2><div id="byProject"></div>
     <h2>Cost by resource type</h2><div id="byKind"></div>
     <h2>Top cost drivers</h2><div id="drivers"></div>
@@ -183,10 +184,10 @@ function draw(){
     var g=el("g",{"class":"node",tabindex:"0",role:"button","aria-label":(KIND[n.kind]||n.kind)+" "+n.label+", "+money(n.monthly,state.g.currency)+" per month"});
     g.dataset.id=n.id;
     var hot=heat(n);
-    var rect=el("rect",{x:p.x,y:p.y,width:p.w,height:p.h,rx:12,"class":"card"+(n.flags.length?" flag":"")+(state.sel===n.id?" sel":"")});
+    var rect=el("rect",{x:p.x,y:p.y,width:p.w,height:p.h,rx:12,"class":"card"+(n.flags.some(function(f){return f.kind!=="info"})?" flag":"")+(state.sel===n.id?" sel":"")});
     if(hot>0)rect.style.fill="color-mix(in oklch, var(--acc-soft) "+Math.round(20+hot*80)+"%, var(--card))";
     g.appendChild(rect);
-    g.appendChild(el("text",{x:p.x+14,y:p.y+20,"class":"t-badge"},KIND[n.kind]+(n.flags.length?"  ●":"")));
+    g.appendChild(el("text",{x:p.x+14,y:p.y+20,"class":"t-badge"},KIND[n.kind]+(n.flags.some(function(f){return f.kind==="risk"})?"  ▲ RISK":n.flags.some(function(f){return f.kind==="waste"})?"  ● IDLE":"")));
     g.appendChild(el("text",{x:p.x+p.w-14,y:p.y+20,"text-anchor":"end","class":"t-money","font-size":"12"},n.monthly==null?"":money(n.monthly,state.g.currency)));
     g.appendChild(el("text",{x:p.x+14,y:p.y+42,"font-weight":"650","font-size":"14"},clip(n.label,26)));
     var sub=[n.details.type,n.location,n.status].filter(Boolean).join(" · ");
@@ -194,7 +195,7 @@ function draw(){
     chipsOf(n).forEach(function(c,i){
       var cy=p.y+74+i*24;
       var cg=el("g",{"class":"node",tabindex:"0",role:"button","aria-label":(KIND[c.kind]||c.kind)+" "+c.label});cg.dataset.id=c.id;
-      cg.appendChild(el("rect",{x:p.x+10,y:cy,width:p.w-20,height:20,rx:6,"class":"chip"+(c.flags.length?" flag":"")}));
+      cg.appendChild(el("rect",{x:p.x+10,y:cy,width:p.w-20,height:20,rx:6,"class":"chip"+(c.flags.some(function(f){return f.kind!=="info"})?" flag":"")}));
       cg.appendChild(el("text",{x:p.x+18,y:cy+14,"font-size":"11"},clip((c.kind==="volume"?"▣ ":"◎ ")+c.label+(c.details.size_gb?"  "+c.details.size_gb+" GB":""),28)));
       cg.appendChild(el("text",{x:p.x+p.w-18,y:cy+14,"text-anchor":"end","font-size":"11","class":"t-money"},c.monthly?money(c.monthly,state.g.currency):""));
       g.appendChild(cg)});
@@ -243,7 +244,7 @@ function renderDetail(){var box=$("detail");box.textContent="";if(!state.sel)ret
   var d=h("div","detail");d.appendChild(h("div","t-badge sub",KIND[n.kind]));var t=h("div",null,n.label);t.style.fontWeight="700";t.style.fontSize="16px";d.appendChild(t);
   var m=h("div","money",money(n.monthly,state.g.currency)+(n.monthly!=null?" per month":""));m.style.marginTop="6px";d.appendChild(m);
   if(n.costNote)d.appendChild(h("div","sub",n.costNote));
-  n.flags.forEach(function(f){d.appendChild(h("div","finding",f))});
+  n.flags.forEach(function(f){d.appendChild(h("div","finding"+(f.kind==="info"?" soft":""),f.text+(f.monthly?"  ("+money(f.monthly,state.g.currency)+" a month)":"")))});
   var dl=h("dl");var rows=[["Project",n.project],["Account",n.account],["Location",n.location],["Status",n.status]];
   for(var k in n.details)rows.push([k.replace(/_/g," "),n.details[k]]);
   var links=state.g.edges.filter(function(e){return e.from===n.id||e.to===n.id}).map(function(e){var o=e.from===n.id?e.to:e.from;var on=state.g.nodes.filter(function(x){return x.id===o})[0];return e.kind+" "+(on?on.label:o)});
@@ -257,11 +258,16 @@ function side(){var g=state.g,cur=g.currency;
   $("src").textContent=g.source==="sample"?"SAMPLE":"LIVE";$("src").className="pill"+(g.source==="sample"?" sample":"");
   $("total").textContent=money(g.totals.monthly,cur);
   $("totalSub").textContent="Estimated per month across "+g.totals.byProject.length+" project(s). "+g.vatNote+" Updated "+new Date(g.generatedAt).toLocaleTimeString("en-GB")+".";
-  var savings=g.totals.findings.reduce(function(s,f){return s+(f.monthly||0)},0);
   var fc=$("findings");fc.textContent="";
-  if(g.totals.findings.length){var s=h("div","sub");s.textContent="About "+money(savings,cur)+" per month is tied to the items below.";fc.appendChild(s)}
-  g.totals.findings.forEach(function(f){var d=h("div","finding");d.tabIndex=0;var b=h("b",null,f.monthly?money(f.monthly,cur)+"  ":"");d.appendChild(b);d.appendChild(document.createTextNode(f.title+(f.project?"  ("+f.project+")":"")));d.onclick=function(){focusNode(f.nodeId)};d.onkeydown=function(e){if(e.key==="Enter")focusNode(f.nodeId)};fc.appendChild(d)});
-  if(!g.totals.findings.length)fc.appendChild(h("div","sub","Nothing idle or orphaned. Clean estate."));
+  var groups=[["risk","Risks to fix"],["waste","Money you can save"],["info","Good to know"]];
+  groups.forEach(function(gr){var items=g.totals.findings.filter(function(f){return f.kind===gr[0]});
+    fc.appendChild(h("h2",null,gr[1]+(items.length?"  ("+items.length+")":"")));
+    if(gr[0]==="waste"&&items.length){var sum=items.reduce(function(s,f){return s+(f.monthly||0)},0);fc.appendChild(h("div","sub","About "+money(sum,cur)+" a month, "+money(sum*12,cur)+" a year."))}
+    if(!items.length){fc.appendChild(h("div","sub",gr[0]==="risk"?"Nothing risky found.":gr[0]==="waste"?"Nothing idle or orphaned.":"Nothing to note."));return}
+    items.forEach(function(f){var d=h("div","finding"+(f.kind==="info"?" soft":""));d.tabIndex=0;d.setAttribute("role","button");
+      if(f.monthly)d.appendChild(h("b",null,money(f.monthly,cur)+"  "));
+      d.appendChild(document.createTextNode(f.title+(f.project?"  ("+f.project+")":"")));
+      d.onclick=function(){focusNode(f.nodeId)};d.onkeydown=function(e){if(e.key==="Enter")focusNode(f.nodeId)};fc.appendChild(d)})});
   var mp=g.totals.byProject[0]?g.totals.byProject[0].monthly:0;
   bars("byProject",g.totals.byProject.map(function(p){return {label:p.project+"  · "+p.account+(p.error?"  (unreadable)":""),value:money(p.monthly,cur),n:p.monthly,onClick:function(){$("proj").value=p.project;state.proj=p.project;layout();draw();fit()}}}),mp);
   var mk=g.totals.byKind[0]?g.totals.byKind[0].monthly:0;

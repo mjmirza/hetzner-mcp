@@ -142,9 +142,12 @@ npx hetzner-mcp map --demo --open # a labelled sample estate, nothing needed
 
 What you get:
 - Where the money goes. Monthly cost per account, per project, per resource type, and the top cost drivers.
+- Risks to fix. Server types Hetzner is retiring, servers with no firewall, SSH or database ports open to the whole internet, and certificates about to expire.
 - What you are paying for and not using. Powered off servers, unattached volumes, unassigned IPs, and snapshots of deleted servers, each with the monthly amount tied to it. One click takes you to it on the canvas.
 - How it all connects. Servers inside their private network, volumes and IPs on their server, and lines for firewalls, load balancers, floating IPs, and backups.
 - Several projects and accounts at once. A Hetzner token covers one project, so add one variable per extra project, for example `HETZNER_CLOUD_TOKEN_STAGING`, and group them with `HETZNER_ACCOUNT_STAGING=Acme GmbH`.
+
+Before you create a server, ask "where can I get a 4 core server right now". The `find_capacity` tool lists what Hetzner can actually sell you today, by location and price, so a create does not fail with resource unavailable.
 
 Your assistant can open it too. Ask it to "map my Hetzner infrastructure" and the `infra_map` tool returns the cost summary, the savings list, and the canvas link, or a Mermaid diagram with `mermaid: true`.
 

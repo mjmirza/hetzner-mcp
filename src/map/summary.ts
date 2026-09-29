@@ -16,11 +16,17 @@ export function summarize(g: InfraGraph, url?: string): string {
     lines.push("", "Top cost drivers");
     for (const d of g.totals.topDrivers.slice(0, 5)) lines.push(`  ${d.label} (${d.kind}, ${d.project ?? "account"}). ${fmt(d.monthly, cur)}`);
   }
-  if (g.totals.findings.length) {
-    const s = g.totals.findings.reduce((a, f) => a + (f.monthly ?? 0), 0);
-    lines.push("", `Worth a look, about ${fmt(s, cur)} per month`);
-    for (const f of g.totals.findings.slice(0, 8)) lines.push(`  ${f.title}${f.monthly ? ` ${fmt(f.monthly, cur)}` : ""}`);
-  }
+  const group = (kind: "risk" | "waste" | "info", title: string) => {
+    const items = g.totals.findings.filter((f) => f.kind === kind);
+    if (!items.length) return;
+    const sum = items.reduce((a, f) => a + (f.monthly ?? 0), 0);
+    lines.push("", kind === "waste" ? `${title}, about ${fmt(sum, cur)} a month` : title);
+    for (const f of items.slice(0, 8)) lines.push(`  ${f.title}${f.monthly ? ` ${fmt(f.monthly, cur)}` : ""}`);
+    if (items.length > 8) lines.push(`  and ${items.length - 8} more, see the map`);
+  };
+  group("risk", "Risks to fix");
+  group("waste", "Money you can save");
+  group("info", "Good to know");
   lines.push("", ...g.caveats);
   return lines.join("\n");
 }

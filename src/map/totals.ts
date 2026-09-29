@@ -49,10 +49,10 @@ export function finalize(input: {
     .slice(0, 8)
     .map((n) => ({ nodeId: n.id, label: n.label, kind: n.kind, project: n.project, monthly: n.monthly as number }));
 
+  const rank = { risk: 0, waste: 1, info: 2 } as const;
   const findings = nodes
-    .filter((n) => n.flags.length > 0)
-    .flatMap((n) => n.flags.map((title) => ({ nodeId: n.id, project: n.project, title: `${n.label}. ${title}`, monthly: n.monthly })))
-    .sort((a, b) => (b.monthly ?? 0) - (a.monthly ?? 0));
+    .flatMap((n) => n.flags.map((f) => ({ nodeId: n.id, project: n.project, kind: f.kind, title: `${n.label}. ${f.text}`, monthly: f.monthly })))
+    .sort((a, b) => rank[a.kind] - rank[b.kind] || (b.monthly ?? 0) - (a.monthly ?? 0));
 
   const caveats = [
     "Costs are estimates from Hetzner list prices, not your invoice. Hetzner has no Cloud billing API.",

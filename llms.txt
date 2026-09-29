@@ -9,10 +9,13 @@
 ## What it does
 - Three surfaces from one server. Cloud (api.hetzner.cloud), Storage Box (api.hetzner.com),
   Robot dedicated servers (robot-ws.your-server.de). DNS is part of the Cloud API.
-- 32 tools. 3 generic per-surface request tools for complete coverage, 28 curated read tools,
-  1 contribution tool.
-- Safety first. billed resources are never created without an explicit confirm and a live
-  price preview. DELETE requires confirm. A read-only mode refuses all writes.
+- 57 tools. 3 generic per-surface request tools for complete coverage, 27 curated read tools,
+  24 guarded write tools, infra_map (estate map with cost, risks and savings), find_capacity
+  (what can be ordered now, where), and 1 contribution tool.
+- Safety first. Billed creation is off until HETZNER_MCP_ALLOW_BILLED=1, and then each one
+  still needs an explicit confirm after a live price preview. DELETE and data-destroying or
+  service-interrupting actions require confirm. A read-only mode refuses all writes.
+- Local infra map. `npx hetzner-mcp map` serves a read-only canvas on http://127.0.0.1:43390.
 
 ## Key docs
 - Setup and credentials, beginner friendly with screenshots: docs/SETUP.md

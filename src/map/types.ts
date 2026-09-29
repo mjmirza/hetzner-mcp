@@ -32,8 +32,18 @@ export interface MapNode {
   monthly: number | null;
   costNote?: string;
   /** Things worth a look, in plain language. */
-  flags: string[];
+  flags: Flag[];
   details: Record<string, string | number | boolean | null>;
+}
+
+/**
+ * waste: money spent on something unused. risk: something that can hurt you.
+ * info: worth knowing, not necessarily wrong. monthly is only the money this flag is about.
+ */
+export interface Flag {
+  kind: "waste" | "risk" | "info";
+  text: string;
+  monthly: number | null;
 }
 
 export interface MapEdge {
@@ -45,6 +55,7 @@ export interface MapEdge {
 export interface Finding {
   nodeId: string;
   project?: string;
+  kind: Flag["kind"];
   title: string;
   monthly: number | null;
 }

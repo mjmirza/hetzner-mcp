@@ -40,7 +40,6 @@ const READS: Array<{ surface: SurfaceName; path: string; name: string }> = [
   { surface: "cloud", path: "/isos", name: "isos" },
   { surface: "cloud", path: "/server_types", name: "server_types" },
   { surface: "cloud", path: "/locations", name: "locations" },
-  { surface: "cloud", path: "/datacenters", name: "datacenters" },
   { surface: "cloud", path: "/pricing", name: "pricing" },
   { surface: "cloud", path: "/zones", name: "dns_zones" },
   { surface: "storagebox", path: "/storage_boxes", name: "storage_boxes" },
@@ -51,7 +50,6 @@ const READS: Array<{ surface: SurfaceName; path: string; name: string }> = [
   { surface: "robot", path: "/vswitch", name: "robot_vswitches" },
   { surface: "robot", path: "/failover", name: "robot_failover" },
   { surface: "robot", path: "/key", name: "robot_ssh_keys" },
-  { surface: "robot", path: "/storagebox", name: "robot_storageboxes" },
   { surface: "robot", path: "/rdns", name: "robot_rdns" },
 ];
 

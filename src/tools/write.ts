@@ -10,6 +10,7 @@ import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
 import { cloudServerPriceNote } from "../cost.js";
 import { waitForActions, describeActions, anyActionFailed } from "../actions.js";
+import { deletionPreview } from "./delete-preview.js";
 
 function text(value: string, isError = false) {
   return { content: [{ type: "text" as const, text: value }], isError };
@@ -96,8 +97,10 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
     async (args) => {
       if (cfg.readOnly) return text("Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1).", true);
       if (args.confirm !== true) {
+        const preview = await deletionPreview(cfg, args.id);
         return text(
-          `DESTRUCTIVE GUARD. Deleting server ${args.id} is permanent and can cause data loss. Re-run with confirm set to true.`,
+          `DESTRUCTIVE GUARD. Deleting server ${args.id} is permanent and can cause data loss. Re-run with confirm set to true.` +
+            (preview ? ` ${preview}` : ""),
           true,
         );
       }

@@ -26,6 +26,7 @@ export interface ServerEntryEnv {
   HETZNER_CLOUD_TOKEN?: string;
   HETZNER_ROBOT_USER?: string;
   HETZNER_ROBOT_PASSWORD?: string;
+  HETZNER_MCP_ALLOW_BILLED?: string;
 }
 
 /** A single mcpServers entry pointing at the published package via npx. */
@@ -110,6 +111,7 @@ export function buildServerEntry(creds: ServerEntryEnv, needsType = false): Serv
   if (creds.HETZNER_CLOUD_TOKEN) env.HETZNER_CLOUD_TOKEN = creds.HETZNER_CLOUD_TOKEN;
   if (creds.HETZNER_ROBOT_USER) env.HETZNER_ROBOT_USER = creds.HETZNER_ROBOT_USER;
   if (creds.HETZNER_ROBOT_PASSWORD) env.HETZNER_ROBOT_PASSWORD = creds.HETZNER_ROBOT_PASSWORD;
+  if (creds.HETZNER_MCP_ALLOW_BILLED === "1") env.HETZNER_MCP_ALLOW_BILLED = "1";
   const entry: ServerEntry = { command: "npx", args: ["-y", "hetzner-mcp"], env };
   if (needsType) entry.type = "stdio";
   return entry;

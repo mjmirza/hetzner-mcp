@@ -29,6 +29,8 @@ interface Flags {
   print: boolean;
   noVerify: boolean;
   help: boolean;
+  /** undefined means ask, true or false means the user decided with a flag. */
+  allowBilled?: boolean;
 }
 
 const CONSOLE_URL =
@@ -55,6 +57,8 @@ export function parseSetupFlags(argv: string[]): Flags {
     else if (a === "--print") flags.print = true;
     else if (a === "--no-verify") flags.noVerify = true;
     else if (a === "--help" || a === "-h") flags.help = true;
+    else if (a === "--allow-billed") flags.allowBilled = true;
+    else if (a === "--no-billed") flags.allowBilled = false;
     else if (a === "--token" || a.startsWith("--token=")) {
       const r = takeValue(argv, i, "--token");
       flags.token = r.value;
@@ -221,10 +225,19 @@ export async function runSetup(argv: string[]): Promise<number> {
         robotPassword = (await rl.question("  Robot webservice password: ")).trim();
       }
     }
+    // 2b. Paid resources are off by default. Ask once so an upgrade never silently blocks them.
+    let allowBilled = flags.allowBilled;
+    if (rl && allowBilled === undefined) {
+      const ans = (
+        await rl.question("  Let your assistant create paid resources like servers and volumes? Each one still asks you first. [y/N]: ")
+      ).trim().toLowerCase();
+      allowBilled = ans === "y" || ans === "yes";
+    }
     const creds: ServerEntryEnv = {
       HETZNER_CLOUD_TOKEN: token,
       HETZNER_ROBOT_USER: robotUser || undefined,
       HETZNER_ROBOT_PASSWORD: robotPassword || undefined,
+      HETZNER_MCP_ALLOW_BILLED: allowBilled ? "1" : undefined,
     };
 
     // 3. Choose targets.
@@ -329,5 +342,7 @@ function printSetupHelp(): void {
   out("    --yes, -y              Non-interactive. Requires --token.");
   out("    --print                Print the JSON block instead of writing.");
   out("    --no-verify            Skip the live token check.");
+  out("    --allow-billed         Let the assistant create paid resources, each still needs confirm.");
+  out("    --no-billed            Keep paid resources blocked (the default).");
   out("");
 }

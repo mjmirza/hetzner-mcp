@@ -37,7 +37,22 @@ const BILLED_ACTIONS =
  * rotate credentials. DELETE is always treated as destructive by callers.
  */
 const DESTRUCTIVE_FREE_ACTIONS =
-  /\/(actions)\/(poweroff|shutdown|reboot|reset|rebuild|reset_password|enable_rescue)\/?$/i;
+  /\/(actions)\/(poweroff|shutdown|reboot|reset|rebuild|reset_password|enable_rescue|disable_backup|detach_from_network|disable_public_interface|remove_target|delete_service|delete_route|delete_subnet|import_zonefile|set_records|remove_records|change_primary_nameservers|rollback_snapshot|disable_snapshot_plan|reset_subaccount_password|change_home_directory|update_access_settings)\/?$/i;
+
+/** Storage Box actions that change what you pay. change_type moves the box to another plan. */
+const BILLED_STORAGEBOX_ACTIONS = /\/storage_boxes\/[^/]+\/actions\/change_type$/i;
+
+/** Plain-language reason for each destructive action, so the confirm prompt says what is at stake. */
+const DESTRUCTIVE_REASON: Record<string, string> = {
+  disable_backup: "deletes all existing automatic backups of this server",
+  rollback_snapshot: "overwrites the current Storage Box contents with the snapshot",
+  import_zonefile: "replaces the DNS records of the zone",
+  set_records: "replaces the records of this DNS record set",
+  change_primary_nameservers: "changes where the zone is served from",
+  update_access_settings: "can cut off SSH, Samba, WebDAV, or external access",
+  disable_public_interface: "takes the server off the public internet",
+  rebuild: "wipes the server disk and installs a fresh image",
+};
 
 export interface CostDecision {
   billed: boolean;
@@ -77,6 +92,9 @@ export function classifyCost(surface: SurfaceName, method: string, path: string)
   for (const re of BILLED_CREATE[surface] ?? []) {
     if (re.test(cleanPath)) return { billed: true, reason: `${m} ${path} creates a billed ${surface} resource` };
   }
+  if (surface === "storagebox" && BILLED_STORAGEBOX_ACTIONS.test(cleanPath)) {
+    return { billed: true, reason: `${m} ${path} changes the Storage Box plan and its price` };
+  }
   if (surface === "cloud" && BILLED_ACTIONS.test(cleanPath)) {
     return { billed: true, reason: `${m} ${path} is an action that can increase your bill` };
   }
@@ -87,17 +105,29 @@ export function classifyCost(surface: SurfaceName, method: string, path: string)
  * True for DELETE and for free Cloud actions that can take a machine down or rotate
  * root credentials. Billed actions are handled separately by classifyCost.
  */
-export function classifyDestructive(method: string, path: string): DestructiveDecision {
+export function classifyDestructive(method: string, path: string, body?: unknown): DestructiveDecision {
   const m = method.toUpperCase();
   const cleanPath = normalizeCostPath(path);
   if (m === "DELETE") {
     return { destructive: true, reason: `${m} ${path} permanently deletes a resource and can cause data loss` };
   }
   if (m === "POST" && DESTRUCTIVE_FREE_ACTIONS.test(cleanPath)) {
+    const action = cleanPath.split("/").pop() ?? "";
     return {
       destructive: true,
-      reason: `${m} ${path} can interrupt service or rotate credentials`,
+      reason: `${m} ${path} ${DESTRUCTIVE_REASON[action] ?? "can interrupt service, lose data, or rotate credentials"}`,
     };
+  }
+  // Turning delete or rebuild protection off removes a safety net. Turning it on is harmless.
+  if (m === "POST" && /\/actions\/change_protection$/.test(cleanPath)) {
+    const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    if (Object.values(b).some((v) => v === false)) {
+      return { destructive: true, reason: `${m} ${path} turns protection off, so the resource can then be deleted or rebuilt` };
+    }
+  }
+  // Updating a DNS record set replaces its records.
+  if (m === "PUT" && /^\/zones\/[^/]+\/rrsets\//.test(cleanPath)) {
+    return { destructive: true, reason: `${m} ${path} replaces the records of this DNS record set` };
   }
   return { destructive: false };
 }

@@ -29,7 +29,28 @@ Changelog, and this project follows semantic versioning.
 - `test/safety-guards.ts`, `test/actions.ts`, and `test/map.ts` offline suites, wired into
   `npm run test:offline`.
 
+- `find_capacity` tool. Which server types can be ordered right now, where, and at what
+  price, recommended first, with retirement dates. Avoids `resource_unavailable` on create.
+- `cloud_list_network_members` tool for the new `/networks/{id}/members` endpoint.
+- Map findings grouped into risks, money you can save, and good to know. New checks for
+  retiring server types, the backup surcharge, snapshots older than 90 days, outgoing
+  traffic projected past the allowance, servers with no firewall, firewalls opening SSH or
+  database ports to the internet, and certificates close to expiry.
+- `cloud_delete_server` now lists what keeps billing after the delete (IPs without auto
+  delete, attached volumes, snapshots) and warns that automatic backups are lost.
+- `hetzner-mcp setup` asks whether to allow paid resources and writes
+  `HETZNER_MCP_ALLOW_BILLED`, with `--allow-billed` and `--no-billed` flags.
+
 ### Fixed
+- Servers and primary IPs are placed and priced by the new `location` field. Hetzner
+  removed `datacenter` from both on 2026-07-01.
+- Cost guard covers the Storage Box plan change (`change_type`). Confirm is now required
+  for `disable_backup` (deletes backups), Storage Box `rollback_snapshot`,
+  `disable_snapshot_plan`, `update_access_settings`, `reset_subaccount_password`,
+  `change_home_directory`, DNS `import_zonefile`, `set_records`, `remove_records`,
+  record-set PUT, `change_primary_nameservers`, network and load balancer removals, and
+  turning protection off.
+- Security. Bumped the MCP SDK to 1.31.0 and resolved a high severity `fast-uri` advisory.
 - Requests now send a `hetzner-mcp/<version>` User-Agent (#83).
 - Writes wait for their Hetzner actions to finish and report failures, bounded by
   `HETZNER_MCP_ACTION_WAIT_MS` (default 120000, 0 disables) (#84).
@@ -37,6 +58,10 @@ Changelog, and this project follows semantic versioning.
 ### Changed
 - Breaking. Billed creation now requires `HETZNER_MCP_ALLOW_BILLED=1`, matching what
   `.env.example` already documented.
+- Removed `cloud_list_datacenters`. Hetzner returns HTTP 410 for `/datacenters` from
+  2026-10-01. Use `cloud_list_locations` or `find_capacity`.
+- Removed `robot_list_storageboxes`. Hetzner retired the Robot storage box API on
+  2025-07-30. Use `storagebox_list`.
 
 ## [0.4.0] - 2026-08-30
 

@@ -114,7 +114,7 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
               );
             }
           }
-          const destructive = classifyDestructive(method, args.path);
+          const destructive = classifyDestructive(method, args.path, bodyVal);
           if (destructive.destructive && args.confirm !== true) {
             return textResult(
               `DESTRUCTIVE GUARD. ${destructive.reason}. Re-run with confirm set to true to proceed.`,

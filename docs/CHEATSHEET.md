@@ -27,10 +27,10 @@ cloud_list_servers, cloud_list_ssh_keys, cloud_list_networks, cloud_list_firewal
 cloud_list_volumes, cloud_list_load_balancers, cloud_list_load_balancer_types,
 cloud_list_floating_ips, cloud_list_primary_ips, cloud_list_placement_groups,
 cloud_list_certificates, cloud_list_images, cloud_list_isos, cloud_list_dns_zones,
-cloud_list_server_types, cloud_list_locations, cloud_list_datacenters, cloud_get_pricing,
+cloud_list_server_types, cloud_list_locations, cloud_list_network_members, cloud_get_pricing, find_capacity, infra_map,
 storagebox_list, storagebox_list_types, robot_list_servers, robot_list_ips,
 robot_list_subnets, robot_list_vswitches, robot_list_failover, robot_list_ssh_keys,
-robot_list_storageboxes, robot_list_rdns. Plus contribute_or_report.
+robot_list_rdns. Plus contribute_or_report.
 
 ## Safety quick rules
 

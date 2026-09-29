@@ -9,7 +9,27 @@ import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
 import { discoverProjects, type ProjectRef } from "./projects.js";
 import { finalize } from "./totals.js";
-import type { InfraGraph, MapEdge, MapNode } from "./types.js";
+import type { Flag, InfraGraph, MapEdge, MapNode } from "./types.js";
+
+const waste = (text: string, monthly: number | null): Flag => ({ kind: "waste", text, monthly });
+const risk = (text: string): Flag => ({ kind: "risk", text, monthly: null });
+const info = (text: string, monthly: number | null = null): Flag => ({ kind: "info", text, monthly });
+
+/** Inbound ports that should almost never be open to the whole internet. */
+const SENSITIVE_PORTS: Record<string, string> = {
+  "22": "SSH", "3306": "MySQL", "5432": "PostgreSQL", "6379": "Redis", "27017": "MongoDB",
+  "9200": "Elasticsearch", "11211": "Memcached", "2375": "Docker API", "5984": "CouchDB",
+};
+const WORLD = new Set(["0.0.0.0/0", "::/0"]);
+
+/** True when a rule's port spec (single, range, or "any") includes the port. */
+function portCovers(spec: string | null | undefined, port: number): boolean {
+  if (!spec) return true;
+  const [a, b] = spec.split("-").map(Number);
+  return b ? port >= a! && port <= b : port === a;
+}
+
+const DAY_MS = 86_400_000;
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -115,19 +135,48 @@ export function buildProject(
 
   const serverIds = new Map<number, string>();
   for (const s of data.servers) {
-    const loc = s.datacenter?.location?.name as string | undefined;
+    // Hetzner removed server.datacenter on 2026-07-01; location is the current field.
+    const loc = (s.location?.name ?? s.datacenter?.location?.name) as string | undefined;
     const id = `${P}/srv:${s.id}`;
     serverIds.set(s.id, id);
     const type = s.server_type?.name as string | undefined;
-    let monthly = priceAt(pricing.serverTypes.get(type ?? "") ?? s.server_type?.prices, loc);
-    const flags: string[] = [];
+    const typePrices = pricing.serverTypes.get(type ?? "") ?? s.server_type?.prices;
+    const base$ = priceAt(typePrices, loc);
+    let monthly = base$;
+    const flags: Flag[] = [];
     const backupsOn = Boolean(s.backup_window);
     let costNote = `${type ?? "unknown type"} list price in ${loc ?? "its location"}.`;
-    if (monthly !== null && backupsOn && pricing.backupPct) {
-      monthly = monthly * (1 + pricing.backupPct / 100);
+    if (base$ !== null && backupsOn && pricing.backupPct) {
+      const surcharge = round((base$ * pricing.backupPct) / 100);
+      monthly = base$ + surcharge;
       costNote += ` Includes ${pricing.backupPct}% for automatic backups.`;
+      flags.push(info(`Automatic backups add ${surcharge.toFixed(2)} a month. Worth it for production, often not for test boxes.`, surcharge));
     }
-    if (s.status === "off") flags.push("Powered off but still billed in full. Delete it or snapshot and delete to stop the cost.");
+    if (s.status === "off") flags.push(waste("Powered off but still billed in full. Delete it, or snapshot it and delete, to stop the cost.", monthly === null ? null : round(monthly)));
+
+    // Retiring server type, per location first (the top-level field is deprecated).
+    const dep = (s.server_type?.locations as Json[] | undefined)?.find((l) => l.name === loc)?.deprecation ?? s.server_type?.deprecation;
+    if (dep?.unavailable_after) {
+      flags.push(risk(`Server type ${type} is being retired here and stops being available after ${String(dep.unavailable_after).slice(0, 10)}. Plan a move. Changing type switches the server to current pricing.`));
+    }
+
+    // Outgoing traffic projected to month end against the included allowance.
+    const out = num(s.outgoing_traffic);
+    const incl = num(s.included_traffic);
+    if (out !== null && incl && incl > 0) {
+      const now = new Date();
+      const day = Math.max(1, now.getUTCDate());
+      const days = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+      const projected = (out / day) * days;
+      const perTb = num((typePrices as Json[] | undefined)?.find((x) => x.location === loc)?.price_per_tb_traffic?.gross ?? (typePrices as Json[] | undefined)?.[0]?.price_per_tb_traffic?.gross);
+      if (projected > incl) {
+        const overTb = (projected - incl) / 1e12;
+        const cost = perTb === null ? null : round(overTb * perTb);
+        flags.push(waste(`Outgoing traffic is on track to pass the included allowance this month (about ${Math.round((projected / incl) * 100)}%). Expected overage about ${overTb.toFixed(2)} TB.`, cost));
+      } else if (out / incl > 0.8) {
+        flags.push(info(`Already used ${Math.round((out / incl) * 100)}% of this month's included outgoing traffic.`));
+      }
+    }
     const firstNet = s.private_net?.[0]?.network as number | undefined;
     nodes.push({
       id, kind: "server", label: s.name, parent: firstNet && netIds.has(firstNet) ? netIds.get(firstNet)! : locNode(loc),
@@ -141,6 +190,8 @@ export function buildProject(
         ipv4: s.public_net?.ipv4?.ip ?? null,
         ipv6: s.public_net?.ipv6?.ip ?? null,
         backups: backupsOn,
+        firewalls: Array.isArray(s.public_net?.firewalls) ? s.public_net.firewalls.length : null,
+        traffic_used_pct: out !== null && incl ? Math.round((out / incl) * 100) : null,
         created: s.created ?? null,
       },
       ...base,
@@ -154,9 +205,9 @@ export function buildProject(
   for (const v of data.volumes) {
     const loc = v.location?.name as string | undefined;
     const monthly = pricing.volumePerGb === null ? null : round(pricing.volumePerGb * (v.size ?? 0));
-    const flags: string[] = [];
+    const flags: Flag[] = [];
     const attachedTo = v.server ? serverIds.get(v.server) : undefined;
-    if (!v.server) flags.push("Not attached to any server but still billed per GB.");
+    if (!v.server) flags.push(waste("Not attached to any server but still billed per GB.", monthly));
     const id = `${P}/vol:${v.id}`;
     nodes.push({
       id, kind: "volume", label: v.name, parent: attachedTo ?? locNode(loc), location: loc, status: v.status,
@@ -168,13 +219,14 @@ export function buildProject(
   }
 
   for (const ip of data.primaryIps) {
-    const loc = ip.datacenter?.location?.name as string | undefined;
+    const loc = (ip.location?.name ?? ip.datacenter?.location?.name) as string | undefined;
     const id = `${P}/pip:${ip.id}`;
     const target = ip.assignee_type === "server" && ip.assignee_id ? serverIds.get(ip.assignee_id) : undefined;
-    const flags = ip.assignee_id ? [] : ["Unassigned primary IP, still billed. Delete it if you do not need to keep the address."];
+    const ipPrice = priceAt(pricing.primaryIp.get(ip.type), loc);
+    const flags = ip.assignee_id ? [] : [waste("Unassigned primary IP, still billed. Delete it if you do not need to keep the address.", ipPrice)];
     nodes.push({
       id, kind: "primary_ip", label: ip.ip ?? ip.name, parent: target ?? locNode(loc), location: loc,
-      monthly: priceAt(pricing.primaryIp.get(ip.type), loc), costNote: `Primary ${ip.type} address.`, flags,
+      monthly: ipPrice, costNote: `Primary ${ip.type} address.`, flags,
       details: { type: ip.type ?? null, ip: ip.ip ?? null, auto_delete: ip.auto_delete ?? null },
       ...base,
     });
@@ -185,10 +237,11 @@ export function buildProject(
     const loc = ip.home_location?.name as string | undefined;
     const id = `${P}/fip:${ip.id}`;
     const target = ip.server ? serverIds.get(ip.server) : undefined;
-    const flags = ip.server ? [] : ["Floating IP not assigned to a server, still billed."];
+    const fipPrice = priceAt(pricing.floatingIp.get(ip.type), loc);
+    const flags = ip.server ? [] : [waste("Floating IP not assigned to a server, still billed.", fipPrice)];
     nodes.push({
       id, kind: "floating_ip", label: ip.ip ?? ip.name, parent: locNode(loc), location: loc,
-      monthly: priceAt(pricing.floatingIp.get(ip.type), loc), costNote: `Floating ${ip.type} address.`, flags,
+      monthly: fipPrice, costNote: `Floating ${ip.type} address.`, flags,
       details: { type: ip.type ?? null, ip: ip.ip ?? null },
       ...base,
     });
@@ -200,11 +253,12 @@ export function buildProject(
     const id = `${P}/lb:${lb.id}`;
     const type = lb.load_balancer_type?.name as string | undefined;
     const targets = (lb.targets ?? []) as Json[];
-    const flags = targets.length ? [] : ["Load balancer with no targets, billed while serving nothing."];
+    const lbPrice = priceAt(pricing.lbTypes.get(type ?? ""), loc);
+    const flags = targets.length ? [] : [waste("Load balancer with no targets, billed while serving nothing.", lbPrice)];
     const net = lb.private_net?.[0]?.network as number | undefined;
     nodes.push({
       id, kind: "load_balancer", label: lb.name, parent: net && netIds.has(net) ? netIds.get(net)! : locNode(loc), location: loc,
-      monthly: priceAt(pricing.lbTypes.get(type ?? ""), loc), costNote: `${type ?? "load balancer"} list price.`, flags,
+      monthly: lbPrice, costNote: `${type ?? "load balancer"} list price.`, flags,
       details: { type: type ?? null, ipv4: lb.public_net?.ipv4?.ip ?? null, targets: targets.length, services: lb.services?.length ?? 0 },
       ...base,
     });
@@ -214,18 +268,37 @@ export function buildProject(
     }
   }
 
+  const protectedServers = new Set<string>();
   for (const fw of data.firewalls) {
     const id = `${P}/fw:${fw.id}`;
     const applied = (fw.applied_to ?? []) as Json[];
+    const fwFlags: Flag[] = applied.length ? [] : [info("Firewall not applied to anything. Free, but it protects nothing.")];
+    const open = new Set<string>();
+    for (const r of (fw.rules ?? []) as Json[]) {
+      if (r.direction !== "in" || (r.protocol !== "tcp" && r.protocol !== "udp")) continue;
+      if (!((r.source_ips ?? []) as string[]).some((ip) => WORLD.has(ip))) continue;
+      for (const [port, name] of Object.entries(SENSITIVE_PORTS)) if (portCovers(r.port, Number(port))) open.add(`${name} (${port})`);
+    }
+    if (open.size) fwFlags.push(risk(`Opens ${[...open].join(", ")} to the whole internet. Limit these to your own IP addresses or a private network.`));
     nodes.push({
       id, kind: "firewall", label: fw.name, parent: P, monthly: 0, costNote: "Firewalls are free.",
-      flags: applied.length ? [] : ["Firewall not applied to anything. Free, but it protects nothing."],
+      flags: fwFlags,
       details: { rules: fw.rules?.length ?? 0, applied_to: applied.length },
       ...base,
     });
     for (const a of applied) {
       const sid = a.type === "server" ? serverIds.get(a.server?.id) : undefined;
-      if (sid) edges.push({ from: id, to: sid, kind: "protects" });
+      if (sid) {
+        edges.push({ from: id, to: sid, kind: "protects" });
+        protectedServers.add(sid);
+      }
+      // Label selectors apply a firewall to every server carrying that label.
+      if (a.type === "label_selector") {
+        for (const srvSid of (a.applied_to_resources ?? []) as Json[]) {
+          const t = srvSid.type === "server" ? serverIds.get(srvSid.server?.id) : undefined;
+          if (t) protectedServers.add(t);
+        }
+      }
     }
   }
 
@@ -237,7 +310,7 @@ export function buildProject(
       id, kind, label: img.description || `${kind} ${img.id}`, parent: P,
       monthly: pricing.imagePerGb === null || kind === "backup" ? (kind === "backup" ? 0 : null) : round(pricing.imagePerGb * size),
       costNote: kind === "backup" ? "Covered by the server's backup surcharge." : `${size.toFixed(2)} GB at the per-GB image price.`,
-      flags: kind === "snapshot" && !src ? ["Snapshot of a server that no longer exists. Keep only if you plan to restore it."] : [],
+      flags: snapshotFlags(img, kind, Boolean(src), pricing.imagePerGb === null ? null : round(pricing.imagePerGb * size)),
       details: { size_gb: size, created: img.created ?? null, from_server: img.created_from?.name ?? null },
       ...base,
     });
@@ -249,7 +322,7 @@ export function buildProject(
   for (const c of data.certificates) {
     nodes.push({
       id: `${P}/cert:${c.id}`, kind: "certificate", label: c.name, parent: P, monthly: 0, costNote: "Certificates are free.",
-      flags: [], details: { type: c.type ?? null, domains: (c.domain_names ?? []).join(", "), expires: c.not_valid_after ?? null },
+      flags: certFlags(c), details: { type: c.type ?? null, domains: (c.domain_names ?? []).join(", "), expires: c.not_valid_after ?? null },
       ...base,
     });
   }
@@ -271,7 +344,33 @@ export function buildProject(
       ...base,
     });
   }
+  // A public server with no firewall relies entirely on its own configuration.
+  for (const n of nodes) {
+    const fromServer = n.details.firewalls;
+    const unprotected = typeof fromServer === "number" ? fromServer === 0 : !protectedServers.has(n.id);
+    if (n.kind === "server" && n.details.ipv4 && unprotected) {
+      n.flags.push(risk("No Hetzner firewall is attached and it has a public address. One mistake in its own setup exposes it."));
+    }
+  }
   return { nodes, edges };
+}
+
+function snapshotFlags(img: Json, kind: "snapshot" | "backup", hasServer: boolean, cost: number | null): Flag[] {
+  if (kind !== "snapshot") return [];
+  if (!hasServer) return [waste("Snapshot of a server that no longer exists. Keep only if you plan to restore it.", cost)];
+  const created = Date.parse(img.created ?? "");
+  const ageDays = Number.isFinite(created) ? Math.floor((Date.now() - created) / DAY_MS) : 0;
+  return ageDays > 90 ? [waste(`Snapshot is ${ageDays} days old. Delete it if a newer one or backups cover you.`, cost)] : [];
+}
+
+function certFlags(c: Json): Flag[] {
+  const end = Date.parse(c.not_valid_after ?? "");
+  if (!Number.isFinite(end)) return [];
+  const days = Math.floor((end - Date.now()) / DAY_MS);
+  if (days < 0) return [risk(`Certificate expired ${-days} days ago.`)];
+  // Managed certificates renew themselves, so only warn late for those.
+  const limit = c.type === "managed" ? 7 : 30;
+  return days <= limit ? [risk(`Certificate expires in ${days} days${c.type === "managed" ? " and has not renewed yet" : ". Upload a renewed one"}.`)] : [];
 }
 
 async function collectProject(ref: ProjectRef, pricing: Pricing) {
@@ -304,7 +403,7 @@ async function collectRobot(cfg: HetznerConfig, account: string): Promise<MapNod
       id: `a:${account}/robot:${s.server_number}`, kind: "robot_server" as const, label: s.server_name || s.server_ip || `#${s.server_number}`,
       parent: `a:${account}`, account, location: s.dc, status: s.status, monthly: null,
       costNote: "The Robot API does not expose prices. See your Robot invoice.",
-      flags: s.cancelled ? ["Cancelled, runs until the paid-until date."] : [],
+      flags: s.cancelled ? [info("Cancelled, runs until the paid-until date.")] : [],
       details: { product: s.product ?? null, ip: s.server_ip ?? null, paid_until: s.paid_until ?? null, traffic: s.traffic ?? null },
     };
   });
@@ -336,7 +435,7 @@ export async function collectGraph(base: HetznerConfig, env: NodeJS.ProcessEnv =
     } else {
       const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
       errors.push({ project: ref.name, account: ref.account, error: msg });
-      nodes.push({ id: `p:${ref.account}/${ref.name}`, kind: "project", label: ref.name, parent: `a:${ref.account}`, project: ref.name, account: ref.account, monthly: null, flags: [`Could not read this project. ${msg}`], details: {} });
+      nodes.push({ id: `p:${ref.account}/${ref.name}`, kind: "project", label: ref.name, parent: `a:${ref.account}`, project: ref.name, account: ref.account, monthly: null, flags: [risk(`Could not read this project. ${msg}`)], details: {} });
     }
   });
   const robotAccount = env.HETZNER_ACCOUNT_NAME?.trim() || "Hetzner account";

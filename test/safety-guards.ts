@@ -81,5 +81,26 @@ for (const p of [
 assert("bypass closed: DELETE via odd spelling still destructive", classifyDestructive("POST", "/servers/9/actions/%70oweroff").destructive);
 assert("GET of a billed path stays free", !classifyCost("cloud", "GET", "/servers?x=1").billed);
 
+// API review 2026-09-29: guards for actions the spec added or we missed.
+assert("storage box change_type is billed", classifyCost("storagebox", "POST", "/storage_boxes/7/actions/change_type").billed);
+assert("storage box change_type spelled oddly is still billed", classifyCost("storagebox", "POST", "storage_boxes/7/actions/CHANGE_TYPE/").billed);
+assert("storage box enable_snapshot_plan is not billed", !classifyCost("storagebox", "POST", "/storage_boxes/7/actions/enable_snapshot_plan").billed);
+for (const a of ["disable_backup", "detach_from_network", "disable_public_interface"]) {
+  assert(`${a} needs confirm`, classifyDestructive("POST", `/servers/9/actions/${a}`).destructive);
+}
+for (const a of ["rollback_snapshot", "disable_snapshot_plan", "reset_subaccount_password", "update_access_settings", "change_home_directory"]) {
+  assert(`storage box ${a} needs confirm`, classifyDestructive("POST", `/storage_boxes/7/actions/${a}`).destructive);
+}
+for (const a of ["import_zonefile", "change_primary_nameservers"]) {
+  assert(`dns ${a} needs confirm`, classifyDestructive("POST", `/zones/example.com/actions/${a}`).destructive);
+}
+assert("dns rrset set_records needs confirm", classifyDestructive("POST", "/zones/example.com/rrsets/www/A/actions/set_records").destructive);
+assert("dns rrset PUT needs confirm", classifyDestructive("PUT", "/zones/example.com/rrsets/www/A").destructive);
+assert("dns add_records does not need confirm", !classifyDestructive("POST", "/zones/example.com/rrsets/www/A/actions/add_records").destructive);
+assert("turning protection off needs confirm", classifyDestructive("POST", "/servers/9/actions/change_protection", { delete: false }).destructive);
+assert("turning protection on does not", !classifyDestructive("POST", "/servers/9/actions/change_protection", { delete: true, rebuild: true }).destructive);
+assert("disable_backup reason explains the data loss", /deletes all existing automatic backups/.test(classifyDestructive("POST", "/servers/9/actions/disable_backup").reason ?? ""));
+assert("enable_backup is billed", classifyCost("cloud", "POST", "/servers/9/actions/enable_backup").billed);
+
 process.stdout.write(`\n${passed}/${total} safety-guard checks passed\n`);
 if (passed !== total) process.exitCode = 1;

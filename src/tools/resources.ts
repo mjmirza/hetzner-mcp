@@ -15,6 +15,8 @@ interface ReadDef {
   path: string;
   desc: string;
   paginated: boolean;
+  /** Sub-resource under a required id, for example /members under /networks/{id}. */
+  sub?: string;
 }
 
 const READS: ReadDef[] = [
@@ -34,7 +36,7 @@ const READS: ReadDef[] = [
   { surface: "cloud", name: "cloud_list_server_types", path: "/server_types", desc: "List server types and specs", paginated: true },
   { surface: "cloud", name: "cloud_list_load_balancer_types", path: "/load_balancer_types", desc: "List load balancer types", paginated: true },
   { surface: "cloud", name: "cloud_list_locations", path: "/locations", desc: "List locations", paginated: true },
-  { surface: "cloud", name: "cloud_list_datacenters", path: "/datacenters", desc: "List datacenters", paginated: true },
+  { surface: "cloud", name: "cloud_list_network_members", path: "/networks", sub: "/members", desc: "List everything attached to a private network. Pass the network id", paginated: true },
   { surface: "cloud", name: "cloud_get_pricing", path: "/pricing", desc: "Get full pricing for the account currency", paginated: false },
   { surface: "storagebox", name: "storagebox_list", path: "/storage_boxes", desc: "List storage boxes", paginated: true },
   { surface: "storagebox", name: "storagebox_list_types", path: "/storage_box_types", desc: "List storage box types", paginated: true },
@@ -44,7 +46,6 @@ const READS: ReadDef[] = [
   { surface: "robot", name: "robot_list_vswitches", path: "/vswitch", desc: "List vSwitches", paginated: false },
   { surface: "robot", name: "robot_list_failover", path: "/failover", desc: "List failover IPs", paginated: false },
   { surface: "robot", name: "robot_list_ssh_keys", path: "/key", desc: "List Robot SSH keys", paginated: false },
-  { surface: "robot", name: "robot_list_storageboxes", path: "/storagebox", desc: "List Robot storage boxes (legacy)", paginated: false },
   { surface: "robot", name: "robot_list_rdns", path: "/rdns", desc: "List reverse DNS entries", paginated: false },
 ];
 
@@ -53,9 +54,10 @@ type ReadArgs = { id?: string; query?: Record<string, string | number | boolean>
 function makeReadHandler(cfg: HetznerConfig, def: ReadDef) {
   return async (args: ReadArgs) => {
     try {
-      const path = args.id ? `${def.path}/${encodeURIComponent(args.id)}` : def.path;
+      if (def.sub && !args.id) throw new Error(`${def.name} needs an id`);
+      const path = args.id ? `${def.path}/${encodeURIComponent(args.id)}${def.sub ?? ""}` : def.path;
       const query =
-        def.paginated && !args.id ? { per_page: 50, ...(args.query ?? {}) } : args.query;
+        def.paginated && (!args.id || def.sub) ? { per_page: 50, ...(args.query ?? {}) } : args.query;
       const result = await hetznerRequest(cfg, { surface: def.surface, path, query });
       return { content: [{ type: "text" as const, text: formatResult(result, args.verbose ?? false) }] };
     } catch (err) {

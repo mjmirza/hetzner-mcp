@@ -16,6 +16,7 @@ import { registerWriteTools } from "./tools/write.js";
 import { registerCloudWriteTools } from "./tools/write-cloud.js";
 import { registerContributeTool } from "./tools/contribute.js";
 import { registerMapTool } from "./tools/map.js";
+import { registerCapacityTool } from "./tools/capacity.js";
 import { runMap } from "./map/cli.js";
 import { runSetup } from "./setup/wizard.js";
 import { runDoctor } from "./setup/doctor.js";
@@ -56,6 +57,7 @@ async function runServer(): Promise<void> {
   registerCloudWriteTools(server, cfg);
   registerContributeTool(server);
   registerMapTool(server, cfg);
+  registerCapacityTool(server, cfg);
 
   // Diagnostics go to stderr so they never corrupt the stdio protocol on stdout.
   const surfaces = availableSurfaces(cfg);
