@@ -233,6 +233,26 @@ npx hetzner-mcp audit --fail-on high      # exit 1 in CI when a high or critical
 
 In the map, open the Audit tab. From your AI, the `infra_audit` tool returns the summary first and one finding's steps on request (`finding: 3`), which keeps the conversation short.
 
+### Spend history
+
+Open the Spend tab to see what your Hetzner account has been costing you, month by month. Hetzner has no billing API, so the tab works in two layers.
+
+- **Estimated from your account, with no setup.** Every resource the map already reads has a creation date and a price. From those, the tab shows this month so far, the projected full month, and an estimate for every past month since each resource was created, per project and per resource type, with the top cost drivers. It counts each started hour up to the monthly price, the way Hetzner bills. It is labelled as an estimate everywhere: resources you already deleted are not included, and past months assume today's sizes. Amounts are in euro, net of VAT.
+- **Exact, from your invoices, when you want it.** Download your invoice PDFs in the Hetzner Console under Invoices (or at accounts.hetzner.com) and drop them on the Spend tab. The PDF is read in your browser. Only the invoice number, date, per-project totals and line items are kept, saved on this computer next to your projects (owner-only file). Names, addresses, customer numbers and bank details are never read or stored.
+
+Every invoice is checked before it is saved, in the browser and again on this computer. Line items must add up to each project's subtotal, the projects to the invoice total, net plus tax to gross, and the tax to the stated rate. An invoice that does not add up is refused with the exact numbers that disagree, the same invoice is never counted twice, and a project month billed on two invoices is flagged.
+
+With invoices added, each finished month shows the billed amount next to the estimate for the same projects:
+
+| Status | Meaning |
+|---|---|
+| Matches | The invoice is within 5 % of the estimate |
+| Invoice higher | Often resources you already deleted, extra traffic, or a resize during the month |
+| Invoice lower | Often credits, or resources turned off for part of the month |
+| Invoice missing | The estimate shows usage but no invoice for that month was added, so you know which PDF to download |
+
+A one-line summary sits at the top, for example "12 invoices, all totals check out. 4 of 6 months match the estimate." From your AI, the read-only `spend_history` tool returns the same figures and the same summary. The sample map (`npx hetzner-mcp map --demo`) shows a full example with synthetic invoices.
+
 ![Infra map, light](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/map/infra-map-light.png)
 ![Infra map, dark](https://raw.githubusercontent.com/mjmirza/hetzner-mcp/main/assets/map/infra-map-dark.png)
 

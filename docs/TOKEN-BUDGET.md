@@ -5,8 +5,8 @@ token efficient on purpose.
 
 ## Tool surface
 
-- 57 tools total. 3 generic per surface request tools, 27 curated read tools, 24 curated
-  write tools, infra_map, find_capacity, and 1 contribute tool. Titles and descriptions are
+- 59 tools total. 3 generic per surface request tools, 27 curated read tools, 24 curated
+  write tools, infra_map, infra_audit, spend_history, find_capacity, and 1 contribute tool. Titles and descriptions are
   kept short. infra_map returns a text summary by default and Mermaid only on request.
 - The 24 curated write tools cover create, delete, attach, detach, and assign for servers,
   volumes, networks, firewalls, load balancers, floating and primary IPs, SSH keys, and

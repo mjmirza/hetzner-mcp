@@ -15,8 +15,26 @@ Changelog, and this project follows semantic versioning.
 - `doctor` checks the token saved in each connected app with Hetzner (one free read per token)
   and ends with one line saying what to fix. It exits 1 when a saved token is rejected, so it
   can gate a script. Before, it said "All good" as soon as an app had any token saved.
+- Spend tab in the map. It shows this month so far, the projected month, and an estimate for
+  every past month since each resource was created, per project and resource type, with the
+  top cost drivers and a monthly bar chart. Before, the map only showed the current monthly
+  estimate. Estimates come from the resources your account runs today, so deleted resources
+  are not included, and the tab says so. Amounts are in euro, net of VAT.
+- Invoice import on the Spend tab. Drop Hetzner invoice PDFs and they are read in the browser.
+  Only the invoice number, date, per-project totals and line items are kept, in an owner-only
+  file on this computer; names, addresses and account numbers are never stored. Each invoice is
+  checked in the browser and again on the computer: line items against the project subtotal,
+  projects against the invoice total, net plus tax against gross, and tax against the stated
+  rate. Duplicates are refused and a project month on two invoices is flagged.
+- Month by month reconciliation. Each finished month compares billed net with the estimate for
+  the same projects and reads Matches (within 5 %), Invoice higher, Invoice lower, or Invoice
+  missing, with the difference in euro and percent, plus a one-line validation summary.
+- `spend_history` tool with the same figures and summary for your AI. The sample map shows a
+  full example with synthetic invoices.
 
 ### Changed
+- The collector now keeps each resource's creation date and hourly price, which the Spend tab
+  needs. It reads no extra endpoints.
 - A map page opened without its access key, or with the key of an earlier run, now asks for the
   key. Paste the link the map printed (or just the key) and the map opens. Before, the page
   showed a message and a Try again button that could not help.

@@ -9,8 +9,9 @@
 ## What it does
 - Three surfaces from one server. Cloud (api.hetzner.cloud), Storage Box (api.hetzner.com),
   Robot dedicated servers (robot-ws.your-server.de). DNS is part of the Cloud API.
-- 57 tools. 3 generic per-surface request tools for complete coverage, 27 curated read tools,
-  24 guarded write tools, infra_map (estate map with cost, risks and savings), find_capacity
+- 59 tools. 3 generic per-surface request tools for complete coverage, 27 curated read tools,
+  24 guarded write tools, infra_map (estate map with cost, risks and savings), infra_audit,
+  spend_history (monthly spend estimates checked against added invoices), find_capacity
   (what can be ordered now, where), and 1 contribution tool.
 - Safety first. Billed creation is off until HETZNER_MCP_ALLOW_BILLED=1, and then each one
   still needs an explicit confirm after a live price preview. DELETE and data-destroying or
