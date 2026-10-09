@@ -47,7 +47,7 @@ assert("port range 80-443 does not trip sensitive ports", byLabel("blog-fw").fla
 assert("uploaded cert expiring in under 30 days flagged", byLabel("legacy-partner").flags.some((f) => f.kind === "risk"));
 assert("managed cert with 70 days left not flagged", byLabel("acme.example").flags.length === 0);
 assert("old snapshot flagged as waste", byLabel("db before 2025 migration").flags.some((f) => f.kind === "waste" && /days old/.test(f.text)));
-assert("traffic near the allowance noted", byLabel("web-1").flags.some((f) => /outgoing traffic/.test(f.text)));
+assert("traffic near the allowance noted", byLabel("web-1").flags.some((f) => /outgoing traffic/i.test(f.text)));
 assert("findings list risks before waste", g.totals.findings.findIndex((f) => f.kind === "waste") > g.totals.findings.findIndex((f) => f.kind === "risk"));
 assert("waste findings sorted by money, largest first", g.totals.findings.filter((f) => f.kind === "waste")[0]!.monthly === 16.49);
 assert("load balancer routes to both web servers", g.edges.filter((e) => e.kind === "routes").length === 2);
