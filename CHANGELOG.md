@@ -5,6 +5,11 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-31
+
+### Security
+- The MCP SDK floor is now 1.32.1, and transitive advisories in body-parser, zod, vite, ip-address and three other dependencies are patched. No behaviour change.
+
 ## [0.7.0] - 2026-09-29
 
 ### Added
