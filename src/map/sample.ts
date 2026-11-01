@@ -24,11 +24,17 @@ const pricing = {
   floatingIp: new Map([["ipv4", [...price(3), ...price(3, "nbg1")]]]),
 };
 
+// Sample traffic scales with the elapsed month, so its month-end projection is the same on any day.
+const elapsedMonth = (): number => {
+  const n = new Date();
+  const days = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 0)).getUTCDate();
+  return Math.max(1, n.getUTCDate()) / days;
+};
 const loc = (name: string, age = 180) => ({ location: { name }, created: daysAgo(age) });
 const srv = (id: number, name: string, type: string, l: string, extra: Record<string, unknown> = {}) => ({
   id, name, status: "running", server_type: { name: type, cores: type === "ccx23" ? 4 : type === "cpx31" ? 4 : 2, memory: type === "ccx23" ? 16 : type === "cpx31" ? 8 : 2, disk: type === "cpx11" ? 40 : 160 },
   location: { name: l }, image: { name: "ubuntu-24.04" }, public_net: { ipv4: { ip: `203.0.113.${id % 250}` }, firewalls: [] }, private_net: [], backup_window: null, created: daysAgo(180),
-  outgoing_traffic: 2e12, included_traffic: 20e12, ...extra,
+  outgoing_traffic: Math.round(2e12 * elapsedMonth()), included_traffic: 20e12, ...extra,
 });
 const pip = (id: number, server: number | null, l: string, age = 180) => ({ id, ip: `203.0.113.${id % 250}`, type: "ipv4", assignee_type: "server", assignee_id: server, location: { name: l }, auto_delete: true, created: daysAgo(age) });
 const fwOn = (ipv4: string, ids: number[]) => ({ ipv4: { ip: ipv4 }, firewalls: ids.map((id) => ({ id })) });
