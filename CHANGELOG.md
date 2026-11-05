@@ -5,6 +5,15 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-05
+
+### Security
+- fallow raised to 3.39.0, clearing GHSA-h4fr-cmh5-qr62 and GHSA-jfwm-3p3c-6hx5 (dev tooling only, nothing shipped to users was affected).
+- The MCP SDK floor is now 1.32.2.
+
+### Changed
+- One consolidated dependency refresh replacing seven separate bump PRs. actions/setup-node 7.1.0 (commit-pinned), @vitejs/plugin-react 6.2, radix-ui 1.8, playwright 1.64, @types/node 26. No tool behaviour changed.
+
 ## [0.7.1] - 2026-10-31
 
 ### Security
