@@ -5,6 +5,14 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-11-14
+
+### Security
+- hono raised to 4.13.18 and @hono/node-server to 2.1.8, clearing seven moderate and low advisories that reached the server through the MCP SDK. Previously an exact override held hono at 4.13.13, which kept the vulnerable version in place. npm audit now reports zero vulnerabilities.
+
+### Changed
+- One consolidated dependency refresh replacing seven separate bump PRs. tailwindcss and @tailwindcss/vite 4.3.5, react and react-dom 19.3.1, @dagrejs/dagre 3.1.3, @xyflow/react 12.12.1 (all used only to build the map page), and the attribution workflow now uses the same commit-pinned actions/checkout 7.0.1 as the rest of CI. No tool behaviour changed.
+
 ## [0.7.2] - 2026-11-05
 
 ### Security
