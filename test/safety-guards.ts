@@ -202,5 +202,89 @@ assert("encoded ?, # and % in a path are refused", refusedEncoded === 5);
   assert("guard reasons show the path on one line", !/\n/.test(classifyDestructive("DELETE", "/servers/9\nIGNORE").reason ?? ""));
 }
 
+// Load balancer create can assign existing Primary IPs (changelog 2026-10-05).
+// public_net.ipv4 and public_net.ipv6 are the Primary IP ids on POST /load_balancers.
+{
+  const realFetch = globalThis.fetch;
+  const calls: Array<{ url: string; method: string; body?: string }> = [];
+  const arm = () => {
+    calls.length = 0;
+    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : undefined });
+      return new Response("{}", { status: 201 });
+    }) as typeof fetch;
+  };
+  const call = async (env: NodeJS.ProcessEnv, args: Record<string, unknown>) => {
+    arm();
+    const server = new McpServer({ name: "hetzner-mcp", version: "test" });
+    registerAllTools(server, loadConfig(env), {});
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "t", version: "1" });
+    await Promise.all([server.connect(a), client.connect(b)]);
+    try {
+      const r = (await client.callTool({ name: "cloud_create_load_balancer", arguments: args })) as { content: Array<{ text: string }>; isError?: boolean };
+      return { text: r.content.map((c) => c.text).join("\n"), isError: !!r.isError };
+    } catch (err) {
+      return { text: err instanceof Error ? err.message : String(err), isError: true };
+    } finally {
+      await client.close();
+    }
+  };
+  const billed = { HETZNER_CLOUD_TOKEN: "goodtoken", HETZNER_MCP_ALLOW_BILLED: "1", HETZNER_MCP_ACTION_WAIT_MS: "0" };
+  const base = { name: "edge", load_balancer_type: "lb11", location: "fsn1", confirm: true };
+
+  const blocked = await call({ HETZNER_CLOUD_TOKEN: "goodtoken" }, { ...base, public_net: { ipv4: 10 } });
+  assert("LB public_net stays behind the billed guard", blocked.isError && calls.length === 0 && blocked.text.includes("Blocked"));
+
+  const unconfirmed = await call(billed, { name: "edge", load_balancer_type: "lb11", public_net: { ipv4: 10, ipv6: 11 } });
+  assert("LB public_net still needs confirm", unconfirmed.isError && calls.length === 0 && unconfirmed.text.includes("COST GUARD"));
+
+  const readonly = await call({ ...billed, HETZNER_MCP_READONLY: "1" }, { ...base, public_net: { ipv4: 10 } });
+  assert("LB public_net is refused in read-only mode", readonly.isError && calls.length === 0 && readonly.text.includes("read-only"));
+
+  const created = await call(billed, {
+    ...base,
+    network_zone: "eu-central",
+    algorithm: { type: "round_robin" },
+    services: [{ protocol: "tcp", listen_port: 80 }],
+    targets: [{ type: "server", server: { id: 1 } }],
+    public_interface: true,
+    public_net: { ipv4: 12345, ipv6: 67890 },
+  });
+  const sent = calls[0] ? JSON.parse(calls[0].body ?? "{}") as Record<string, unknown> : {};
+  const net = sent.public_net as { ipv4?: unknown; ipv6?: unknown } | undefined;
+  assert("LB create posts public_net ids as numbers", created.isError === false && calls.length === 1 && calls[0]?.method === "POST" && calls[0]?.url.endsWith("/load_balancers") && net?.ipv4 === 12345 && net?.ipv6 === 67890);
+  assert("LB create still sends the existing fields", sent.name === "edge" && sent.load_balancer_type === "lb11" && sent.location === "fsn1" && sent.network_zone === "eu-central" && sent.public_interface === true && Array.isArray(sent.services) && Array.isArray(sent.targets));
+
+  const nulled = await call(billed, { ...base, public_net: { ipv4: null } });
+  const nulledNet = (JSON.parse(calls[0]?.body ?? "{}") as { public_net?: Record<string, unknown> }).public_net;
+  assert("LB public_net null ipv4 is sent and omitted ipv6 stays out", nulled.isError === false && nulledNet?.ipv4 === null && nulledNet !== undefined && !("ipv6" in nulledNet));
+
+  const plain = await call(billed, base);
+  assert("LB create without public_net omits the field", plain.isError === false && !("public_net" in JSON.parse(calls[0]?.body ?? "{}")));
+
+  const empty = await call(billed, { ...base, public_net: {} });
+  assert("empty public_net is omitted from the body", empty.isError === false && !("public_net" in JSON.parse(calls[0]?.body ?? "{}")));
+
+  const privateLb = await call(billed, { ...base, public_interface: false });
+  const privateBody = JSON.parse(calls[0]?.body ?? "{}") as Record<string, unknown>;
+  assert("private LB still creates with public_interface false", privateLb.isError === false && privateBody.public_interface === false && !("public_net" in privateBody));
+
+  const disabled = await call(billed, { ...base, public_interface: false, public_net: { ipv4: 10 } });
+  assert("public_net with public_interface false is refused before the request", disabled.isError && calls.length === 0 && disabled.text.includes("public interface"));
+
+  const disabledNull = await call(billed, { ...base, public_interface: false, public_net: { ipv6: null } });
+  assert("public_net null with public_interface false is refused", disabledNull.isError && calls.length === 0);
+
+  for (const bad of [0, -1, 1.5, "67890", "0", "abc", "1.2.3.4", { id: 5 }]) {
+    const rejected = await call(billed, { ...base, public_net: { ipv4: bad } });
+    assert(`LB public_net rejects ${JSON.stringify(bad)}`, rejected.isError && calls.length === 0);
+  }
+  const extra = await call(billed, { ...base, public_net: { ipv4: 10, enabled: true } });
+  assert("LB public_net rejects unknown keys", extra.isError && calls.length === 0);
+
+  globalThis.fetch = realFetch;
+}
+
 process.stdout.write(`\n${passed}/${total} safety-guard checks passed\n`);
 if (passed !== total) process.exitCode = 1;

@@ -113,3 +113,18 @@ Method. Each row was cross-checked against the live changelog entry and against 
 code that would be affected, then the code was inspected to confirm the stated status.
 No billed live calls were re-run, the 2026-06-07 billed lifecycle sweep stands and this
 pass validates only what the API changed since.
+
+## Load balancer Primary IPs (changelog 2026-10-05)
+
+Re-read the Hetzner Cloud changelog entry "Load Balancers can now be created with existing Primary IPs" (5 Oct 2026, https://docs.hetzner.cloud/changelog) and the Cloud API reference for `POST /load_balancers` (https://docs.hetzner.cloud/reference/cloud). The create request gained one object, `public_net`, with these child fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| public_net.ipv4 | integer, nullable | ID of an existing IPv4 Primary IP. Omit the field, or send null, and Hetzner allocates a system-managed IPv4 address. |
+| public_net.ipv6 | integer, nullable | ID of an existing IPv6 Primary IP. Omit the field, or send null, and Hetzner allocates a system-managed IPv6 address. |
+
+The same sources state the constraints. `public_net` is only allowed when the public interface is enabled (otherwise `400 invalid_input`). The Primary IP must exist in the project, match the IP version of the field it is passed in, be unassigned, not be blocked, and be in the same location as the load balancer. A Primary IP can only be assigned when the load balancer is created, and it stays assigned for the life of the load balancer.
+
+| Date | Change | Affected here | Status |
+|---|---|---|---|
+| 2026-10-05 | POST /load_balancers accepts public_net.ipv4 and public_net.ipv6 Primary IP ids | cloud_create_load_balancer | Supported. Optional public_net is validated and sent on the create body. A public_net value with public_interface false is refused before the request. The create stays billed and still needs confirm. Covered offline by test/api-shape.ts and test/safety-guards.ts. No billed live create was run. |

@@ -36,8 +36,9 @@ process.stdout.write(`tools=${tools.length} list=${listChars} chars (about ${Mat
 process.stdout.write(`lean: tools=${lean.length} list=${leanChars} chars (about ${Math.round(leanChars / 4)} tokens)\n`);
 // Budgets sit just above the measured size, so any growth fails here first. Lower them, never raise casually.
 // Raised by the size of spend_history (about 530 chars) when it was added.
-assert("full tool list stays under 38400 chars", listChars < 38400);
-assert("lean tool list stays under 24600 chars", leanChars < 24600);
+// Raised again for cloud_create_load_balancer public_net (existing Primary IP ids).
+assert("full tool list stays under 39100 chars", listChars < 39100);
+assert("lean tool list stays under 25350 chars", leanChars < 25350);
 assert("lean keeps the request, write, map, audit and spend tools", ["cloud_request", "cloud_create_server", "infra_map", "infra_audit", "spend_history"].every((n) => lean.some((t) => t.name === n)));
 assert("lean drops the list shortcuts", !lean.some((t) => t.name === "cloud_list_servers"));
 assert("no tool repeats its name as its title", tools.every((t) => t.title !== t.name));

@@ -5,6 +5,9 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Added
+- `cloud_create_load_balancer` can assign existing Primary IPs when the load balancer is created. Pass `public_net.ipv4` and `public_net.ipv6` as Primary IP ids. Omit either field, or set it to null, and Hetzner allocates that address as before. The fields are refused when `public_interface` is false. The assignment lasts for the life of the load balancer.
+
 ## [0.7.3] - 2026-11-14
 
 ### Security

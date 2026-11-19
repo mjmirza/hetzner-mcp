@@ -16,6 +16,28 @@ function text(value: string, isError = false) {
 export const id = z.union([z.number().int().positive(), z.string().regex(/^[0-9]+$/, "id must be a positive integer")]);
 const enc = (v: string | number) => encodeURIComponent(String(v));
 
+// POST /load_balancers public_net (changelog 2026-10-05). ipv4 and ipv6 are Primary IP ids.
+// A number body id matches the other write tools. Null means a system-managed address.
+const primaryIpId = z.number().int().positive();
+const loadBalancerPublicNet = z
+  .strictObject({
+    ipv4: primaryIpId.nullable().optional().describe("IPv4 Primary IP id, or null for a system-managed address."),
+    ipv6: primaryIpId.nullable().optional().describe("IPv6 Primary IP id, or null for a system-managed address."),
+  })
+  .describe("Existing Primary IP ids. Unassigned, same location, public interface on. Stays assigned for the life of the load balancer. List ids with cloud_list_primary_ips.");
+
+function publicNetBody(net: { ipv4?: number | null; ipv6?: number | null } | undefined): { ipv4?: number | null; ipv6?: number | null } | undefined {
+  if (!net) return undefined;
+  const idOk = (n: number) => Number.isSafeInteger(n) && n > 0;
+  if ((net.ipv4 !== undefined && net.ipv4 !== null && !idOk(net.ipv4)) || (net.ipv6 !== undefined && net.ipv6 !== null && !idOk(net.ipv6))) {
+    throw new Error("Primary IP id must be a positive integer");
+  }
+  const out: { ipv4?: number | null; ipv6?: number | null } = {};
+  if (net.ipv4 !== undefined) out.ipv4 = net.ipv4;
+  if (net.ipv6 !== undefined) out.ipv6 = net.ipv6;
+  return out.ipv4 !== undefined || out.ipv6 !== undefined ? out : undefined;
+}
+
 /**
  * The shared guard. Blocks on read-only, blocks a billed create unless allowBilled and
  * confirm, blocks a delete unless confirm, then runs the request and relays any API error.
@@ -150,7 +172,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
     "cloud_create_load_balancer",
     {
       title: "Create a load balancer",
-      description: "Create a load balancer. Billed. Requires confirm true.",
+      description: "Create a load balancer. Billed. Requires confirm true. Optional public_net assigns existing Primary IPs.",
       inputSchema: {
         name: z.string().min(1).describe("Load balancer name."),
         load_balancer_type: z.string().describe("For example lb11. List options with cloud_list_load_balancer_types."),
@@ -159,18 +181,40 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
         algorithm: z.record(z.string(), z.unknown()).optional().describe("For example { type: round_robin }."),
         services: z.array(z.record(z.string(), z.unknown())).optional(),
         targets: z.array(z.record(z.string(), z.unknown())).optional(),
-        public_interface: z.boolean().optional(),
+        public_interface: z.boolean().optional().describe("Enable the public interface. Cannot be false when public_net is set."),
+        public_net: loadBalancerPublicNet.optional(),
         confirm: z.boolean().optional().describe("Must be true. A load balancer costs money."),
       },
     },
-    async (a) =>
-      guarded(cfg, {
+    async (a) => {
+      let publicNet: ReturnType<typeof publicNetBody>;
+      try {
+        publicNet = publicNetBody(a.public_net);
+      } catch (err) {
+        return text(`Refused. ${err instanceof Error ? err.message : String(err)}`, true);
+      }
+      // The API returns 400 invalid_input when a Primary IP id is passed with the public interface disabled.
+      if (a.public_interface === false && publicNet) {
+        return text("Refused. public_net can only be set when the public interface is enabled. The API rejects it when public_interface is false.", true);
+      }
+      return guarded(cfg, {
         method: "POST",
         path: "/load_balancers",
         confirm: a.confirm,
         label: `Creating load balancer ${a.name}`,
-        body: clean({ name: a.name, load_balancer_type: a.load_balancer_type, location: a.location, network_zone: a.network_zone, algorithm: a.algorithm, services: a.services, targets: a.targets, public_interface: a.public_interface }),
-      }),
+        body: clean({
+          name: a.name,
+          load_balancer_type: a.load_balancer_type,
+          location: a.location,
+          network_zone: a.network_zone,
+          algorithm: a.algorithm,
+          services: a.services,
+          targets: a.targets,
+          public_interface: a.public_interface,
+          public_net: publicNet,
+        }),
+      });
+    },
   );
   server.registerTool(
     "cloud_delete_load_balancer",

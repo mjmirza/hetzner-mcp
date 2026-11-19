@@ -260,7 +260,7 @@ A one-line summary sits at the top, for example "12 invoices, all totals check o
 
 Every answer is shaped to cost your AI as few tokens as possible. Lists come back as a compact view where nested objects collapse to their name (a server type reads `cx23`, not its full price table), empty fields are dropped, and JSON is not indented. Pass `verbose: true` whenever you need everything. Measured on a live account, this cut server type lists by 49%, locations by 47%, and images by 40%.
 
-The tool list itself costs tokens in every conversation. Set `HETZNER_MCP_TOOLS=lean` to skip the 27 list shortcuts; `cloud_request` with GET reads the same data, and the tool list drops from about 9,400 to 5,900 tokens. A test in CI fails if the tool list or the common answers grow past their budget.
+The tool list itself costs tokens in every conversation. Set `HETZNER_MCP_TOOLS=lean` to skip the 27 list shortcuts; `cloud_request` with GET reads the same data, and the tool list drops from about 9,800 to 6,300 tokens. A test in CI fails if the tool list or the common answers grow past their budget.
 
 ## Cost safety, the part you actually worry about
 
@@ -274,6 +274,8 @@ A wrong API call should never cost you money you did not intend. This tool is bu
 - Actions that interrupt a running machine, such as power off, reboot, rebuild, or a password reset, also need an explicit confirm.
 - Every write waits for Hetzner to finish the work and tells you if it failed, instead of reporting success while the job is still running.
 - Nothing in the test suite leaves a billed resource running. The whole build is tracked in a cost ledger in [docs/ROADMAP.md](docs/ROADMAP.md), with a target of under five cents total.
+
+`cloud_create_load_balancer` can attach Primary IPs you already have. Pass `public_net.ipv4` and `public_net.ipv6` as the ids of unassigned Primary IPs in the same location. Leave a version out, or pass null, and Hetzner allocates that address. The public interface has to stay on, and the address stays on that load balancer for its whole life. Creating it is still billed and still needs confirm.
 
 ## Quick start
 
