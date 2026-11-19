@@ -113,3 +113,14 @@ Method. Each row was cross-checked against the live changelog entry and against 
 code that would be affected, then the code was inspected to confirm the stated status.
 No billed live calls were re-run, the 2026-06-07 billed lifecycle sweep stands and this
 pass validates only what the API changed since.
+
+## Schema follow-up (2026-11-19)
+
+Checked against the Hetzner Cloud changelog entry for 2026-10-05 and the
+`LoadBalancerCreateRequestPublicNet` fields in the current hcloud-go schema
+(`public_net.ipv4` and `public_net.ipv6`, each a primary IP id). No billed create
+was sent.
+
+| Date | Change | Affected here | Status |
+|---|---|---|---|
+| 2026-10-05 | POST /load_balancers accepts public_net.ipv4 and public_net.ipv6 so an existing primary IP can be assigned at creation. Omitting a version still allocates a new primary IP, and the assignment cannot be changed later. | cloud_create_load_balancer, and the map create form | Supported. The cost guard names the allocation and shows the live price of a new primary IP before confirm. Offline tests check the request body. |

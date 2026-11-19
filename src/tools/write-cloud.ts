@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
-import { classifyCost, classifyDestructive } from "../cost.js";
+import { classifyCost, classifyDestructive, loadBalancerPricePreview } from "../cost.js";
 import { waitForActions, actionBlocks, anyActionFailed } from "../actions.js";
 
 function text(value: string, isError = false) {
@@ -29,14 +29,17 @@ async function guarded(
     label: string;
     destructive?: boolean;
     confirm?: boolean;
+    /** Extra sentence on the cost-guard refusal, for example what else the create will allocate. */
+    detail?: string;
   },
 ): Promise<ReturnType<typeof text>> {
   if (cfg.readOnly) return text("Refused. The server is in read-only mode (HETZNER_MCP_READONLY=1).", true);
   const cost = classifyCost("cloud", opts.method, opts.path);
   if (cost.billed) {
-    if (!cfg.allowBilled) return text("Blocked. Billed operations are disabled. Set HETZNER_MCP_ALLOW_BILLED=1 to allow billed creates with confirm.", true);
+    const extra = opts.detail ? ` ${opts.detail}` : "";
+    if (!cfg.allowBilled) return text(`Blocked. Billed operations are disabled. Set HETZNER_MCP_ALLOW_BILLED=1 to allow billed creates with confirm.${extra}`, true);
     if (opts.confirm !== true) {
-      return text(`COST GUARD. ${opts.label} may cost money (${cost.reason}). Re-run with confirm set to true.`, true);
+      return text(`COST GUARD. ${opts.label} may cost money (${cost.reason}). Re-run with confirm set to true.${extra}`, true);
     }
   }
   // A DELETE is always destructive, even if a caller forgets the flag.
@@ -61,6 +64,51 @@ function clean(o: Record<string, unknown>): Record<string, unknown> {
   for (const [k, v] of Object.entries(o)) if (v !== undefined) out[k] = v;
   return out;
 }
+
+export interface LoadBalancerAddresses {
+  public_interface?: boolean;
+  /** Primary IP id, already checked to be a positive integer. */
+  public_ipv4?: number;
+  public_ipv6?: number;
+}
+
+/** Body fragment for POST /load_balancers public_net. Omitted versions are left out so Hetzner allocates them. */
+export function loadBalancerPublicNet(a: LoadBalancerAddresses): { ipv4?: number; ipv6?: number } | undefined {
+  if (a.public_ipv4 === undefined && a.public_ipv6 === undefined) return undefined;
+  const net: { ipv4?: number; ipv6?: number } = {};
+  if (a.public_ipv4 !== undefined) net.ipv4 = a.public_ipv4;
+  if (a.public_ipv6 !== undefined) net.ipv6 = a.public_ipv6;
+  return net;
+}
+
+/** Local refusal for combinations the API rejects with invalid_input or a version mismatch. */
+export function loadBalancerAddressError(a: LoadBalancerAddresses): string | undefined {
+  if (a.public_ipv4 !== undefined && a.public_ipv6 !== undefined && a.public_ipv4 === a.public_ipv6) {
+    return "The IPv4 and IPv6 primary IPs must be different. Each version needs its own primary IP.";
+  }
+  if (a.public_interface === false && (a.public_ipv4 !== undefined || a.public_ipv6 !== undefined)) {
+    return "A primary IP can only be assigned when the public interface is enabled. Leave public_ipv4 and public_ipv6 unset, or turn the public interface on.";
+  }
+  return undefined;
+}
+
+/**
+ * What the create will do with public addresses. Hetzner added public_net on 2026-10-05:
+ * an omitted version allocates a new primary IP, and that address stays for the life of the load balancer.
+ */
+export function loadBalancerAddressNote(a: LoadBalancerAddresses): string {
+  if (a.public_interface === false) return "The public interface is off, so no public address is allocated.";
+  const kept: string[] = [];
+  if (a.public_ipv4 !== undefined) kept.push(`IPv4 primary IP ${a.public_ipv4}`);
+  if (a.public_ipv6 !== undefined) kept.push(`IPv6 primary IP ${a.public_ipv6}`);
+  if (kept.length === 2) return `Using existing ${kept[0]} and ${kept[1]}. No new public address is allocated. A primary IP stays on this load balancer for its whole life.`;
+  if (kept.length === 1) {
+    const fresh = a.public_ipv4 === undefined ? "IPv4" : "IPv6";
+    return `Using existing ${kept[0]}. Hetzner still allocates a new ${fresh} primary IP, which stays on this load balancer for its whole life.`;
+  }
+  return "No existing primary IP was given, so Hetzner allocates a new public IPv4 and a new public IPv6. Each stays on this load balancer for its whole life.";
+}
+
 
 export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): void {
   // ---- Volumes ----
@@ -150,7 +198,8 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
     "cloud_create_load_balancer",
     {
       title: "Create a load balancer",
-      description: "Create a load balancer. Billed. Requires confirm true.",
+      description:
+        "Create a load balancer. Billed, requires confirm. public_ipv4 and public_ipv6 reuse a primary IP; omit a version and Hetzner allocates a new one, billed on its own, for the life of the load balancer.",
       inputSchema: {
         name: z.string().min(1).describe("Load balancer name."),
         load_balancer_type: z.string().describe("For example lb11. List options with cloud_list_load_balancer_types."),
@@ -159,18 +208,51 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
         algorithm: z.record(z.string(), z.unknown()).optional().describe("For example { type: round_robin }."),
         services: z.array(z.record(z.string(), z.unknown())).optional(),
         targets: z.array(z.record(z.string(), z.unknown())).optional(),
-        public_interface: z.boolean().optional(),
+        public_interface: z.boolean().optional().describe("False skips the public address. Do not pass public_ipv4 or public_ipv6 then."),
+        public_ipv4: z.number().int().positive().optional().describe("Unassigned IPv4 primary IP id. Omit to allocate one."),
+        public_ipv6: z.number().int().positive().optional().describe("Unassigned IPv6 primary IP id. Omit to allocate one."),
         confirm: z.boolean().optional().describe("Must be true. A load balancer costs money."),
       },
     },
-    async (a) =>
-      guarded(cfg, {
+    async (a) => {
+      const addresses: LoadBalancerAddresses = {
+        public_interface: a.public_interface,
+        public_ipv4: a.public_ipv4,
+        public_ipv6: a.public_ipv6,
+      };
+      const bad = loadBalancerAddressError(addresses);
+      if (bad) return text(bad, true);
+      let detail = loadBalancerAddressNote(addresses);
+      // Price only on the way to a refusal. A confirmed create should not wait on another read.
+      if (a.confirm !== true && !cfg.readOnly) {
+        const preview = await loadBalancerPricePreview(cfg, {
+          loadBalancerType: a.load_balancer_type,
+          location: a.location,
+          allocateV4: a.public_interface !== false && addresses.public_ipv4 === undefined,
+          allocateV6: a.public_interface !== false && addresses.public_ipv6 === undefined,
+        });
+        if (preview.note) detail = `${detail} ${preview.note}`;
+      }
+      const publicNet = loadBalancerPublicNet(addresses);
+      return guarded(cfg, {
         method: "POST",
         path: "/load_balancers",
         confirm: a.confirm,
         label: `Creating load balancer ${a.name}`,
-        body: clean({ name: a.name, load_balancer_type: a.load_balancer_type, location: a.location, network_zone: a.network_zone, algorithm: a.algorithm, services: a.services, targets: a.targets, public_interface: a.public_interface }),
-      }),
+        detail,
+        body: clean({
+          name: a.name,
+          load_balancer_type: a.load_balancer_type,
+          location: a.location,
+          network_zone: a.network_zone,
+          algorithm: a.algorithm,
+          services: a.services,
+          targets: a.targets,
+          public_interface: a.public_interface,
+          public_net: publicNet,
+        }),
+      });
+    },
   );
   server.registerTool(
     "cloud_delete_load_balancer",

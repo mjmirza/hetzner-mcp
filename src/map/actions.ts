@@ -2,7 +2,8 @@
 // and applies the same cost, read-only and destructive guards as the MCP tools.
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
-import { classifyCost } from "../cost.js";
+import { classifyCost, describeNewPrimaryIps, primaryIpMonthly } from "../cost.js";
+import { loadBalancerAddressError, loadBalancerAddressNote, loadBalancerPublicNet } from "../tools/write-cloud.js";
 import { waitForActions } from "../actions.js";
 import { capacityRows } from "../tools/capacity.js";
 import { deletionPreview } from "../tools/delete-preview.js";
@@ -74,7 +75,7 @@ export async function catalog(ref: ProjectRef): Promise<Json> {
   const hit = catalogCache.get(key);
   if (hit && Date.now() - hit.at < 300_000) return hit.data;
   const cloud = (path: string, query?: Record<string, string | number>) => hetznerRequest(ref.cfg, { surface: "cloud", path, query }) as Promise<Json>;
-  const [locs, types, imgs, keys, nets, fws, srvs, pricing] = await Promise.all([
+  const [locs, types, imgs, keys, nets, fws, srvs, ips, pricing] = await Promise.all([
     cloud("/locations"),
     cloud("/server_types", { per_page: 50 }),
     cloud("/images", { type: "system", status: "available", per_page: 50 }),
@@ -82,6 +83,7 @@ export async function catalog(ref: ProjectRef): Promise<Json> {
     cloud("/networks", { per_page: 50 }),
     cloud("/firewalls", { per_page: 50 }),
     cloud("/servers", { per_page: 50 }),
+    cloud("/primary_ips", { per_page: 50 }),
     cloud("/pricing"),
   ]);
   const p = pricing.pricing ?? {};
@@ -101,6 +103,15 @@ export async function catalog(ref: ProjectRef): Promise<Json> {
     networks: (nets.networks ?? []).map((n: Json) => ({ id: n.id, name: n.name, ip_range: n.ip_range })),
     firewalls: (fws.firewalls ?? []).map((f: Json) => ({ id: f.id, name: f.name })),
     servers: (srvs.servers ?? []).map((s: Json) => ({ id: s.id, name: s.name, location: s.location?.name ?? "" })),
+    primaryIps: (ips.primary_ips ?? []).map((ip: Json) => ({
+      id: ip.id,
+      name: ip.name ?? String(ip.ip ?? ip.id),
+      ip: ip.ip ?? "",
+      type: ip.type ?? "",
+      location: ip.location?.name ?? "",
+      assigned: ip.assignee_id != null,
+      blocked: ip.blocked === true,
+    })),
     loadBalancerTypes: (p.load_balancer_types ?? []).map((t: Json) => ({ name: t.name, monthly: monthlyOf(t.prices) })),
     _pricing: p,
   };
@@ -226,12 +237,38 @@ export async function plan(a: ActionEnv, ref: ProjectRef, kindIn: unknown, param
       const type = str(params.load_balancer_type, "Type", /^[a-z0-9-]{2,20}$/);
       const t = (p.load_balancer_types ?? []).find((x: Json) => x.name === type);
       if (!t) throw new ActionError(400, "That load balancer type does not exist.");
+      const ipv4 = optId(params.public_ipv4, "IPv4 primary IP");
+      const ipv6 = optId(params.public_ipv6, "IPv6 primary IP");
+      const bad = loadBalancerAddressError({ public_ipv4: ipv4, public_ipv6: ipv6 });
+      if (bad) throw new ActionError(400, bad);
+      const usable = (id: number | undefined, version: "ipv4" | "ipv6") => {
+        if (id === undefined) return;
+        const ip = (c.primaryIps as Json[]).find((x) => x.id === id);
+        if (!ip) throw new ActionError(400, `Primary IP ${id} is not in this project.`);
+        if (ip.type !== version) throw new ActionError(400, `Primary IP ${id} is ${ip.type}, not ${version}.`);
+        if (ip.assigned) throw new ActionError(400, `Primary IP ${id} is already assigned. Pick an unassigned one, or leave it empty to allocate a new address.`);
+        if (ip.blocked) throw new ActionError(400, `Primary IP ${id} is blocked and cannot be assigned.`);
+        if (ip.location && ip.location !== location) throw new ActionError(400, `Primary IP ${id} is in ${ip.location}, not ${location}.`);
+      };
+      usable(ipv4, "ipv4");
+      usable(ipv6, "ipv6");
+      const lbMonthly = priceAt(t.prices, location);
+      const ipv4Monthly = ipv4 === undefined ? primaryIpMonthly(p.primary_ips, "ipv4", location) : null;
+      const ipv6Monthly = ipv6 === undefined ? primaryIpMonthly(p.primary_ips, "ipv6", location) : null;
+      const charge = (n: number | null) => (n != null && n > 0 ? n : 0);
+      const extra = Math.round((charge(ipv4Monthly) + charge(ipv6Monthly)) * 100) / 100;
       notes.push("Add a service (for example HTTP on port 80) in the Console before it carries traffic.");
+      notes.push(loadBalancerAddressNote({ public_ipv4: ipv4, public_ipv6: ipv6 }));
+      const ipNote = describeNewPrimaryIps({ allocateV4: ipv4 === undefined, allocateV6: ipv6 === undefined, ipv4Monthly, ipv6Monthly, currency: c.currency });
+      if (ipNote) notes.push(ipNote);
+      if (extra > 0 && lbMonthly != null) {
+        notes.push(`The monthly figure is the load balancer (${lbMonthly.toFixed(2)} ${c.currency}) plus the new primary IP (${extra.toFixed(2)} ${c.currency}). An address you reuse is already counted on its own card.`);
+      }
       out = {
         label: `${type.toUpperCase()} load balancer in ${location}${serverName ? `, to ${serverName}` : ""}`,
         path: "/load_balancers",
-        body: { name, load_balancer_type: type, location, targets: server ? [{ type: "server", server: { id: server } }] : undefined },
-        monthly: priceAt(t.prices, location),
+        body: { name, load_balancer_type: type, location, targets: server ? [{ type: "server", server: { id: server } }] : undefined, public_net: loadBalancerPublicNet({ public_ipv4: ipv4, public_ipv6: ipv6 }) },
+        monthly: lbMonthly == null ? null : Math.round((lbMonthly + extra) * 100) / 100,
         notes,
       };
       break;

@@ -161,6 +161,99 @@ export function classifyDestructive(method: string, path: string, body?: unknown
   return { destructive: false };
 }
 
+interface PriceRow {
+  location?: string;
+  price_hourly?: { gross?: string };
+  price_monthly?: { gross?: string };
+}
+
+function grossNumber(raw: string | undefined): number | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function priceRow(prices: PriceRow[] | undefined, location?: string): PriceRow | undefined {
+  if (!prices?.length) return undefined;
+  if (location) return prices.find((p) => p.location === location) ?? prices[0];
+  return prices[0];
+}
+
+/**
+ * Monthly gross for a new primary IP of one version, from a pricing payload the caller
+ * already loaded. Null when the catalog has no figure. Zero is a real price (IPv6 often is).
+ */
+export function primaryIpMonthly(primaryIps: Array<{ type?: string; prices?: PriceRow[] }> | undefined, type: string, location?: string): number | null {
+  const row = primaryIps?.find((t) => t.type === type);
+  return grossNumber(priceRow(row?.prices, location)?.price_monthly?.gross);
+}
+
+/**
+ * One sentence for the cost guard when creating a load balancer will also allocate a
+ * primary IP. Reused addresses are omitted: they are already billed on their own.
+ */
+export function describeNewPrimaryIps(opts: {
+  allocateV4: boolean;
+  allocateV6: boolean;
+  ipv4Monthly: number | null;
+  ipv6Monthly: number | null;
+  currency?: string;
+}): string | undefined {
+  const currency = opts.currency ?? "EUR";
+  const bits: string[] = [];
+  if (opts.allocateV4 && opts.ipv4Monthly != null && opts.ipv4Monthly > 0) bits.push(`IPv4 about ${opts.ipv4Monthly.toFixed(2)} ${currency} per month`);
+  if (opts.allocateV6 && opts.ipv6Monthly != null && opts.ipv6Monthly > 0) bits.push(`IPv6 about ${opts.ipv6Monthly.toFixed(2)} ${currency} per month`);
+  if (!bits.length) return undefined;
+  return `A new primary IP is billed on its own, in addition to the load balancer (${bits.join(", ")}, gross).`;
+}
+
+export interface LoadBalancerPreview {
+  /** Load balancer type monthly gross, before any new primary IP. */
+  monthly: number | null;
+  hourly: number | null;
+  currency: string;
+  /** Sentence covering the type price and any new primary IP. Undefined when pricing could not be read. */
+  note?: string;
+}
+
+/**
+ * Live price for a load balancer create, plus any new primary IP the create will allocate.
+ * Never throws. A failed pricing read returns empty numbers and no note.
+ */
+export async function loadBalancerPricePreview(
+  cfg: HetznerConfig,
+  opts: { loadBalancerType?: string; location?: string; allocateV4: boolean; allocateV6: boolean },
+): Promise<LoadBalancerPreview> {
+  const empty: LoadBalancerPreview = { monthly: null, hourly: null, currency: "EUR" };
+  try {
+    const pricing = (await hetznerRequest(cfg, { surface: "cloud", path: "/pricing" })) as {
+      pricing?: {
+        currency?: string;
+        load_balancer_types?: Array<{ name?: string; prices?: PriceRow[] }>;
+        primary_ips?: Array<{ type?: string; prices?: PriceRow[] }>;
+      };
+    };
+    const currency = pricing.pricing?.currency || "EUR";
+    const match = (pricing.pricing?.load_balancer_types ?? []).find((t) => t.name?.toLowerCase() === opts.loadBalancerType?.toLowerCase());
+    const p = priceRow(match?.prices, opts.location);
+    const monthly = grossNumber(p?.price_monthly?.gross);
+    const hourly = grossNumber(p?.price_hourly?.gross);
+    const ipv4Monthly = primaryIpMonthly(pricing.pricing?.primary_ips, "ipv4", opts.location);
+    const ipv6Monthly = primaryIpMonthly(pricing.pricing?.primary_ips, "ipv6", opts.location);
+    const parts: string[] = [];
+    if (opts.loadBalancerType && (hourly != null || monthly != null)) {
+      parts.push(
+        `Estimated price for ${opts.loadBalancerType}: about ${hourly ?? "?"} ${currency} per hour, ${monthly ?? "?"} ${currency} per month (gross, ${p?.location ?? "first location"}).`,
+      );
+    }
+    const extra = describeNewPrimaryIps({ allocateV4: opts.allocateV4, allocateV6: opts.allocateV6, ipv4Monthly, ipv6Monthly, currency });
+    if (extra) parts.push(extra);
+    return { monthly, hourly, currency, note: parts.length ? parts.join(" ") : undefined };
+  } catch {
+    return empty;
+  }
+}
+
 /**
  * Best-effort live price note for a cloud server create, read from the free pricing endpoint.
  * Never throws. Returns a human-readable string or undefined if it cannot be determined.

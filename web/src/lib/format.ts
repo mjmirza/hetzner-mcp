@@ -36,7 +36,7 @@ export const CREATABLE: Array<{ kind: NodeKind; hint: string }> = [
   { kind: "volume", hint: "Block storage you attach to a server" },
   { kind: "network", hint: "Private network between your resources, free" },
   { kind: "firewall", hint: "Inbound rules for your servers, free" },
-  { kind: "load_balancer", hint: "Spreads traffic across servers" },
+  { kind: "load_balancer", hint: "Spreads traffic across servers. Can reuse a primary IP you already have" },
   { kind: "primary_ip", hint: "A public IPv4 you keep across rebuilds" },
   { kind: "floating_ip", hint: "An IP you can move between servers" },
   { kind: "placement_group", hint: "Keeps servers on separate hosts, free" },

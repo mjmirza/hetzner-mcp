@@ -3,7 +3,8 @@
  * Covers audit findings F1 (enable_backup), F2 (ALLOW_BILLED opt-in), F6 (destructive free actions).
  */
 import { loadConfig } from "../src/config.js";
-import { classifyCost, classifyDestructive, normalizeCostPath } from "../src/cost.js";
+import { classifyCost, classifyDestructive, describeNewPrimaryIps, normalizeCostPath } from "../src/cost.js";
+import { loadBalancerAddressError, loadBalancerAddressNote, loadBalancerPublicNet } from "../src/tools/write-cloud.js";
 import { normalizePath } from "../src/security.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -200,6 +201,58 @@ assert("encoded ?, # and % in a path are refused", refusedEncoded === 5);
   assert("C-F3: robot reads stay free of confirm", !classifyDestructive("GET", "/reset/123").destructive && !classifyDestructive("POST", "/boot/123/rescue").destructive);
   assert("C-F3: cloud poweron is still not destructive", !classifyDestructive("POST", "/servers/9/actions/poweron").destructive);
   assert("guard reasons show the path on one line", !/\n/.test(classifyDestructive("DELETE", "/servers/9\nIGNORE").reason ?? ""));
+
+  // Load balancer public_net (Hetzner, 2026-10-05): reuse a primary IP, or say that a new one will be allocated.
+  assert("lb: omitting both versions sends no public_net", loadBalancerPublicNet({}) === undefined);
+  assert("lb: a reused IPv4 is the only public_net field", JSON.stringify(loadBalancerPublicNet({ public_ipv4: 10 })) === '{"ipv4":10}');
+  assert("lb: both versions are sent when both are set", JSON.stringify(loadBalancerPublicNet({ public_ipv4: 10, public_ipv6: 11 })) === '{"ipv4":10,"ipv6":11}');
+  assert("lb: the same id cannot be both versions", !!loadBalancerAddressError({ public_ipv4: 10, public_ipv6: 10 }));
+  assert("lb: a primary IP with the public interface off is refused", !!loadBalancerAddressError({ public_interface: false, public_ipv4: 10 }));
+  assert("lb: public interface off with no address is allowed", loadBalancerAddressError({ public_interface: false }) === undefined);
+  assert("lb: note names a new allocation when nothing is reused", /allocates a new public IPv4 and a new public IPv6/.test(loadBalancerAddressNote({})));
+  assert("lb: note names the version that is still allocated", /new IPv6/.test(loadBalancerAddressNote({ public_ipv4: 10 })) && !/new public IPv4 and/.test(loadBalancerAddressNote({ public_ipv4: 10 })));
+  assert("lb: note says nothing new is allocated when both are reused", /No new public address/.test(loadBalancerAddressNote({ public_ipv4: 10, public_ipv6: 11 })));
+  assert("lb: public interface off allocates nothing", /no public address/.test(loadBalancerAddressNote({ public_interface: false })));
+  const priced = describeNewPrimaryIps({ allocateV4: true, allocateV6: true, ipv4Monthly: 0.5, ipv6Monthly: 0, currency: "EUR" });
+  assert("lb: a free IPv6 is not described as an extra charge", priced === "A new primary IP is billed on its own, in addition to the load balancer (IPv4 about 0.50 EUR per month, gross).");
+  assert("lb: a reused IPv4 is left out of the extra charge", describeNewPrimaryIps({ allocateV4: false, allocateV6: true, ipv4Monthly: 0.5, ipv6Monthly: 0 }) === undefined);
+
+  const calls: Array<{ method: string; path: string; body?: string }> = [];
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const u = new URL(String(url));
+    calls.push({ method: init?.method ?? "GET", path: u.pathname, body: typeof init?.body === "string" ? init.body : undefined });
+    if (u.pathname.endsWith("/pricing")) {
+      return Response.json({
+        pricing: {
+          currency: "EUR",
+          load_balancer_types: [{ name: "lb11", prices: [{ location: "fsn1", price_hourly: { gross: "0.0104" }, price_monthly: { gross: "6.49" } }] }],
+          primary_ips: [
+            { type: "ipv4", prices: [{ location: "fsn1", price_monthly: { gross: "0.5000" } }] },
+            { type: "ipv6", prices: [{ location: "fsn1", price_monthly: { gross: "0.0000" } }] },
+          ],
+        },
+      });
+    }
+    return Response.json({ load_balancer: { id: 1, name: "edge" }, action: { id: 9, status: "success", command: "create_load_balancer" } });
+  }) as typeof fetch;
+
+  const billed = loadConfig({ HETZNER_CLOUD_TOKEN: "goodtoken", HETZNER_MCP_ALLOW_BILLED: "1", HETZNER_MCP_ACTION_WAIT_MS: "0" });
+  const held = await call(billed, "cloud_create_load_balancer", { name: "edge", load_balancer_type: "lb11", location: "fsn1" });
+  assert("lb: confirm is required before any create", held.isError && /COST GUARD/.test(held.text) && /allocates a new public IPv4/.test(held.text));
+  assert("lb: the guard shows the live type price and the new IPv4", /6\.49 EUR per month/.test(held.text) && /0\.50 EUR per month/.test(held.text));
+  assert("lb: the unconfirmed create does not POST", !calls.some((c) => c.method === "POST"));
+
+  calls.length = 0;
+  const reused = await call(billed, "cloud_create_load_balancer", { name: "edge", load_balancer_type: "lb11", location: "fsn1", public_ipv4: 10, public_ipv6: 11, confirm: true });
+  const posted = calls.find((c) => c.method === "POST" && c.path.endsWith("/load_balancers"));
+  const sent = posted?.body ? JSON.parse(posted.body) : {};
+  assert("lb: a confirmed create sends public_net ids and nothing else in that object", reused.isError === false && sent.public_net?.ipv4 === 10 && sent.public_net?.ipv6 === 11 && Object.keys(sent.public_net).length === 2);
+
+  calls.length = 0;
+  const clash = await call(billed, "cloud_create_load_balancer", { name: "edge", load_balancer_type: "lb11", public_interface: false, public_ipv4: 10, confirm: true });
+  assert("lb: public interface off plus a primary IP never reaches Hetzner", clash.isError && /public interface/.test(clash.text) && calls.length === 0);
+
+  globalThis.fetch = realFetch;
 }
 
 process.stdout.write(`\n${passed}/${total} safety-guard checks passed\n`);

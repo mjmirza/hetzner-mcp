@@ -11,7 +11,7 @@ import { join, win32 } from "node:path";
 import { openBrowser, openerFor } from "../src/map/cli.js";
 import { CSP } from "../src/map/server.js";
 import { readStored, saveStored, removeStored } from "../src/map/store.js";
-import { connectProject, ActionError } from "../src/map/actions.js";
+import { connectProject, ActionError, plan } from "../src/map/actions.js";
 import { serverState, robotState, healthState, targetHealth, liveOf, liveLookup, rollup, type StatusSnapshot } from "../src/map/status.js";
 import { collectStatuses } from "../src/map/live.js";
 import { placeName, explainLocation, explainType, familyOf } from "../web/src/lib/glossary.js";
@@ -264,6 +264,55 @@ assert("a failing project is reported, not silently live", polled.failedProjects
   await new Promise((r) => setTimeout(r, 300));
   process.off("uncaughtException", onCrash);
   assert("a missing opener does not crash the map", !crashed);
+}
+
+// Creating a load balancer from the map can reuse a primary IP, and the price includes a new one.
+{
+  const realFetch = globalThis.fetch;
+  const cfg = loadConfig({ HETZNER_CLOUD_TOKEN: "a".repeat(20), HETZNER_MCP_ALLOW_BILLED: "1" });
+  const ref = { name: "lb-plan", account: "Lb Test", workspace: "Personal", source: "env" as const, cfg };
+  const actx = { base: cfg, env: {}, demo: false };
+  globalThis.fetch = (async (url: string | URL) => {
+    const path = new URL(String(url)).pathname;
+    const body = (key: string, value: unknown) => Response.json({ [key]: value });
+    if (path.endsWith("/locations")) return body("locations", [{ name: "fsn1", city: "Falkenstein", network_zone: "eu-central" }, { name: "nbg1", city: "Nuremberg", network_zone: "eu-central" }]);
+    if (path.endsWith("/server_types")) return body("server_types", []);
+    if (path.endsWith("/images")) return body("images", []);
+    if (path.endsWith("/ssh_keys")) return body("ssh_keys", []);
+    if (path.endsWith("/networks")) return body("networks", []);
+    if (path.endsWith("/firewalls")) return body("firewalls", []);
+    if (path.endsWith("/servers")) return body("servers", []);
+    if (path.endsWith("/primary_ips")) {
+      return body("primary_ips", [
+        { id: 10, name: "keep-v4", ip: "203.0.113.10", type: "ipv4", assignee_id: null, assignee_type: "unassigned", location: { name: "fsn1" } },
+        { id: 11, name: "keep-v6", ip: "2001:db8::11", type: "ipv6", assignee_id: null, assignee_type: "unassigned", location: { name: "fsn1" } },
+        { id: 12, name: "taken", ip: "203.0.113.12", type: "ipv4", assignee_id: 5, assignee_type: "server", location: { name: "fsn1" } },
+        { id: 13, name: "other", ip: "203.0.113.13", type: "ipv4", assignee_id: null, assignee_type: "unassigned", location: { name: "nbg1" } },
+      ]);
+    }
+    if (path.endsWith("/pricing")) {
+      return body("pricing", {
+        currency: "EUR",
+        load_balancer_types: [{ name: "lb11", prices: [{ location: "fsn1", price_monthly: { gross: "6.49" } }] }],
+        primary_ips: [
+          { type: "ipv4", prices: [{ location: "fsn1", price_monthly: { gross: "0.50" } }, { location: "nbg1", price_monthly: { gross: "0.50" } }] },
+          { type: "ipv6", prices: [{ location: "fsn1", price_monthly: { gross: "0.00" } }] },
+        ],
+      });
+    }
+    return Response.json({});
+  }) as typeof fetch;
+
+  const fresh = await plan(actx, ref, "load_balancer", { name: "edge", location: "fsn1", load_balancer_type: "lb11" });
+  assert("map lb: a new pair of addresses is described and priced into the monthly figure", fresh.monthly === 6.99 && fresh.body.public_net === undefined && fresh.notes.some((n) => /allocates a new public IPv4/.test(n)) && fresh.notes.some((n) => /0\.50 EUR/.test(n)));
+  const kept = await plan(actx, ref, "load_balancer", { name: "edge", location: "fsn1", load_balancer_type: "lb11", public_ipv4: "10", public_ipv6: 11 });
+  assert("map lb: reused primary IPs go on public_net and are not added to the price", kept.monthly === 6.49 && kept.body.public_net?.ipv4 === 10 && kept.body.public_net?.ipv6 === 11 && kept.notes.some((n) => /No new public address/.test(n)));
+  let refused = "";
+  try { await plan(actx, ref, "load_balancer", { name: "edge", location: "fsn1", load_balancer_type: "lb11", public_ipv4: 12 }); } catch (e) { refused = e instanceof ActionError ? e.message : String(e); }
+  assert("map lb: an assigned primary IP is refused", /already assigned/.test(refused));
+  try { await plan(actx, ref, "load_balancer", { name: "edge", location: "fsn1", load_balancer_type: "lb11", public_ipv4: 13 }); refused = ""; } catch (e) { refused = e instanceof ActionError ? e.message : String(e); }
+  assert("map lb: a primary IP in another location is refused", /nbg1/.test(refused));
+  globalThis.fetch = realFetch;
 }
 
 process.stdout.write(`\n${passed}/${total} map checks passed\n`);

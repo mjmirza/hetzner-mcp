@@ -5,6 +5,9 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Added
+- `cloud_create_load_balancer` can place the load balancer on a primary IP you already have (`public_ipv4`, `public_ipv6`). Leave a version out and Hetzner allocates a new primary IP of that version, which stays for the life of the load balancer and is billed on its own. The cost guard says which, and shows the live load balancer price plus the new address, before you confirm. The map create form offers the same choice and folds a new address into the monthly figure you accept. Hetzner added this on 5 October 2026.
+
 ## [0.7.3] - 2026-11-14
 
 ### Security

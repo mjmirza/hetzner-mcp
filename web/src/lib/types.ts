@@ -24,6 +24,7 @@ export interface Catalog {
   networks: Array<{ id: number; name: string; ip_range: string }>;
   firewalls: Array<{ id: number; name: string }>;
   servers: Array<{ id: number; name: string; location: string }>;
+  primaryIps: Array<{ id: number; name: string; ip: string; type: string; location: string; assigned: boolean; blocked: boolean }>;
   loadBalancerTypes: Array<{ name: string; monthly: number | null }>;
   volumePerGb: number | null;
   currency: string;

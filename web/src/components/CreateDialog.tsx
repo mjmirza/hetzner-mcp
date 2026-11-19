@@ -115,6 +115,16 @@ export function CreateDialog({ open, onOpenChange, kind, project, projectLabel, 
   const locs = (catalog?.locations ?? []).map((l) => ({ value: l.name, label: `${l.city} (${l.name})` }));
   const optionalOf = (list: Array<{ id: number; name: string }>, none: string) => [{ value: NONE, label: none }, ...list.map((x) => ({ value: String(x.id), label: x.name }))];
   const opt = (v: string) => (v === NONE ? undefined : v);
+  const freeIps = (type: "ipv4" | "ipv6") =>
+    (catalog?.primaryIps ?? []).filter((ip) => ip.type === type && !ip.assigned && !ip.blocked && (!location || !ip.location || ip.location === location));
+  const ipOptions = (type: "ipv4" | "ipv6") => [
+    { value: NONE, label: type === "ipv4" ? "Allocate a new IPv4" : "Allocate a new IPv6" },
+    ...freeIps(type).map((ip) => ({ value: String(ip.id), label: ip.ip && ip.name && ip.ip !== ip.name ? `${ip.ip} (${ip.name})` : ip.ip || ip.name })),
+  ];
+  const ipHint = (type: "ipv4" | "ipv6") =>
+    freeIps(type).length
+      ? "Reuse an unassigned address, or allocate a new one. This cannot be changed later."
+      : "No unassigned primary IP in this location, so a new one will be allocated. It stays for the life of the load balancer.";
   const title = kind ? `New ${KIND_LABEL[kind].toLowerCase()}` : "New resource";
   const blockedReason = meta?.readOnly
     ? "This map runs in read-only mode (HETZNER_MCP_READONLY=1). Nothing can be created."
@@ -148,8 +158,8 @@ export function CreateDialog({ open, onOpenChange, kind, project, projectLabel, 
             </Field>
 
             {["server", "load_balancer", "primary_ip", "floating_ip", "volume"].includes(kind) && (
-              <Field id="c-loc" label="Location" hint={kind === "volume" ? "Skip this if you attach it to a server below." : undefined}>
-                <Pick id="c-loc" value={location} onChange={(v) => set({ location: v, server_type: undefined })} options={locs} placeholder="Choose a location" />
+              <Field id="c-loc" label="Location" hint={kind === "volume" ? "Skip this if you attach it to a server below." : kind === "load_balancer" ? "A reused primary IP has to be in this location." : undefined}>
+                <Pick id="c-loc" value={location} onChange={(v) => set({ location: v, server_type: undefined, public_ipv4: undefined, public_ipv6: undefined })} options={locs} placeholder="Choose a location" />
               </Field>
             )}
 
@@ -216,15 +226,27 @@ export function CreateDialog({ open, onOpenChange, kind, project, projectLabel, 
             )}
 
             {kind === "load_balancer" && (
-              <Field id="c-lbt" label="Type">
-                <Pick
-                  id="c-lbt"
-                  value={String(p.load_balancer_type ?? "")}
-                  onChange={(v) => set({ load_balancer_type: v })}
-                  options={catalog.loadBalancerTypes.map((t) => ({ value: t.name, label: `${t.name.toUpperCase()} · ${money(t.monthly, catalog.currency)}/mo` }))}
-                  placeholder="Choose a type"
-                />
-              </Field>
+              <>
+                <Field id="c-lbt" label="Type">
+                  <Pick
+                    id="c-lbt"
+                    value={String(p.load_balancer_type ?? "")}
+                    onChange={(v) => set({ load_balancer_type: v })}
+                    options={catalog.loadBalancerTypes.map((t) => ({ value: t.name, label: `${t.name.toUpperCase()} · ${money(t.monthly, catalog.currency)}/mo` }))}
+                    placeholder="Choose a type"
+                  />
+                </Field>
+                {location && (
+                  <>
+                    <Field id="c-pip4" label="Public IPv4" hint={ipHint("ipv4")}>
+                      <Pick id="c-pip4" value={String(p.public_ipv4 ?? NONE)} onChange={(v) => set({ public_ipv4: opt(v) })} options={ipOptions("ipv4")} placeholder="Allocate a new IPv4" />
+                    </Field>
+                    <Field id="c-pip6" label="Public IPv6" hint={ipHint("ipv6")}>
+                      <Pick id="c-pip6" value={String(p.public_ipv6 ?? NONE)} onChange={(v) => set({ public_ipv6: opt(v) })} options={ipOptions("ipv6")} placeholder="Allocate a new IPv6" />
+                    </Field>
+                  </>
+                )}
+              </>
             )}
 
             {(kind === "firewall" || kind === "load_balancer" || kind === "floating_ip") && (
