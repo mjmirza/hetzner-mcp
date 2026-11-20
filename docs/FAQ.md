@@ -44,8 +44,9 @@ refuses every write, if you just want it to look and report.
 You can, and most people who say that never do. The ones who do end up rebuilding the same
 three things this already has. a cost guard that refuses billed creates without a confirm and
 shows the price first, a security layer with secret redaction and SSRF safe requests, and live
-tests across every endpoint. It is MIT, so if you would rather build on it than from zero, fork
-it. The point is not novel capability, it is the safety and the agent readiness, already done.
+tests across every endpoint. It is free at and below a real revenue threshold under the
+OpenRoots ORA 2.3 license, so if you would rather build on it than from zero, fork it. The
+point is not novel capability, it is the safety and the agent readiness, already done.
 
 ### Why not Terraform or the hcloud CLI?
 

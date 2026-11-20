@@ -25,7 +25,7 @@ Nothing ships as done until it actually works and is documented.
 - Repo scaffold, package.json, tsconfig, gitignore.
 - Live proof. Cloud and Storage Box surfaces tested with the provided token, zero cost.
 - Endpoint audit seeded with real tested data.
-- Dual license with compulsory attribution (mirrors app-store-compliance).
+- OpenRoots Agent License 2.3 (SPDX LicenseRef-OpenRoots-ORA-2.3). See LICENSE.
 
 ### Phase 1. Cloud core, read surface (typed tools, all tested FREE)
 - Cloud HTTP client (Bearer, pagination, error mapping, rate-limit handling).
@@ -106,4 +106,4 @@ The MCP actively turns gaps into contributions. Two mechanisms.
    CONTRIBUTING.md and the endpoint audit so contributors see what already exists.
 
 Issue and PR templates live in .github. Contributions are welcomed and credited in
-docs/CREDITS.md, consistent with the compulsory-attribution license.
+docs/CREDITS.md.

@@ -5,6 +5,9 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Fixed
+- NOTICE, llms.txt, the FAQ, the roadmap, the master checklist, and the README sponsor line now name the OpenRoots Agent License 2.3 (SPDX LicenseRef-OpenRoots-ORA-2.3) that LICENSE carries.
+
 ## [0.7.3] - 2026-11-14
 
 ### Security

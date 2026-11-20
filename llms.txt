@@ -31,7 +31,7 @@
 - claude mcp add hetzner -e HETZNER_CLOUD_TOKEN=your-token -- npx -y hetzner-mcp
 
 ## License
-- Dual, MIT for code and CC BY 4.0 for content. Attribution required. Not affiliated with Hetzner.
+- OpenRoots Agent License 2.3 (SPDX LicenseRef-OpenRoots-ORA-2.3). See LICENSE. Canonical text: https://openroots.org/licenses/ora/2.3/legalcode.txt. Not affiliated with Hetzner.
 
 ## Sponsor
 - https://github.com/sponsors/mjmirza

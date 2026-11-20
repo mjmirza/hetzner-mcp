@@ -75,7 +75,7 @@ This checklist is itself audited at the end. See docs/AUDIT.md (the validating a
 
 ## H. Licensing and legal
 
-- [x] DONE. Dual license, MIT plus CC BY 4.0, compulsory attribution, mirrors app-store-compliance. Evidence. LICENSE.
+- [x] DONE. OpenRoots Agent License 2.3 (SPDX LicenseRef-OpenRoots-ORA-2.3). Evidence. LICENSE.
 - [x] DONE. Not affiliated with Hetzner disclaimer, logo rights disclaimer. Evidence. LICENSE, NOTICE, docs/CREDITS.md, README.
 
 ## I. Process and release

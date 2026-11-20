@@ -53,7 +53,7 @@ Something not working? `npx hetzner-mcp doctor` checks the token saved in each a
 
 ## Please sponsor this project
 
-This is built and maintained in the open, for free, under a license that only asks for attribution. If your team relies on it, [becoming a sponsor](https://github.com/sponsors/mjmirza) directly buys the time to cover more endpoints, keep the endpoint audit current as Hetzner changes, and respond to issues and pull requests faster. Even a small monthly amount makes a real difference. Thank you.
+This is built and maintained in the open, free at and below a real revenue threshold under the OpenRoots ORA 2.3 license. If your team relies on it, [becoming a sponsor](https://github.com/sponsors/mjmirza) directly buys the time to cover more endpoints, keep the endpoint audit current as Hetzner changes, and respond to issues and pull requests faster. Even a small monthly amount makes a real difference. Thank you.
 
 ## Validated live, not theorized
 
