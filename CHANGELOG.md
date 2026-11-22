@@ -5,6 +5,12 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Changed
+- Creating or attaching a volume now sends `assignee` (`{ id, type: "server" }`) instead of the deprecated `server` property. The tools and the map still take a server id. Reading which server a volume is on uses `assignee` when the response has that field, and `server` only when it does not. Hetzner removes `server` on 27 October 2027.
+- The map's image list no longer reads the `deprecated` field. Hetzner removed it from Images, Server Types and Load Balancer Types on 2 November 2026. An image with a `deprecation` object is still left out.
+- `cloud_create_network` says to use subnet type `cloud`. Type `server` is deprecated and will be removed on 15 April 2027.
+- `docs/ENDPOINT-AUDIT.md` records the Hetzner Cloud API changelog from September through November 2026. `docs/VALIDATION.md` notes that the old `cloud_list_datacenters` result is historical.
+
 ## [0.7.3] - 2026-11-14
 
 ### Security

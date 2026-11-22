@@ -2,6 +2,7 @@
 import { request } from "node:http";
 import { loadConfig } from "../src/config.js";
 import { sampleGraph } from "../src/map/sample.js";
+import { buildProject, type Pricing } from "../src/map/collect.js";
 import { discoverProjects } from "../src/map/projects.js";
 import { startMapServer, mapPortFromEnv, DEFAULT_MAP_PORT } from "../src/map/server.js";
 import { summarize, toMermaid } from "../src/map/summary.js";
@@ -35,6 +36,31 @@ assert("attached volume sits inside its server", byLabel("db-data").parent === b
 assert("server in a network sits inside the network", g.nodes.find((n) => n.id === byLabel("web-1").parent)?.kind === "network");
 assert("powered-off server flagged", byLabel("old-migration-box").flags.some((f) => f.kind === "waste" && f.text.includes("Powered off")));
 assert("unattached volume flagged as waste with its full cost", byLabel("orphan-disk").flags[0]?.kind === "waste" && byLabel("orphan-disk").flags[0]?.monthly === 14.3);
+assert("sample volume uses assignee and stays on its server", byLabel("db-data").details.attached === true && byLabel("uploads").parent === byLabel("web-1").id);
+
+// Volume attachment: assignee is preferred, server is the fallback when assignee is absent.
+{
+  const prices: Pricing = { currency: "EUR", vatRate: "19", serverTypes: new Map(), lbTypes: new Map(), volumePerGb: 0.05, imagePerGb: null, backupPct: null, primaryIp: new Map(), floatingIp: new Map() };
+  const servers = [{ id: 13, name: "db", status: "running", server_type: { name: "cpx11", cores: 2, memory: 2, disk: 40 }, location: { name: "fsn1" }, public_net: { firewalls: [] }, private_net: [] }];
+  const blank = { servers, volumes: [], networks: [], firewalls: [], loadBalancers: [], floatingIps: [], primaryIps: [], snapshots: [], backups: [], certificates: [], placementGroups: [], storageBoxes: [] };
+  const vol = (volumes: Record<string, unknown>[]) => buildProject({ name: "p", account: "A" }, { ...blank, volumes }, prices).nodes.find((n) => n.kind === "volume")!;
+  const onServer = (n: { parent?: string }) => n.parent === "p:A/p/srv:13";
+  const assigned = vol([{ id: 1, name: "by-assignee", size: 10, assignee: { id: 13, type: "server" }, status: "available", location: { name: "fsn1" } }]);
+  assert("assignee attaches a volume when server is absent", onServer(assigned) && assigned.details.attached === true && assigned.flags.length === 0);
+  const legacy = vol([{ id: 2, name: "by-server", size: 10, server: 13, status: "available", location: { name: "fsn1" } }]);
+  assert("server id still attaches a volume when assignee is absent", onServer(legacy) && legacy.details.attached === true);
+  const newer = vol([{ id: 3, name: "unassigned", size: 10, assignee: null, server: 13, status: "available", location: { name: "fsn1" } }]);
+  assert("a null assignee means unattached even if server is still set", !onServer(newer) && newer.flags[0]?.code === "volume_unattached" && newer.details.attached === false);
+  const oldEmpty = vol([{ id: 4, name: "old-empty", size: 10, server: null, status: "available", location: { name: "fsn1" } }]);
+  assert("a null server with no assignee is unattached", !onServer(oldEmpty) && oldEmpty.flags[0]?.code === "volume_unattached");
+  const other = vol([{ id: 5, name: "other", size: 10, assignee: { id: 9, type: "load_balancer" }, server: 13, status: "available", location: { name: "fsn1" } }]);
+  assert("an assignee that is not a server is not treated as attached to one", !onServer(other) && other.flags[0]?.code === "volume_unattached");
+  const ips = buildProject({ name: "p", account: "A" }, { ...blank, primaryIps: [
+    { id: 1, ip: "203.0.113.9", type: "ipv4", assignee_type: "unassigned", assignee_id: null, location: { name: "fsn1" } },
+    { id: 2, ip: "203.0.113.8", type: "ipv4", assignee_type: "server", assignee_id: null, location: { name: "fsn1" } },
+  ] }, prices).nodes.filter((n) => n.kind === "primary_ip");
+  assert("an unassigned primary IP is flagged for both assignee_type forms", ips.length === 2 && ips.every((n) => n.flags[0]?.code === "ip_unassigned" && n.parent !== "p:A/p/srv:13"));
+}
 assert("unassigned primary IP flagged", byLabel("203.0.113.153").flags.length === 1);
 assert("snapshot of deleted server flagged", byLabel("pre-upgrade 2026-03").flags.length === 1);
 assert("healthy protected server has no risk or waste", byLabel("web-2").flags.every((f) => f.kind === "info"));

@@ -7,6 +7,7 @@ import { waitForActions } from "../actions.js";
 import { capacityRows } from "../tools/capacity.js";
 import { deletionPreview } from "../tools/delete-preview.js";
 import { DEFAULT_WORKSPACE, discoverProjects, type ProjectRef } from "./projects.js";
+import { volumeServerId } from "./collect.js";
 import { sampleGraph } from "./sample.js";
 import { readStored, removeStoredAsync, saveStoredAsync } from "./store.js";
 import { normName } from "../text.js";
@@ -95,7 +96,7 @@ export async function catalog(ref: ProjectRef): Promise<Json> {
     locations: (locs.locations ?? []).map((l: Json) => ({ name: l.name, city: l.city ?? l.name, zone: l.network_zone ?? "" })),
     serverTypes: capacityRows(types.server_types ?? []).filter((r) => r.available),
     images: (imgs.images ?? [])
-      .filter((i: Json) => i.name && !i.deprecated && !i.deprecation)
+      .filter((i: Json) => i.name && !i.deprecation)
       .map((i: Json) => ({ name: i.name, description: i.description ?? i.name, architecture: i.architecture ?? "x86" })),
     sshKeys: (keys.ssh_keys ?? []).map((k: Json) => ({ id: k.id, name: k.name })),
     networks: (nets.networks ?? []).map((n: Json) => ({ id: n.id, name: n.name, ip_range: n.ip_range })),
@@ -192,7 +193,7 @@ export async function plan(a: ActionEnv, ref: ProjectRef, kindIn: unknown, param
       out = {
         label: `${size} GB volume${server ? ` on ${serverName}` : ` in ${location}`}`,
         path: "/volumes",
-        body: { name, size, location: server ? undefined : location, server, format: "ext4", automount: server ? true : undefined },
+        body: { name, size, location: server ? undefined : location, assignee: server ? { id: server, type: "server" } : undefined, format: "ext4", automount: server ? true : undefined },
         monthly: Number.isFinite(per) ? Math.round(per * size * 100) / 100 : null,
         notes,
       };
@@ -299,7 +300,7 @@ export async function deletePlan(a: ActionEnv, nodeId: unknown) {
   const notes = ["Deleting is permanent. Hetzner stops billing it from the next hour."];
   let blocked: string | undefined;
   if (t.obj?.protection?.delete) blocked = "Delete protection is on. Turn it off in the Hetzner Console first.";
-  if (t.code === "vol" && t.obj?.server) blocked = "This volume is attached. Detach it from its server first.";
+  if (t.code === "vol" && t.obj && volumeServerId(t.obj)) blocked = "This volume is attached. Detach it from its server first.";
   if (t.code === "pip" && t.obj?.assignee_id) blocked = "This IP is assigned to a server. Unassign it first.";
   if (t.code === "srv") {
     const survivors = await deletionPreview(t.ref.cfg, t.obj.id);

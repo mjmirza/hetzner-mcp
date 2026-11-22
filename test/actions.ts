@@ -1,9 +1,15 @@
 /** Offline tests for issue #83 (User-Agent) and #84 (wait on actions). Fetch is mocked. */
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { loadConfig } from "../src/config.js";
 import { collectActions, waitForActions, anyActionFailed } from "../src/actions.js";
 import { hetznerRequest } from "../src/http.js";
 import { describeSurvivors } from "../src/tools/delete-preview.js";
 import { capacityRows, rankCapacity } from "../src/tools/capacity.js";
+import { registerAllTools } from "../src/tools/register.js";
+import { catalog, deletePlan, plan } from "../src/map/actions.js";
+import { discoverProjects } from "../src/map/projects.js";
 
 let passed = 0;
 let total = 0;
@@ -76,6 +82,80 @@ assert("capacity hides retiring types by default", !ranked.some((r) => r.type ==
 assert("capacity can include retiring types", rankCapacity(capacityRows(types), { includeRetiring: true }).some((r) => r.type === "cpx11"));
 assert("capacity puts recommended first", ranked[0]?.type === "cx23" && ranked[0]?.location === "hel1");
 assert("capacity architecture filter works", rankCapacity(capacityRows(types), { architecture: "arm" }).every((r) => r.architecture === "arm"));
+
+// Volume create and attach send assignee, never the deprecated server property. Nothing is billed.
+{
+  const calls: Array<{ path: string; method: string; body?: Record<string, unknown> }> = [];
+  let volume: Record<string, unknown> = {};
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+  globalThis.fetch = (async (url: URL | string, init?: RequestInit) => {
+    const path = new URL(String(url)).pathname;
+    const method = init?.method ?? "GET";
+    const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : undefined;
+    calls.push({ path, method, body });
+    if (method === "GET" && path.endsWith("/volumes/21")) return json({ volume });
+    if (path.endsWith("/locations")) return json({ locations: [{ name: "fsn1", city: "Falkenstein", network_zone: "eu-central" }] });
+    if (path.endsWith("/server_types")) return json({ server_types: [] });
+    if (path.endsWith("/images")) return json({ images: [
+      { name: "ubuntu-24.04", description: "Ubuntu", architecture: "x86", deprecated: true, deprecation: null },
+      { name: "fedora-43", description: "Fedora 43", architecture: "x86", deprecation: { unavailable_after: "2027-02-12T00:00:00+00:00" } },
+    ] });
+    if (path.endsWith("/ssh_keys")) return json({ ssh_keys: [] });
+    if (path.endsWith("/networks")) return json({ networks: [] });
+    if (path.endsWith("/firewalls")) return json({ firewalls: [] });
+    if (path.endsWith("/servers")) return json({ servers: [{ id: 13, name: "db", location: { name: "fsn1" } }] });
+    if (path.endsWith("/pricing")) return json({ pricing: { currency: "EUR", volume: { price_per_gb_month: { gross: "0.05" } }, load_balancer_types: [] } });
+    return json({ action: { id: 8, command: "create_volume", status: "success" } }, 201);
+  }) as typeof fetch;
+
+  const call = async (env: Record<string, string>, name: string, args: Record<string, unknown>) => {
+    const server = new McpServer({ name: "hetzner-mcp", version: "test" });
+    registerAllTools(server, loadConfig(env), {});
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "t", version: "1" });
+    await Promise.all([server.connect(a), client.connect(b)]);
+    const r = (await client.callTool({ name, arguments: args })) as { content: Array<{ text: string }>; isError?: boolean };
+    await client.close();
+    return { text: r.content.map((c) => c.text).join("\n"), isError: !!r.isError };
+  };
+  const billedEnv = { HETZNER_CLOUD_TOKEN: "testtoken", HETZNER_MCP_ALLOW_BILLED: "1", HETZNER_MCP_ACTION_WAIT_MS: "0" };
+  const before = calls.length;
+  const created = await call(billedEnv, "cloud_create_volume", { name: "db", size: 10, server: 13, location: "fsn1", format: "ext4", automount: true, confirm: true });
+  const create = calls.at(-1);
+  assert("create volume succeeds with confirm", !created.isError && create?.method === "POST" && create.path.endsWith("/volumes"));
+  assert("create volume sends assignee and not server", create?.body?.name === "db" && create.body.size === 10 && create.body.location === "fsn1" && create.body.format === "ext4" && create.body.automount === true && JSON.stringify(create.body.assignee) === JSON.stringify({ id: 13, type: "server" }) && !("server" in (create.body ?? {})) && !("labels" in (create.body ?? {})));
+  const bare = await call(billedEnv, "cloud_create_volume", { name: "empty", size: 10, location: "nbg1", confirm: true });
+  const bareBody = calls.at(-1)?.body ?? {};
+  assert("create volume without a server omits assignee", !bare.isError && bareBody.location === "nbg1" && !("assignee" in bareBody) && !("server" in bareBody));
+  const refused = await call(billedEnv, "cloud_create_volume", { name: "db", size: 10, server: 13, confirm: false });
+  assert("create volume still needs confirm", refused.isError && /COST GUARD/.test(refused.text) && calls.length === before + 2);
+  const blocked = await call({ HETZNER_CLOUD_TOKEN: "testtoken" }, "cloud_create_volume", { name: "db", size: 10, server: 13, confirm: true });
+  assert("create volume stays behind the billed opt-in", blocked.isError && /Billed operations are disabled/.test(blocked.text) && calls.length === before + 2);
+  const attached = await call(billedEnv, "cloud_attach_volume", { id: 21, server: 13, automount: false });
+  const attach = calls.at(-1);
+  assert("attach volume sends assignee and not server", !attached.isError && attach?.method === "POST" && attach.path.endsWith("/volumes/21/actions/attach") && JSON.stringify(attach.body) === JSON.stringify({ assignee: { id: 13, type: "server" }, automount: false }));
+
+  const mapCfg = { ...loadConfig({ HETZNER_CLOUD_TOKEN: "testtoken", HETZNER_MCP_ALLOW_BILLED: "1" }), actionWaitMs: 0 };
+  const env = { HETZNER_CLOUD_TOKEN: "testtoken", HETZNER_PROJECT_NAME: "default", HETZNER_ACCOUNT_NAME: "Acme" };
+  const mapEnv = { base: mapCfg, env, demo: false };
+  const ref = discoverProjects(mapCfg, env)[0]!;
+  volume = { id: 21, name: "disk", assignee: { id: 13, type: "server" }, server: null };
+  const blockedDelete = await deletePlan(mapEnv, "p:Acme/default/vol:21");
+  assert("delete plan blocks a volume attached through assignee", blockedDelete.blocked === "This volume is attached. Detach it from its server first.");
+  volume = { id: 21, name: "disk", server: 13 };
+  const legacyDelete = await deletePlan(mapEnv, "p:Acme/default/vol:21");
+  assert("delete plan still blocks a volume that only has server", legacyDelete.blocked === "This volume is attached. Detach it from its server first.");
+  volume = { id: 21, name: "disk", assignee: null, server: 13 };
+  const freeDelete = await deletePlan(mapEnv, "p:Acme/default/vol:21");
+  assert("delete plan allows a volume whose assignee is null", freeDelete.blocked === undefined && freeDelete.name === "disk");
+
+  const planned = await plan(mapEnv, ref, "volume", { name: "data", size: 20, server: "13" });
+  assert("map volume create sends assignee and not server", JSON.stringify(planned.body.assignee) === JSON.stringify({ id: 13, type: "server" }) && !("server" in planned.body) && planned.body.format === "ext4" && planned.body.automount === true && planned.body.location === undefined);
+  const placed = await plan(mapEnv, ref, "volume", { name: "data", size: 20, location: "fsn1" });
+  assert("map volume create without a server omits assignee", !("assignee" in placed.body) && !("server" in placed.body) && placed.body.location === "fsn1");
+  const images = ((await catalog(ref)) as { images: Array<{ name: string }> }).images.map((i) => i.name);
+  assert("image list ignores the removed deprecated flag and keeps deprecation", images.includes("ubuntu-24.04") && !images.includes("fedora-43"));
+}
 
 process.stdout.write(`\n${passed}/${total} action checks passed\n`);
 if (passed !== total) process.exitCode = 1;

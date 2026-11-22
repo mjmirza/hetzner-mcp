@@ -120,6 +120,24 @@ async function loadPricing(cfg: HetznerConfig): Promise<Pricing> {
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
+function positiveId(n: unknown): n is number {
+  return typeof n === "number" && Number.isInteger(n) && n > 0;
+}
+
+/**
+ * Server a volume is attached to.
+ * `assignee` is the current field. `server` is only used when the response has no `assignee`,
+ * so a reply from before 27 October 2026 still resolves.
+ */
+export function volumeServerId(v: Json): number | undefined {
+  if (Object.prototype.hasOwnProperty.call(v, "assignee")) {
+    const a = v.assignee;
+    if (a && a.type === "server" && positiveId(a.id)) return a.id;
+    return undefined;
+  }
+  return positiveId(v.server) ? v.server : undefined;
+}
+
 /** Build the nodes and edges for one project. Exported for tests with fixture data. */
 export function buildProject(
   ref: { name: string; account: string },
@@ -243,13 +261,14 @@ export function buildProject(
     const loc = v.location?.name as string | undefined;
     const monthly = pricing.volumePerGb === null ? null : round(pricing.volumePerGb * (v.size ?? 0));
     const flags: Flag[] = [];
-    const attachedTo = v.server ? serverIds.get(v.server) : undefined;
-    if (!v.server) flags.push(waste("volume_unattached", "Not attached to any server but still billed per GB.", monthly));
+    const serverId = volumeServerId(v);
+    const attachedTo = serverId ? serverIds.get(serverId) : undefined;
+    if (!serverId) flags.push(waste("volume_unattached", "Not attached to any server but still billed per GB.", monthly));
     const id = `${P}/vol:${v.id}`;
     nodes.push({
       id, kind: "volume", label: v.name, parent: attachedTo ?? locNode(loc), location: loc, status: v.status,
       monthly, costNote: `${v.size} GB at the per-GB volume price.`, flags,
-      details: { size_gb: v.size ?? null, format: v.format ?? null, attached: Boolean(v.server), created: v.created ?? null },
+      details: { size_gb: v.size ?? null, format: v.format ?? null, attached: serverId !== undefined, created: v.created ?? null },
       ...base,
     });
     if (attachedTo) edges.push({ from: id, to: attachedTo, kind: "attached" });
