@@ -19,6 +19,7 @@
     "test/load.ts",
     "test/map.ts",
     "test/release-tag.ts",
+    "test/resource-ids.ts",
     "test/safety-guards.ts",
     "test/setup.ts",
     "test/smoke.ts",
