@@ -1,5 +1,6 @@
 // Hallucination check. Every create field our write tools send must exist in the official
 // Hetzner OpenAPI spec at docs.hetzner.cloud (cloud spec, extracted 2026-08-30).
+// Volume attachment was re-read on 2026-11-22: assignee is { id, type }, and server is deprecated.
 
 interface Field {
   required: boolean;
@@ -11,7 +12,7 @@ const opt = (): Field => ({ required: false });
 
 // Allowed request-body fields per POST path, from the official spec.
 const OFFICIAL: Record<string, Fields> = {
-  "/volumes": { size: req(), name: req(), labels: opt(), automount: opt(), format: opt(), location: opt(), server: opt() },
+  "/volumes": { size: req(), name: req(), labels: opt(), automount: opt(), format: opt(), location: opt(), server: opt(), assignee: opt() },
   "/networks": { name: req(), ip_range: req(), labels: opt(), subnets: opt(), routes: opt(), expose_routes_to_vswitch: opt() },
   "/firewalls": { name: req(), labels: opt(), rules: opt(), apply_to: opt() },
   "/load_balancers": { name: req(), load_balancer_type: req(), algorithm: opt(), services: opt(), targets: opt(), labels: opt(), public_interface: opt(), network: opt(), network_zone: opt(), location: opt() },
@@ -23,7 +24,7 @@ const OFFICIAL: Record<string, Fields> = {
 
 // Fields each curated create tool can put in the body. Keep in lockstep with write-cloud.
 const OURS: Record<string, string[]> = {
-  "/volumes": ["name", "size", "location", "server", "format", "automount"],
+  "/volumes": ["name", "size", "location", "assignee", "format", "automount"],
   "/networks": ["name", "ip_range", "subnets", "expose_routes_to_vswitch"],
   "/firewalls": ["name", "rules", "apply_to"],
   "/load_balancers": ["name", "load_balancer_type", "location", "network_zone", "algorithm", "services", "targets", "public_interface"],
@@ -55,6 +56,8 @@ function assert(label: string, cond: boolean): void {
   if (cond) passed++;
   line(`${cond ? "OK  " : "FAIL"} ${label}`);
 }
+
+assert("/volumes: curated create does not send the deprecated server property", !OURS["/volumes"]!.includes("server") && OURS["/volumes"]!.includes("assignee"));
 
 for (const [path, fields] of Object.entries(OURS)) {
   const official = OFFICIAL[path];

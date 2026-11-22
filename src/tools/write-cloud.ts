@@ -62,6 +62,11 @@ function clean(o: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+// Volume attachment. The caller still passes a server id. The API wants assignee.
+function volumeAssignee(serverId: number): { id: number; type: "server" } {
+  return { id: serverId, type: "server" };
+}
+
 export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): void {
   // ---- Volumes ----
   server.registerTool(
@@ -85,7 +90,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
         path: "/volumes",
         confirm: a.confirm,
         label: `Creating volume ${a.name}`,
-        body: clean({ name: a.name, size: a.size, location: a.location, server: a.server, format: a.format, automount: a.automount }),
+        body: clean({ name: a.name, size: a.size, location: a.location, assignee: a.server === undefined ? undefined : volumeAssignee(a.server), format: a.format, automount: a.automount }),
       }),
   );
   server.registerTool(
@@ -96,7 +101,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   server.registerTool(
     "cloud_attach_volume",
     { title: "Attach a volume", description: "Attach a volume to a server.", inputSchema: { id: id.describe("Volume id."), server: z.number().describe("Server id."), automount: z.boolean().optional() } },
-    async (a) => guarded(cfg, { method: "POST", path: `/volumes/${enc(a.id)}/actions/attach`, label: `Attaching volume ${a.id}`, body: clean({ server: a.server, automount: a.automount }) }),
+    async (a) => guarded(cfg, { method: "POST", path: `/volumes/${enc(a.id)}/actions/attach`, label: `Attaching volume ${a.id}`, body: clean({ assignee: volumeAssignee(a.server), automount: a.automount }) }),
   );
   server.registerTool(
     "cloud_detach_volume",
@@ -113,7 +118,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
       inputSchema: {
         name: z.string().min(1).describe("Network name."),
         ip_range: z.string().describe("CIDR of the whole network, for example 10.0.0.0/16."),
-        subnets: z.array(z.record(z.string(), z.unknown())).optional().describe("Optional subnets to create with the network."),
+        subnets: z.array(z.record(z.string(), z.unknown())).optional().describe("Optional subnets to create with the network. Use type cloud. Type server is deprecated."),
         expose_routes_to_vswitch: z.boolean().optional(),
       },
     },

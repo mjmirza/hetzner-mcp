@@ -36,7 +36,7 @@ const srv = (id: number, name: string, type: string, l: string, extra: Record<st
   location: { name: l }, image: { name: "ubuntu-24.04" }, public_net: { ipv4: { ip: `203.0.113.${id % 250}` }, firewalls: [] }, private_net: [], backup_window: null, created: daysAgo(180),
   outgoing_traffic: Math.round(2e12 * elapsedMonth()), included_traffic: 20e12, ...extra,
 });
-const pip = (id: number, server: number | null, l: string, age = 180) => ({ id, ip: `203.0.113.${id % 250}`, type: "ipv4", assignee_type: "server", assignee_id: server, location: { name: l }, auto_delete: true, created: daysAgo(age) });
+const pip = (id: number, server: number | null, l: string, age = 180) => ({ id, ip: `203.0.113.${id % 250}`, type: "ipv4", assignee_type: server ? "server" : "unassigned", assignee_id: server, location: { name: l }, auto_delete: true, created: daysAgo(age) });
 const fwOn = (ipv4: string, ids: number[]) => ({ ipv4: { ip: ipv4 }, firewalls: ids.map((id) => ({ id })) });
 const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
 const inDays = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString();
@@ -62,8 +62,8 @@ export function sampleGraph(): InfraGraph {
       }),
     ],
     volumes: [
-      { id: 21, name: "db-data", size: 200, server: 13, format: "ext4", status: "available", ...loc("fsn1", 425) },
-      { id: 22, name: "uploads", size: 100, server: 11, format: "xfs", status: "available", ...loc("fsn1", 200) },
+      { id: 21, name: "db-data", size: 200, server: 13, assignee: { id: 13, type: "server" }, format: "ext4", status: "available", ...loc("fsn1", 425) },
+      { id: 22, name: "uploads", size: 100, server: 11, assignee: { id: 11, type: "server" }, format: "xfs", status: "available", ...loc("fsn1", 200) },
     ],
     loadBalancers: [{ id: 31, name: "prod-lb", load_balancer_type: { name: "lb11" }, ...loc("fsn1", 305), public_net: { ipv4: { ip: "203.0.113.200" } }, targets: [
       { type: "server", server: { id: 11 }, health_status: [{ listen_port: 443, status: "healthy" }] },
@@ -93,7 +93,7 @@ export function sampleGraph(): InfraGraph {
       srv(111, "staging-app", "cpx11", "fsn1", { created: daysAgo(160) }),
       srv(112, "old-migration-box", "cpx31", "fsn1", { status: "off", created: daysAgo(250) }),
     ],
-    volumes: [{ id: 121, name: "orphan-disk", size: 250, server: null, status: "available", ...loc("fsn1", 120) }],
+    volumes: [{ id: 121, name: "orphan-disk", size: 250, server: null, assignee: null, status: "available", ...loc("fsn1", 120) }],
     primaryIps: [pip(151, 111, "fsn1", 160), pip(152, 112, "fsn1", 250), pip(153, null, "fsn1", 130)],
     floatingIps: [{ id: 161, ip: "203.0.113.90", type: "ipv4", server: null, home_location: { name: "fsn1" }, created: daysAgo(65) }],
     firewalls: [{ id: 141, name: "staging-fw", rules: [{}], applied_to: [] }],

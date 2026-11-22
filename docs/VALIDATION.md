@@ -59,6 +59,12 @@ Every tool the server registers, and the scenario that exercised it.
 | cloud_list_datacenters | passed |
 | cloud_get_pricing | passed |
 
+`cloud_list_datacenters` above is the result from the run that wrote this report. The tool
+is no longer registered. Hetzner returns HTTP 410 for `GET /datacenters` and
+`GET /datacenters/{id}` from 1 October 2026
+(https://docs.hetzner.cloud/changelog#2026-10-01-datacenters-removed). Use
+`cloud_list_locations` or `find_capacity`.
+
 ### Read tools, storage box (2) and robot (8)
 
 | Tool | Result |
