@@ -13,11 +13,13 @@ import { spendReport, spendText } from "../map/spend.js";
 import { readInvoices } from "../map/spend-store.js";
 import { DATA_FENCE } from "../text.js";
 import { capText } from "../format.js";
+import { readOnly } from "./annotations.js";
 
 export function registerSpendTool(server: McpServer, cfg: HetznerConfig): void {
   server.registerTool(
     "spend_history",
     {
+      annotations: readOnly,
       title: "Spend history",
       description: "Read-only. Estimated spend per month and project from running resources, checked against invoices added on the map's Spend tab.",
       inputSchema: {

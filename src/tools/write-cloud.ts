@@ -6,6 +6,7 @@ import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
 import { classifyCost, classifyDestructive } from "../cost.js";
 import { waitForActions, actionBlocks, anyActionFailed } from "../actions.js";
+import { additive, destructive } from "./annotations.js";
 
 function text(value: string, isError = false) {
   return { content: [{ type: "text" as const, text: value }], isError };
@@ -67,6 +68,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   server.registerTool(
     "cloud_create_volume",
     {
+      annotations: additive,
       title: "Create a volume",
       description: "Create a Hetzner Cloud volume. Billed. Requires confirm true. Attach to a server or place in a location.",
       inputSchema: {
@@ -90,17 +92,17 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   );
   server.registerTool(
     "cloud_delete_volume",
-    { title: "Delete a volume", description: "Delete a volume. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Volume id."), confirm: z.boolean().optional() } },
+    { annotations: destructive, title: "Delete a volume", description: "Delete a volume. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Volume id."), confirm: z.boolean().optional() } },
     async (a) => guarded(cfg, { method: "DELETE", path: `/volumes/${enc(a.id)}`, destructive: true, confirm: a.confirm, label: `Deleting volume ${a.id}` }),
   );
   server.registerTool(
     "cloud_attach_volume",
-    { title: "Attach a volume", description: "Attach a volume to a server.", inputSchema: { id: id.describe("Volume id."), server: z.number().describe("Server id."), automount: z.boolean().optional() } },
+    { annotations: additive, title: "Attach a volume", description: "Attach a volume to a server.", inputSchema: { id: id.describe("Volume id."), server: z.number().describe("Server id."), automount: z.boolean().optional() } },
     async (a) => guarded(cfg, { method: "POST", path: `/volumes/${enc(a.id)}/actions/attach`, label: `Attaching volume ${a.id}`, body: clean({ server: a.server, automount: a.automount }) }),
   );
   server.registerTool(
     "cloud_detach_volume",
-    { title: "Detach a volume", description: "Detach a volume from its server. Requires confirm true, because a running workload may lose its disk.", inputSchema: { id: id.describe("Volume id."), confirm: z.boolean().optional().describe("Must be true.") } },
+    { annotations: destructive, title: "Detach a volume", description: "Detach a volume from its server. Requires confirm true, because a running workload may lose its disk.", inputSchema: { id: id.describe("Volume id."), confirm: z.boolean().optional().describe("Must be true.") } },
     async (a) => guarded(cfg, { method: "POST", path: `/volumes/${enc(a.id)}/actions/detach`, label: `Detaching volume ${a.id}`, confirm: a.confirm }),
   );
 
@@ -108,6 +110,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   server.registerTool(
     "cloud_create_network",
     {
+      annotations: additive,
       title: "Create a network",
       description: "Create a private network. Free.",
       inputSchema: {
@@ -121,7 +124,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   );
   server.registerTool(
     "cloud_delete_network",
-    { title: "Delete a network", description: "Delete a private network. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Network id."), confirm: z.boolean().optional() } },
+    { annotations: destructive, title: "Delete a network", description: "Delete a private network. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Network id."), confirm: z.boolean().optional() } },
     async (a) => guarded(cfg, { method: "DELETE", path: `/networks/${enc(a.id)}`, destructive: true, confirm: a.confirm, label: `Deleting network ${a.id}` }),
   );
 
@@ -129,6 +132,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   server.registerTool(
     "cloud_create_firewall",
     {
+      annotations: additive,
       title: "Create a firewall",
       description: "Create a firewall with rules. Free.",
       inputSchema: {
@@ -141,7 +145,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   );
   server.registerTool(
     "cloud_delete_firewall",
-    { title: "Delete a firewall", description: "Delete a firewall. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Firewall id."), confirm: z.boolean().optional() } },
+    { annotations: destructive, title: "Delete a firewall", description: "Delete a firewall. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Firewall id."), confirm: z.boolean().optional() } },
     async (a) => guarded(cfg, { method: "DELETE", path: `/firewalls/${enc(a.id)}`, destructive: true, confirm: a.confirm, label: `Deleting firewall ${a.id}` }),
   );
 
@@ -149,6 +153,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   server.registerTool(
     "cloud_create_load_balancer",
     {
+      annotations: additive,
       title: "Create a load balancer",
       description: "Create a load balancer. Billed. Requires confirm true.",
       inputSchema: {
@@ -174,7 +179,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   );
   server.registerTool(
     "cloud_delete_load_balancer",
-    { title: "Delete a load balancer", description: "Delete a load balancer. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Load balancer id."), confirm: z.boolean().optional() } },
+    { annotations: destructive, title: "Delete a load balancer", description: "Delete a load balancer. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Load balancer id."), confirm: z.boolean().optional() } },
     async (a) => guarded(cfg, { method: "DELETE", path: `/load_balancers/${enc(a.id)}`, destructive: true, confirm: a.confirm, label: `Deleting load balancer ${a.id}` }),
   );
 
@@ -182,6 +187,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   server.registerTool(
     "cloud_create_floating_ip",
     {
+      annotations: additive,
       title: "Create a floating IP",
       description: "Create a floating IP. Billed. Requires confirm true.",
       inputSchema: {
@@ -204,17 +210,17 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   );
   server.registerTool(
     "cloud_delete_floating_ip",
-    { title: "Delete a floating IP", description: "Delete a floating IP. Free but destructive, requires confirm true. Note. an assigned IP must be unassigned first.", inputSchema: { id: id.describe("Floating IP id."), confirm: z.boolean().optional() } },
+    { annotations: destructive, title: "Delete a floating IP", description: "Delete a floating IP. Free but destructive, requires confirm true. Note. an assigned IP must be unassigned first.", inputSchema: { id: id.describe("Floating IP id."), confirm: z.boolean().optional() } },
     async (a) => guarded(cfg, { method: "DELETE", path: `/floating_ips/${enc(a.id)}`, destructive: true, confirm: a.confirm, label: `Deleting floating IP ${a.id}` }),
   );
   server.registerTool(
     "cloud_assign_floating_ip",
-    { title: "Assign a floating IP", description: "Assign a floating IP to a server.", inputSchema: { id: id.describe("Floating IP id."), server: z.number().describe("Server id.") } },
+    { annotations: additive, title: "Assign a floating IP", description: "Assign a floating IP to a server.", inputSchema: { id: id.describe("Floating IP id."), server: z.number().describe("Server id.") } },
     async (a) => guarded(cfg, { method: "POST", path: `/floating_ips/${enc(a.id)}/actions/assign`, label: `Assigning floating IP ${a.id}`, body: { server: a.server } }),
   );
   server.registerTool(
     "cloud_unassign_floating_ip",
-    { title: "Unassign a floating IP", description: "Unassign a floating IP from its server. Requires confirm true, because traffic to that address stops.", inputSchema: { id: id.describe("Floating IP id."), confirm: z.boolean().optional().describe("Must be true.") } },
+    { annotations: destructive, title: "Unassign a floating IP", description: "Unassign a floating IP from its server. Requires confirm true, because traffic to that address stops.", inputSchema: { id: id.describe("Floating IP id."), confirm: z.boolean().optional().describe("Must be true.") } },
     async (a) => guarded(cfg, { method: "POST", path: `/floating_ips/${enc(a.id)}/actions/unassign`, label: `Unassigning floating IP ${a.id}`, confirm: a.confirm }),
   );
 
@@ -222,6 +228,7 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   server.registerTool(
     "cloud_create_primary_ip",
     {
+      annotations: additive,
       title: "Create a primary IP",
       description: "Create a primary IP. Billed. Requires confirm true. Assign to a server, or create standalone with a location.",
       inputSchema: {
@@ -245,41 +252,41 @@ export function registerCloudWriteTools(server: McpServer, cfg: HetznerConfig): 
   );
   server.registerTool(
     "cloud_delete_primary_ip",
-    { title: "Delete a primary IP", description: "Delete a primary IP. Free but destructive, requires confirm true. An assigned IP must be unassigned first.", inputSchema: { id: id.describe("Primary IP id."), confirm: z.boolean().optional() } },
+    { annotations: destructive, title: "Delete a primary IP", description: "Delete a primary IP. Free but destructive, requires confirm true. An assigned IP must be unassigned first.", inputSchema: { id: id.describe("Primary IP id."), confirm: z.boolean().optional() } },
     async (a) => guarded(cfg, { method: "DELETE", path: `/primary_ips/${enc(a.id)}`, destructive: true, confirm: a.confirm, label: `Deleting primary IP ${a.id}` }),
   );
   server.registerTool(
     "cloud_assign_primary_ip",
-    { title: "Assign a primary IP", description: "Assign a primary IP to a server. The server must be off.", inputSchema: { id: id.describe("Primary IP id."), assignee_id: z.number().describe("Server id."), assignee_type: z.string().optional().describe("Defaults to server.") } },
+    { annotations: additive, title: "Assign a primary IP", description: "Assign a primary IP to a server. The server must be off.", inputSchema: { id: id.describe("Primary IP id."), assignee_id: z.number().describe("Server id."), assignee_type: z.string().optional().describe("Defaults to server.") } },
     async (a) => guarded(cfg, { method: "POST", path: `/primary_ips/${enc(a.id)}/actions/assign`, label: `Assigning primary IP ${a.id}`, body: clean({ assignee_id: a.assignee_id, assignee_type: a.assignee_type ?? "server" }) }),
   );
   server.registerTool(
     "cloud_unassign_primary_ip",
-    { title: "Unassign a primary IP", description: "Unassign a primary IP from its server. The server must be off. Requires confirm true, because the address stops reaching the server.", inputSchema: { id: id.describe("Primary IP id."), confirm: z.boolean().optional().describe("Must be true.") } },
+    { annotations: destructive, title: "Unassign a primary IP", description: "Unassign a primary IP from its server. The server must be off. Requires confirm true, because the address stops reaching the server.", inputSchema: { id: id.describe("Primary IP id."), confirm: z.boolean().optional().describe("Must be true.") } },
     async (a) => guarded(cfg, { method: "POST", path: `/primary_ips/${enc(a.id)}/actions/unassign`, label: `Unassigning primary IP ${a.id}`, confirm: a.confirm }),
   );
 
   // ---- SSH keys ----
   server.registerTool(
     "cloud_create_ssh_key",
-    { title: "Create an SSH key", description: "Add an SSH public key. Free.", inputSchema: { name: z.string().min(1).describe("Key name."), public_key: z.string().min(1).describe("The public key text."), labels: z.record(z.string(), z.string()).optional() } },
+    { annotations: additive, title: "Create an SSH key", description: "Add an SSH public key. Free.", inputSchema: { name: z.string().min(1).describe("Key name."), public_key: z.string().min(1).describe("The public key text."), labels: z.record(z.string(), z.string()).optional() } },
     async (a) => guarded(cfg, { method: "POST", path: "/ssh_keys", label: `Creating SSH key ${a.name}`, body: clean({ name: a.name, public_key: a.public_key, labels: a.labels }) }),
   );
   server.registerTool(
     "cloud_delete_ssh_key",
-    { title: "Delete an SSH key", description: "Delete an SSH key. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("SSH key id."), confirm: z.boolean().optional() } },
+    { annotations: destructive, title: "Delete an SSH key", description: "Delete an SSH key. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("SSH key id."), confirm: z.boolean().optional() } },
     async (a) => guarded(cfg, { method: "DELETE", path: `/ssh_keys/${enc(a.id)}`, destructive: true, confirm: a.confirm, label: `Deleting SSH key ${a.id}` }),
   );
 
   // ---- Placement groups ----
   server.registerTool(
     "cloud_create_placement_group",
-    { title: "Create a placement group", description: "Create a placement group. Free.", inputSchema: { name: z.string().min(1).describe("Placement group name."), type: z.string().optional().describe("For example spread."), labels: z.record(z.string(), z.string()).optional() } },
+    { annotations: additive, title: "Create a placement group", description: "Create a placement group. Free.", inputSchema: { name: z.string().min(1).describe("Placement group name."), type: z.string().optional().describe("For example spread."), labels: z.record(z.string(), z.string()).optional() } },
     async (a) => guarded(cfg, { method: "POST", path: "/placement_groups", label: `Creating placement group ${a.name}`, body: clean({ name: a.name, type: a.type ?? "spread", labels: a.labels }) }),
   );
   server.registerTool(
     "cloud_delete_placement_group",
-    { title: "Delete a placement group", description: "Delete a placement group. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Placement group id."), confirm: z.boolean().optional() } },
+    { annotations: destructive, title: "Delete a placement group", description: "Delete a placement group. Free but destructive, requires confirm true.", inputSchema: { id: id.describe("Placement group id."), confirm: z.boolean().optional() } },
     async (a) => guarded(cfg, { method: "DELETE", path: `/placement_groups/${enc(a.id)}`, destructive: true, confirm: a.confirm, label: `Deleting placement group ${a.id}` }),
   );
 }

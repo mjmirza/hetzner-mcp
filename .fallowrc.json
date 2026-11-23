@@ -7,6 +7,7 @@
     "scripts/deploy-demo.ts",
     "scripts/teardown-demo.ts",
     "test/actions.ts",
+    "test/annotations.ts",
     "test/api-shape.ts",
     "test/audit.ts",
     "test/cli.ts",

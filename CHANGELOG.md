@@ -5,6 +5,9 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Added
+- Every tool now sets MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) so a client can tell a read from a write and a delete from an additive create. Before, no tool set them, so the spec defaults presented every list and get as a possibly destructive write. The hints sit on top of the cost guard, the confirm requirement, and read-only mode, which are unchanged. The MCP spec says clients must treat annotations as untrusted hints. The tool list grows by those hint objects, to about 11,100 tokens, or about 7,000 with `HETZNER_MCP_TOOLS=lean`.
+
 ## [0.7.3] - 2026-11-14
 
 ### Security

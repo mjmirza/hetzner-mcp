@@ -25,6 +25,16 @@ harness where possible.
 | Secrets committed to git | .gitignore excludes .env and token files. The token lives only in the environment | .gitignore |
 | Oversized responses leaking or bloating context | Responses are capped and compacted by default | src/format.ts |
 
+Tool annotations are not a row in this table. They tell a client what a tool does. They do not block anything.
+
+## Tool annotations
+
+Each tool sets MCP `annotations` so a client can tell a read from a write, and a delete from an additive create. List, get, audit, map, spend, and capacity set `readOnlyHint` true. Creates, attaches, and assigns set `readOnlyHint` false and `destructiveHint` false. Deletes, detaches, unassigns, and the three raw request tools set `readOnlyHint` false and `destructiveHint` true. The request tools can send any method, including power-off, rebuild, and DELETE, so they take that cautious hint. Reads also set `destructiveHint` false, because the spec default is true and that default is what made an unannotated list look destructive. Reads set `idempotentHint` true, because a repeat does not change the account. Writes leave it false. A second create is another resource or an error, and a second delete is not a guaranteed no-op.
+
+`openWorldHint` is true for every tool that calls the Hetzner API, because the account is an external world this server does not define, and false only for `contribute_or_report`, which builds a link in process and does not call out.
+
+These fields are hints. The [tool annotations schema](https://modelcontextprotocol.io/specification/2025-11-25/schema#toolannotations) says every property is a hint, not a guarantee of behavior, and the [tools page](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) says clients must treat tool annotations as untrusted unless they come from a trusted server. The cost guard, the confirm requirement, read-only mode, and the checks in `src/security.ts` and `src/cost.ts` still decide what runs. An annotation never skips or weakens them.
+
 ## What is verified by the eval harness
 
 - SSRF path rejection, protocol relative rejection, path traversal rejection, normal path acceptance.

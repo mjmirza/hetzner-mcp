@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig } from "../config.js";
 import { hetznerRequest } from "../http.js";
+import { readOnly } from "./annotations.js";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -67,6 +68,7 @@ export function registerCapacityTool(server: McpServer, cfg: HetznerConfig): voi
   server.registerTool(
     "find_capacity",
     {
+      annotations: readOnly,
       title: "Find buyable server capacity",
       description:
         "Read-only, free. Lists which server types can be ordered right now and where, recommended first then cheapest, with the " +

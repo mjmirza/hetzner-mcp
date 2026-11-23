@@ -9,11 +9,13 @@ import { readStored } from "../map/store.js";
 import { sampleGraph } from "../map/sample.js";
 import { startMapServer } from "../map/server.js";
 import { summarize, toMermaid } from "../map/summary.js";
+import { readOnly } from "./annotations.js";
 
 export function registerMapTool(server: McpServer, cfg: HetznerConfig): void {
   server.registerTool(
     "infra_map",
     {
+      annotations: readOnly,
       title: "Map infrastructure and costs",
       description:
         "Read-only. Maps every configured Hetzner project and account with estimated monthly cost per project and " +
