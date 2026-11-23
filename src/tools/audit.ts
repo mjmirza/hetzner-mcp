@@ -10,6 +10,7 @@ import { audit, auditMarkdown, findingMarkdown } from "../map/audit.js";
 import { auditSummary } from "../map/audit-cli.js";
 import { DATA_FENCE } from "../text.js";
 import { capText } from "../format.js";
+import { readOnly } from "./annotations.js";
 
 /** Rows of the per-project table, shown on the first page only. */
 const PAGE_SCOPES = 20;
@@ -18,6 +19,7 @@ export function registerAuditTool(server: McpServer, cfg: HetznerConfig): void {
   server.registerTool(
     "infra_audit",
     {
+      annotations: readOnly,
       title: "Audit infrastructure",
       description:
         "Read-only. Audits every configured Hetzner project for security, cost, reliability and hygiene issues. " +

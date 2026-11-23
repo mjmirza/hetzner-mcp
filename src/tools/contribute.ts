@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { closedRead } from "./annotations.js";
 
 const REPO = "https://github.com/mjmirza/hetzner-mcp";
 
@@ -19,6 +20,7 @@ export function registerContributeTool(server: McpServer): void {
   server.registerTool(
     "contribute_or_report",
     {
+      annotations: closedRead,
       title: "Report a gap or contribute",
       description:
         "When a Hetzner capability is missing or misbehaving, this returns a prefilled GitHub issue link and the steps to open a pull request. Every gap can become a contribution.",

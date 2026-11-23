@@ -8,6 +8,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HetznerConfig, SurfaceName } from "../config.js";
 import { hetznerRequest } from "../http.js";
 import { resultBlocks } from "../format.js";
+import { readOnly } from "./annotations.js";
 
 interface ReadDef {
   surface: SurfaceName;
@@ -74,6 +75,7 @@ export function registerReadTools(server: McpServer, cfg: HetznerConfig): void {
     server.registerTool(
       def.name,
       {
+        annotations: readOnly,
         description: `${def.desc}. Read only.`,
         inputSchema: {
           id: z.string().optional().describe("Fetch one by id."),

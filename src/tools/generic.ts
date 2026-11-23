@@ -13,6 +13,7 @@ import { resultBlocks } from "../format.js";
 import { waitForActions, actionBlocks, anyActionFailed } from "../actions.js";
 import { HetznerApiError } from "../errors.js";
 import { oneLine } from "../text.js";
+import { destructive } from "./annotations.js";
 
 // Only messages we wrote go back to the model; anything else could echo input or a secret.
 function errorText(err: unknown): string {
@@ -45,6 +46,7 @@ function registerOne(server: McpServer, cfg: HetznerConfig, surface: SurfaceName
   server.registerTool(
     `${surface}_request`,
     {
+      annotations: destructive,
       title: `${surface} raw request`,
       description:
         `Call any ${SURFACE_LABEL[surface]} endpoint directly. Use a relative path like /servers. ` +

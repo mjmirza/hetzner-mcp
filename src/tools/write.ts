@@ -12,6 +12,7 @@ import { cloudServerPriceNote } from "../cost.js";
 import { waitForActions, describeActions, actionBlocks, anyActionFailed } from "../actions.js";
 import { deletionPreview } from "./delete-preview.js";
 import { id } from "./write-cloud.js";
+import { additive, destructive } from "./annotations.js";
 
 function text(value: string, isError = false) {
   return { content: [{ type: "text" as const, text: value }], isError };
@@ -21,6 +22,7 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
   server.registerTool(
     "cloud_create_server",
     {
+      annotations: additive,
       title: "Create a cloud server",
       description:
         "Create a Hetzner Cloud server. This is billed. It requires confirm true and shows the live hourly and monthly price first. Optionally attach SSH keys, a private network, firewalls, cloud-init user_data, and labels.",
@@ -87,6 +89,7 @@ export function registerWriteTools(server: McpServer, cfg: HetznerConfig): void 
   server.registerTool(
     "cloud_delete_server",
     {
+      annotations: destructive,
       title: "Delete a cloud server",
       description:
         "Delete a Hetzner Cloud server. Deleting is free and stops billing, but it destroys the server, so it requires confirm true. Auto-created primary IPs are released by Hetzner shortly after.",
