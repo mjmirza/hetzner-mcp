@@ -5,6 +5,9 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Fixed
+- A load balancer label selector was counted as one target. A selector that resolved to several servers was reported as a single point of failure, and a selector that matched nothing was not reported as idle. The map now counts and links the servers the selector resolved to. A firewall applied by label selector now draws that protection link as well.
+
 ## [0.7.3] - 2026-11-14
 
 ### Security

@@ -65,6 +65,23 @@ const anyFw = buildProject({ name: "p", account: "A" }, { ...blank, firewalls: [
 assert("firewall rule with port any from the internet is flagged", anyFw.nodes.some((n) => n.flags.some((f) => f.code === "fw_open_ports")));
 const weird = buildProject({ name: "p", account: "A" }, { ...blank, firewalls: [{ id: 8, name: "odd", rules: [{ direction: "in", protocol: "tcp", port: "abc", source_ips: ["0.0.0.0/0"] }], applied_to: [] }] }, noPrices);
 assert("garbage port spec is not treated as open SSH", !weird.nodes.some((n) => n.flags.some((f) => f.code === "fw_open_ports")));
+
+// A label selector is not itself a backend. The servers it resolved to are.
+const pub = (id: number) => ({ id, name: `s${id}`, status: "running", server_type: { name: "cx23" }, location: { name: "fsn1" }, public_net: { ipv4: { ip: `203.0.113.${id}` }, ipv6: null, firewalls: [] }, private_net: [] });
+const lbOf = (targets: unknown[]) => buildProject({ name: "p", account: "A" }, { ...blank, servers: [pub(1), pub(2)], loadBalancers: [{ id: 9, name: "web", location: { name: "fsn1" }, load_balancer_type: { name: "lb11" }, targets }] }, noPrices);
+const selector = lbOf([{ type: "label_selector", label_selector: { selector: "role=web" }, targets: [{ type: "server", server: { id: 1 } }, { type: "server", server: { id: 2 } }] }]);
+const selectorNode = selector.nodes.find((n) => n.kind === "load_balancer")!;
+assert("label selector counts the servers it resolved to", selectorNode.details.targets === 2 && !selectorNode.flags.some((f) => f.code === "lb_no_targets"));
+assert("label selector links each resolved server", selector.edges.filter((e) => e.kind === "routes").length === 2);
+assert("label selector with two servers is not a single point of failure", !audit({ nodes: selector.nodes }).findings.some((f) => f.code === "lb_single_target"));
+const idle = lbOf([{ type: "label_selector", label_selector: { selector: "role=missing" }, targets: [] }]);
+assert("label selector that matches nothing is idle", idle.nodes.find((n) => n.kind === "load_balancer")!.flags.some((f) => f.code === "lb_no_targets") && idle.nodes.find((n) => n.kind === "load_balancer")!.details.targets === 0);
+const once = lbOf([{ type: "server", server: { id: 1 } }, { type: "label_selector", targets: [{ type: "server", server: { id: 1 } }] }, { type: "ip", ip: { ip: "203.0.113.9" } }]);
+assert("a server listed directly and by selector counts once, and an IP counts too", once.nodes.find((n) => n.kind === "load_balancer")!.details.targets === 2 && once.edges.filter((e) => e.kind === "routes").length === 1);
+const fwServer = { ...pub(1), public_net: { ipv4: { ip: "203.0.113.1" }, ipv6: null } };
+const fwSel = buildProject({ name: "p", account: "A" }, { ...blank, servers: [fwServer], firewalls: [{ id: 3, name: "prod-fw", rules: [], applied_to: [{ type: "label_selector", label_selector: { selector: "env=prod" }, applied_to_resources: [{ type: "server", server: { id: 1 } }] }] }] }, noPrices);
+assert("firewall label selector draws the protection link", fwSel.edges.some((e) => e.kind === "protects" && e.to.endsWith("/srv:1")));
+assert("firewall label selector clears the unprotected flag", !fwSel.nodes.find((n) => n.kind === "server")!.flags.some((f) => f.code === "no_firewall"));
 const two = (group: Record<string, unknown> | null): MapNode[] => [
   { id: "p:A/x", kind: "project", label: "x", project: "x", account: "A", monthly: null, flags: [], details: {} },
   ...[1, 2].map((i): MapNode => ({ id: `p:A/x/srv:${i}`, kind: "server", label: `s${i}`, project: "x", account: "A", location: i === 1 ? "fsn1" : "nbg1", monthly: 5, flags: [], details: {} })),

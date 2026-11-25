@@ -37,6 +37,31 @@ const DAY_MS = 86_400_000;
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+/**
+ * Servers and IP addresses a load balancer actually sends traffic to.
+ * A label selector is not a backend. The servers it resolved to are, and the
+ * same server is counted once when it is also attached directly.
+ */
+function lbBackends(targets: Json[]): { count: number; servers: number[] } {
+  const seen = new Set<number>();
+  const servers: number[] = [];
+  let ips = 0;
+  const add = (t: Json) => {
+    if (t.type === "server" && typeof t.server?.id === "number") {
+      if (seen.has(t.server.id)) return;
+      seen.add(t.server.id);
+      servers.push(t.server.id);
+      return;
+    }
+    if (t.type === "ip") ips++;
+  };
+  for (const t of targets) {
+    if (t.type === "label_selector") for (const inner of (t.targets ?? []) as Json[]) add(inner);
+    else add(t);
+  }
+  return { count: servers.length + ips, servers };
+}
+
 const PER_PAGE = 50;
 
 /** How a list was read: pages fetched, and what it covers when Hetzner still had more. */
@@ -290,17 +315,18 @@ export function buildProject(
     const id = `${P}/lb:${lb.id}`;
     const type = lb.load_balancer_type?.name as string | undefined;
     const targets = (lb.targets ?? []) as Json[];
+    const backends = lbBackends(targets);
     const lbPrice = priceAt(pricing.lbTypes.get(type ?? ""), loc);
-    const flags = targets.length ? [] : [waste("lb_no_targets", "Load balancer with no targets, billed while serving nothing.", lbPrice)];
+    const flags = backends.count ? [] : [waste("lb_no_targets", "Load balancer with no targets, billed while serving nothing.", lbPrice)];
     const net = lb.private_net?.[0]?.network as number | undefined;
     nodes.push({
       id, kind: "load_balancer", label: lb.name, parent: net && netIds.has(net) ? netIds.get(net)! : locNode(loc), location: loc,
       monthly: lbPrice, costNote: `${type ?? "load balancer"} list price.`, flags, health: targetHealth(targets),
-      details: { type: type ?? null, ipv4: lb.public_net?.ipv4?.ip ?? null, targets: targets.length, services: lb.services?.length ?? 0, created: lb.created ?? null, hourly: hourlyAt(pricing.lbTypes.get(type ?? ""), loc) },
+      details: { type: type ?? null, ipv4: lb.public_net?.ipv4?.ip ?? null, targets: backends.count, services: lb.services?.length ?? 0, created: lb.created ?? null, hourly: hourlyAt(pricing.lbTypes.get(type ?? ""), loc) },
       ...base,
     });
-    for (const t of targets) {
-      const sid = t.type === "server" ? serverIds.get(t.server?.id) : undefined;
+    for (const hetznerId of backends.servers) {
+      const sid = serverIds.get(hetznerId);
       if (sid) edges.push({ from: id, to: sid, kind: "routes" });
     }
   }
@@ -323,17 +349,19 @@ export function buildProject(
       details: { rules: fw.rules?.length ?? 0, applied_to: applied.length },
       ...base,
     });
+    const linked = new Set<string>();
+    const protect = (nodeId: string | undefined) => {
+      if (!nodeId || linked.has(nodeId)) return;
+      linked.add(nodeId);
+      protectedServers.add(nodeId);
+      edges.push({ from: id, to: nodeId, kind: "protects" });
+    };
     for (const a of applied) {
-      const sid = a.type === "server" ? serverIds.get(a.server?.id) : undefined;
-      if (sid) {
-        edges.push({ from: id, to: sid, kind: "protects" });
-        protectedServers.add(sid);
-      }
+      if (a.type === "server") protect(serverIds.get(a.server?.id));
       // Label selectors apply a firewall to every server carrying that label.
       if (a.type === "label_selector") {
         for (const srvSid of (a.applied_to_resources ?? []) as Json[]) {
-          const t = srvSid.type === "server" ? serverIds.get(srvSid.server?.id) : undefined;
-          if (t) protectedServers.add(t);
+          if (srvSid.type === "server") protect(serverIds.get(srvSid.server?.id));
         }
       }
     }
