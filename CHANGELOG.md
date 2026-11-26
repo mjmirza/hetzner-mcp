@@ -5,6 +5,9 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Fixed
+- A resource id typed as text now has to be a positive integer with no leading zero. `0`, `00` and `01` used to pass the check and were sent on to Hetzner.
+
 ## [0.7.3] - 2026-11-14
 
 ### Security
