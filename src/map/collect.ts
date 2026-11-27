@@ -356,12 +356,51 @@ export function buildProject(
   data.snapshots.forEach((i) => imageNode(i, "snapshot"));
   data.backups.forEach((i) => imageNode(i, "backup"));
 
+  // used_by on the certificate and http.certificates on each service both name the load
+  // balancer that terminates TLS. Either list is enough, and the two never make two links.
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const lbByNum = new Map<number, MapNode>();
+  const certsOnService = new Map<number, number[]>();
+  for (const lb of data.loadBalancers) {
+    if (typeof lb.id !== "number") continue;
+    const node = nodeById.get(`${P}/lb:${lb.id}`);
+    if (!node) continue;
+    lbByNum.set(lb.id, node);
+    for (const svc of (lb.services ?? []) as Json[]) {
+      for (const cid of (svc.http?.certificates ?? []) as unknown[]) {
+        if (typeof cid !== "number") continue;
+        const list = certsOnService.get(cid);
+        if (list) list.push(lb.id);
+        else certsOnService.set(cid, [lb.id]);
+      }
+    }
+  }
   for (const c of data.certificates) {
+    const seen = new Set<number>();
+    const linked: MapNode[] = [];
+    const add = (num: unknown) => {
+      if (typeof num !== "number" || seen.has(num)) return;
+      const lb = lbByNum.get(num);
+      if (!lb) return;
+      seen.add(num);
+      linked.push(lb);
+    };
+    for (const u of (c.used_by ?? []) as Json[]) if (u.type === "load_balancer") add(u.id);
+    for (const num of certsOnService.get(c.id) ?? []) add(num);
+    const labels = linked.map((lb) => lb.label);
+    const id = `${P}/cert:${c.id}`;
     nodes.push({
-      id: `${P}/cert:${c.id}`, kind: "certificate", label: c.name, parent: P, monthly: 0, costNote: "Certificates are free.",
-      flags: certFlags(c), details: { type: c.type ?? null, domains: (c.domain_names ?? []).join(", "), expires: c.not_valid_after ?? null },
+      id, kind: "certificate", label: c.name, parent: P, monthly: 0, costNote: "Certificates are free.",
+      flags: certFlags(c, labels),
+      details: {
+        type: c.type ?? null,
+        domains: (c.domain_names ?? []).join(", "),
+        expires: c.not_valid_after ?? null,
+        load_balancers: labels.length ? labels.join(", ") : null,
+      },
       ...base,
     });
+    for (const lb of linked) edges.push({ from: id, to: lb.id, kind: "uses" });
   }
   for (const g of data.placementGroups) {
     const id = `${P}/pg:${g.id}`;
@@ -400,14 +439,22 @@ function snapshotFlags(img: Json, kind: "snapshot" | "backup", hasServer: boolea
   return ageDays > 90 ? [waste("snapshot_old", `Snapshot is ${ageDays} days old. Delete it if a newer one or backups cover you.`, cost)] : [];
 }
 
-function certFlags(c: Json): Flag[] {
+function certWhere(labels: string[]): string {
+  if (!labels.length) return "";
+  const shown = labels.slice(0, 3).join(", ");
+  const more = labels.length > 3 ? ` and ${labels.length - 3} more` : "";
+  return ` It terminates TLS on ${shown}${more}.`;
+}
+
+function certFlags(c: Json, loadBalancers: string[]): Flag[] {
   const end = Date.parse(c.not_valid_after ?? "");
   if (!Number.isFinite(end)) return [];
   const days = Math.floor((end - Date.now()) / DAY_MS);
-  if (days < 0) return [risk("cert_expired", `Certificate expired ${-days} days ago.`)];
+  const where = certWhere(loadBalancers);
+  if (days < 0) return [risk("cert_expired", `Certificate expired ${-days} days ago.${where}`)];
   // Managed certificates renew themselves, so only warn late for those.
   const limit = c.type === "managed" ? 7 : 30;
-  return days <= limit ? [risk("cert_expiring", `Certificate expires in ${days} days${c.type === "managed" ? " and has not renewed yet" : ". Upload a renewed one"}.`)] : [];
+  return days <= limit ? [risk("cert_expiring", `Certificate expires in ${days} days${c.type === "managed" ? " and has not renewed yet" : ". Upload a renewed one"}.${where}`)] : [];
 }
 
 async function collectProject(ref: ProjectRef, pricing: Pricing): Promise<{ nodes: MapNode[]; edges: MapEdge[]; incomplete?: string[] }> {

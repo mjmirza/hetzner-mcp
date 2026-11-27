@@ -18,6 +18,8 @@ function sentence(kind: MapEdge["kind"], outgoing: boolean, other: string, other
       return outgoing ? `Attached to ${other}` : `Volume ${other} attached`;
     case "backs_up":
       return outgoing ? `Copy of ${other}` : `Has a copy, ${other}`;
+    case "uses":
+      return outgoing ? `Secures ${other}` : `Uses certificate ${other}`;
     case "member":
       if (otherKind === "network") return outgoing ? `In network ${other}` : `Has member ${other}`;
       return outgoing ? `Groups ${other}` : `In placement group ${other}`;

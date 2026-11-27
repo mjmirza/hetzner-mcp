@@ -20,6 +20,7 @@ const DETAIL: Record<string, [string, string?]> = {
   image: ["Image"], ipv4: ["IPv4"], ipv6: ["IPv6"], ip: ["IP"], backups: ["Automatic backups"], firewalls: ["Firewalls"],
   traffic_used_pct: ["Traffic used this month", "%"], created: ["Created"], ip_range: ["IP range"], zone: ["Network zone"],
   servers: ["Servers"], targets: ["Targets"], services: ["Services"], size: ["Size", "GB"], expires: ["Expires"],
+  load_balancers: ["Load balancers"],
 };
 function label(k: string): string {
   const d = DETAIL[k];
