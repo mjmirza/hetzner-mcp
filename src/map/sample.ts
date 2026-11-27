@@ -69,7 +69,10 @@ export function sampleGraph(): InfraGraph {
       { type: "server", server: { id: 11 }, health_status: [{ listen_port: 443, status: "healthy" }] },
       // web-2 is mid-migration, so its health check fails. Shows the interrupted state in the demo.
       { type: "server", server: { id: 12 }, health_status: [{ listen_port: 443, status: "unhealthy" }] },
-    ], services: [{}, {}], private_net: [{ network: 1 }] }],
+    ], services: [
+      { protocol: "http", listen_port: 80, destination_port: 80 },
+      { protocol: "https", listen_port: 443, destination_port: 443, http: { certificates: [61, 62] } },
+    ], private_net: [{ network: 1 }] }],
     firewalls: [
       { id: 41, name: "web-fw", rules: [
         { direction: "in", protocol: "tcp", port: "443", source_ips: ["0.0.0.0/0", "::/0"] },
@@ -79,8 +82,8 @@ export function sampleGraph(): InfraGraph {
     ],
     primaryIps: [pip(51, 11, "fsn1", 425), pip(52, 12, "nbg1", 305), pip(53, 13, "fsn1", 425), pip(54, 14, "fsn1", 95)],
     certificates: [
-      { id: 61, name: "acme.example", type: "managed", domain_names: ["acme.example", "www.acme.example"], not_valid_after: inDays(70) },
-      { id: 62, name: "legacy-partner", type: "uploaded", domain_names: ["partner.acme.example"], not_valid_after: inDays(12) },
+      { id: 61, name: "acme.example", type: "managed", domain_names: ["acme.example", "www.acme.example"], not_valid_after: inDays(70), used_by: [{ id: 31, type: "load_balancer" }] },
+      { id: 62, name: "legacy-partner", type: "uploaded", domain_names: ["partner.acme.example"], not_valid_after: inDays(12), used_by: [{ id: 31, type: "load_balancer" }] },
     ],
     placementGroups: [{ id: 71, name: "web-spread", type: "spread", servers: [11, 12] }],
     backups: [{ id: 81, description: "db-primary backup", image_size: "38.2", created_from: { id: 13, name: "db-primary" } }],

@@ -60,7 +60,7 @@ export interface Flag {
 export interface MapEdge {
   from: string;
   to: string;
-  kind: "attached" | "protects" | "routes" | "assigned" | "member" | "backs_up";
+  kind: "attached" | "protects" | "routes" | "assigned" | "member" | "backs_up" | "uses";
 }
 
 export interface Finding {

@@ -15,6 +15,8 @@ import { connectProject, ActionError } from "../src/map/actions.js";
 import { serverState, robotState, healthState, targetHealth, liveOf, liveLookup, rollup, type StatusSnapshot } from "../src/map/status.js";
 import { collectStatuses } from "../src/map/live.js";
 import { placeName, explainLocation, explainType, familyOf } from "../web/src/lib/glossary.js";
+import { relationsByNode } from "../web/src/lib/relations.js";
+import { buildProject, type Pricing } from "../src/map/collect.js";
 
 let passed = 0;
 let total = 0;
@@ -45,7 +47,13 @@ assert("firewalled server not flagged as unprotected", !byLabel("web-1").flags.s
 assert("SSH open to the world flagged, HTTPS is not", byLabel("web-fw").flags.some((f) => f.kind === "risk" && f.text.includes("SSH (22)") && !f.text.includes("443")));
 assert("port range 80-443 does not trip sensitive ports", byLabel("blog-fw").flags.length === 0);
 assert("uploaded cert expiring in under 30 days flagged", byLabel("legacy-partner").flags.some((f) => f.kind === "risk"));
+assert("expiring certificate names the load balancer that uses it", /terminates TLS on prod-lb/.test(byLabel("legacy-partner").flags.find((f) => f.kind === "risk")?.text ?? ""));
 assert("managed cert with 70 days left not flagged", byLabel("acme.example").flags.length === 0);
+const certEdges = g.edges.filter((e) => e.kind === "uses");
+assert("each sample certificate secures the production load balancer once", certEdges.length === 2 && certEdges.every((e) => e.to === byLabel("prod-lb").id) && new Set(certEdges.map((e) => e.from)).size === 2);
+const rel = relationsByNode(g);
+assert("certificate card says which load balancer it secures", rel.get(byLabel("acme.example").id)?.some((r) => r.text === "Secures prod-lb"));
+assert("load balancer card names the certificate", rel.get(byLabel("prod-lb").id)?.some((r) => r.text === "Uses certificate acme.example"));
 assert("old snapshot flagged as waste", byLabel("db before 2025 migration").flags.some((f) => f.kind === "waste" && /days old/.test(f.text)));
 assert("traffic near the allowance noted", byLabel("web-1").flags.some((f) => /outgoing traffic/i.test(f.text)));
 assert("findings list risks before waste", g.totals.findings.findIndex((f) => f.kind === "waste") > g.totals.findings.findIndex((f) => f.kind === "risk"));
@@ -59,6 +67,51 @@ assert("summary names the URL and the savings", text.includes("43390") && text.i
 const mm = toMermaid(g);
 assert("mermaid starts as a flowchart", mm.startsWith("flowchart LR"));
 assert("mermaid strips quote and bracket characters from labels", !/\["[^"]*[\[\]{}<>][^"]*"\]/.test(mm));
+assert("mermaid draws the certificate link", mm.includes("|uses|"));
+
+// Certificate links follow used_by and the load balancer's HTTPS services, once each.
+{
+  const noPrices: Pricing = { currency: "EUR", vatRate: "19", serverTypes: new Map(), lbTypes: new Map(), volumePerGb: null, imagePerGb: null, backupPct: null, primaryIp: new Map(), floatingIp: new Map() };
+  const blank = { servers: [], volumes: [], networks: [], firewalls: [], loadBalancers: [], floatingIps: [], primaryIps: [], snapshots: [], backups: [], certificates: [], placementGroups: [], storageBoxes: [] };
+  const day = 86_400_000;
+  const iso = (days: number) => new Date(Date.now() + days * day).toISOString();
+  const balancer = (id: number, name: string, certificates: number[] = []) => ({
+    id, name, load_balancer_type: { name: "lb11" }, location: { name: "fsn1" }, targets: [], public_net: {},
+    services: certificates.length ? [{ protocol: "https", http: { certificates } }] : [],
+  });
+  const cert = (extra: Record<string, unknown> = {}) => ({ id: 7, name: "tls", type: "uploaded", domain_names: ["ex.test"], not_valid_after: iso(100), ...extra });
+  const project = (loadBalancers: unknown[], certificates: unknown[]) => buildProject({ name: "p", account: "A" }, { ...blank, loadBalancers, certificates }, noPrices);
+  const uses = (gph: { edges: Array<{ kind: string; to: string }> }) => gph.edges.filter((e) => e.kind === "uses");
+
+  const viaUsed = project(
+    [balancer(31, "edge")],
+    [cert({ used_by: [{ id: 31, type: "load_balancer" }, { id: 31, type: "load_balancer" }, { id: 99, type: "load_balancer" }, { id: 31, type: "server" }, { id: "31", type: "load_balancer" }] })],
+  );
+  assert("used_by links the certificate once and ignores unknown, non-balancer and non-numeric entries", uses(viaUsed).length === 1 && uses(viaUsed)[0]!.to.endsWith("/lb:31"));
+
+  const viaService = project([balancer(31, "edge", [7, 7])], [cert()]);
+  assert("HTTPS service certificate ids link when used_by is absent", uses(viaService).length === 1);
+
+  const both = project([balancer(31, "edge", [7])], [cert({ used_by: [{ id: 31, type: "load_balancer" }] })]);
+  assert("used_by and the service list do not double the link", uses(both).length === 1);
+
+  const two = project(
+    [balancer(1, "edge-a"), balancer(2, "edge-b", [7])],
+    [cert({ used_by: [{ id: 1, type: "load_balancer" }] })],
+  );
+  const twoCert = two.nodes.find((n) => n.kind === "certificate")!;
+  assert("a certificate can secure more than one load balancer", uses(two).length === 2 && twoCert.details.load_balancers === "edge-a, edge-b");
+
+  const soon = project([balancer(31, "edge")], [cert({ type: "uploaded", not_valid_after: iso(5), used_by: [{ id: 31, type: "load_balancer" }] })]);
+  assert("an expiring certificate says which load balancer breaks", /terminates TLS on edge/.test(soon.nodes.find((n) => n.kind === "certificate")?.flags[0]?.text ?? ""));
+
+  const managed = project([balancer(31, "edge")], [cert({ type: "managed", not_valid_after: iso(20), used_by: [{ id: 31, type: "load_balancer" }] })]);
+  const managedCert = managed.nodes.find((n) => n.kind === "certificate")!;
+  assert("a managed certificate outside the renewal window stays quiet but still links", managedCert.flags.length === 0 && uses(managed).length === 1);
+
+  const alone = project([], [cert()]);
+  assert("a certificate with no load balancer has no link", uses(alone).length === 0 && alone.nodes.find((n) => n.kind === "certificate")?.details.load_balancers === null);
+}
 
 // Projects from env, never duplicating a token and never leaking robot creds to extras.
 const env = { HETZNER_CLOUD_TOKEN: "a", HETZNER_CLOUD_TOKEN_PROD: "b", HETZNER_CLOUD_TOKEN_DUP: "a", HETZNER_ACCOUNT_PROD: "Acme", HETZNER_ROBOT_USER: "u", HETZNER_ROBOT_PASSWORD: "p" };
