@@ -5,6 +5,9 @@ Changelog, and this project follows semantic versioning.
 
 ## [Unreleased]
 
+### Fixed
+- The warning before a server delete now reads every page of primary IPs, snapshots, and backups, up to the page cap. Before, anything after the first 50 was left out, so it could keep billing with no mention. When the cap stops the read, the warning says the check is incomplete.
+
 ## [0.7.3] - 2026-11-14
 
 ### Security
