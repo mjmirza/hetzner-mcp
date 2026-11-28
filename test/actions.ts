@@ -2,7 +2,7 @@
 import { loadConfig } from "../src/config.js";
 import { collectActions, waitForActions, anyActionFailed } from "../src/actions.js";
 import { hetznerRequest } from "../src/http.js";
-import { describeSurvivors } from "../src/tools/delete-preview.js";
+import { deletionPreview, describeSurvivors } from "../src/tools/delete-preview.js";
 import { capacityRows, rankCapacity } from "../src/tools/capacity.js";
 
 let passed = 0;
@@ -63,6 +63,57 @@ assert("preview names the attached volume", prev.includes("volume 77"));
 assert("preview counts only this server's snapshots", prev.includes("1 snapshot(s)"));
 assert("preview warns backups are lost", prev.includes("1 automatic backup(s)"));
 assert("preview is empty for a clean server", describeSurvivors({ id: 1 }, [], [], []) === "");
+
+// A billed survivor that sits past the first 50 must still be named. Hetzner pages at 50.
+{
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: URL | string) => {
+    const u = new URL(String(url));
+    const page = Number(u.searchParams.get("page") ?? "1");
+    const path = u.pathname;
+    if (path.endsWith("/servers/5")) return Response.json({ server: { id: 5, volumes: [77] } });
+    if (path.endsWith("/primary_ips")) {
+      if (page === 1) {
+        return Response.json({
+          primary_ips: Array.from({ length: 50 }, (_, i) => ({ ip: `10.0.0.${i}`, assignee_id: 1, auto_delete: false })),
+          meta: { pagination: { page: 1, next_page: 2 } },
+        });
+      }
+      return Response.json({
+        primary_ips: [{ ip: "9.9.9.9", assignee_id: 5, auto_delete: false }],
+        meta: { pagination: { page: 2, next_page: null } },
+      });
+    }
+    if (path.endsWith("/images") && u.searchParams.get("type") === "snapshot") {
+      if (page === 1) {
+        return Response.json({
+          images: Array.from({ length: 50 }, () => ({ created_from: { id: 9 } })),
+          meta: { pagination: { page: 1, next_page: 2 } },
+        });
+      }
+      return Response.json({
+        images: [{ created_from: { id: 5 } }],
+        meta: { pagination: { page: 2, next_page: null } },
+      });
+    }
+    if (path.endsWith("/images") && u.searchParams.get("type") === "backup") {
+      return Response.json({ images: [{ created_from: { id: 5 } }], meta: { pagination: { next_page: null } } });
+    }
+    return Response.json({ error: { code: "unexpected", message: path } }, { status: 500 });
+  }) as typeof fetch;
+
+  const preview = await deletionPreview(cfg, 5);
+  assert("preview names a primary IP that is only on page 2", preview.includes("9.9.9.9") && !preview.includes("10.0.0.1"));
+  assert("preview counts a snapshot that is only on page 2", preview.includes("1 snapshot(s)"));
+  assert("preview still names the volume and the backups", preview.includes("volume 77") && preview.includes("1 automatic backup(s)"));
+  assert("a finished list does not claim the check was cut short", !preview.includes("were checked"));
+
+  const cut = await deletionPreview({ ...cfg, maxPages: 1 }, 5);
+  assert("a list stopped at the page cap says the check is incomplete", cut.includes("Only the first 50 primary IPs and snapshots were checked"));
+  assert("the page cap does not report a primary IP it never read", !cut.includes("9.9.9.9"));
+  assert("the page cap still reports what the server record itself shows", cut.includes("volume 77"));
+  globalThis.fetch = savedFetch;
+}
 
 // Capacity: sold-out and retiring types never offered by default, recommended first.
 const types = [
